@@ -44,6 +44,8 @@ Open [http://localhost:3000](http://localhost:3000). Install [Ready](https://www
 
 Sprint evidence (`strk20.json` transactions, demo URL, 3-minute video) is filled after the first mainnet txs that touch the official pool.
 
+Live demo: [https://morok-pay-starknet.vercel.app](https://morok-pay-starknet.vercel.app).
+
 ## License
 
 MIT
