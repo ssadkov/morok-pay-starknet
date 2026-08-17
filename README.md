@@ -40,7 +40,7 @@ npm run dev
 npm test
 ```
 
-Open [http://localhost:3000](http://localhost:3000). Install [Ready](https://www.ready.co/) before connecting.
+Open [http://localhost:3000](http://localhost:3000). Install [Ready X](https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb) before connecting.
 
 Sprint evidence (`strk20.json` transactions, demo URL, 3-minute video) is filled after the first mainnet txs that touch the official pool.
 

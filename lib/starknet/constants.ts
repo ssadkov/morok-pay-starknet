@@ -34,7 +34,8 @@ export const CCTP_MESSAGE_TRANSMITTER = NETWORK.messageTransmitter;
 export const STRK_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
-export const READY_WALLET_URL = "https://www.ready.co/";
+export const READY_WALLET_URL =
+  "https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb";
 
 /** OpenZeppelin Account v1.0.0 — kept for the older derive path. */
 export const OZ_ACCOUNT_CLASS_HASH =

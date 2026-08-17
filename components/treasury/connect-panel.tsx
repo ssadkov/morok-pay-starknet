@@ -58,12 +58,13 @@ export function ConnectPanel() {
               <a href={READY_WALLET_URL} target="_blank" rel="noreferrer" />
             }
           >
-            Install Ready
+            Install Ready X
           </Button>
         )}
         {!wallets.length ? (
           <p className="text-sm text-muted-foreground">
-            No Starknet wallet found. Install Ready, then refresh this page.
+            No Starknet wallet found. Install the Ready X extension, then
+            refresh this page.
           </p>
         ) : null}
         {connectError ? (
