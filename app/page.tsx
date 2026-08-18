@@ -1,5 +1,10 @@
-import { TreasuryApp } from "@/components/treasury/treasury-app";
+import { AppShell } from "@/components/pay/app-shell";
+import { HomeDoors } from "@/components/pay/home-doors";
 
 export default function Home() {
-  return <TreasuryApp />;
+  return (
+    <AppShell>
+      <HomeDoors />
+    </AppShell>
+  );
 }

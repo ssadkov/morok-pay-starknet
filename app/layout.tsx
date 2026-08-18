@@ -15,9 +15,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MorokPay — private treasury",
+  title: "MorokPay — private USDC",
   description:
-    "Fund a private USDC treasury on Starknet from Ethereum, then shield and pay out through Ready.",
+    "Pay privately from a shielded USDC balance, or get paid with a QR invoice on Starknet STRK20.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

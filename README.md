@@ -1,23 +1,30 @@
 # MorokPay
 
-Private USDC treasury on Starknet for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
+Private USDC payments on Starknet for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
 
-Connect **Ready**, fund native USDC from Ethereum through **CCTP**, shield into the official STRK20 pool, then pay out to a fresh Starknet address.
+**Pay privately** from a shielded Ready balance, or **get paid** with a QR invoice. Top up from Base through CCTP when the private wallet is empty.
 
-## Flow
+## Product
 
 1. Connect Ready (Wallet API v6). Ready holds the STRK20 viewing key and talks to the official proving service.
-2. Burn USDC on Ethereum with MetaMask (`depositForBurn`). Circle attests the message. Ready calls `receive_message` on Starknet.
-3. Shield public USDC with `wallet_strk20InvokeTransaction` `{ type: "deposit" }`.
-4. Payout with `{ type: "withdraw", recipient }` to an address you paste.
+2. **Get paid** — merchant creates an invoice (amount, label, account number) and shows a QR / link.
+3. **Pay privately** — buyer opens the link, confirms in Ready. `wallet_strk20InvokeTransaction` `{ type: "transfer" }` stays inside the pool.
+4. **Top up** — burn USDC on Base, mint on Starknet, shield. Cash out to Base remains on the same screen.
 
-The product is **ETH in → private USDC on Starknet → unshield to a new address**. Hidden OpenZeppelin derivation is left in `lib/starknet/derive.ts` for later, once proving access is not wallet-gated.
+The invoice number lives on the payment request so the merchant can match the sale. The pool does not store a memo yet.
+
+Pitch later, not in this cut: a company treasury that lands payroll funds, and a private card (issuer rails; a USDC card on Aptos already exists).
 
 ## Why Ready
 
 The official STRK20 pool only accepts deposits with proof facts from the hosted proving service. That service is IP-whitelisted to Ready and Xverse. Direct Privacy SDK `apply_actions` calls revert `EMPTY_PROOF_FACTS`.
 
-This app does **not** clone the [STRK20 starter kit](https://github.com/Akashneelesh/strk20-starter-kit) UI. It uses the same Wallet API (`WalletAccountV6`) for shield and payout, plus Ethereum CCTP inbound.
+## Plan
+
+1. **Now — private pay on Sepolia first.** The app defaults to Starknet Sepolia (2 STRK pool fee). Create a QR, pay from a second Ready, then switch the header to Mainnet for sprint evidence. Fast fund: Circle faucet → Starknet Sepolia USDC → shield. Base Sepolia CCTP still works on Top up.
+2. **CCTP anonymizer.** Helper the pool calls via `privacy_invoke` so outbound burns do not unshield onto Ready. Proofs still go through Ready.
+3. **Solana out.** Same CCTP V2 pattern as Base (domain 5). Aptos is not a native V2 route.
+4. **Later.** Payroll treasury, private card, payment memos, `OutboundAnonymizer` from [privacy-bridge](https://github.com/starkware-libs/privacy-bridge).
 
 ## Addresses (Starknet mainnet)
 
@@ -26,10 +33,12 @@ This app does **not** clone the [STRK20 starter kit](https://github.com/Akashnee
 | STRK20 pool | `0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a` |
 | Starknet USDC | `0x033068F6539f8e6e6b131e6B2B814e6c34A5224bC66947c47DaB9dFeE93b35fb` |
 | MessageTransmitterV2 | `0x02EBB5777B6dD8B26ea11D68Fdf1D2c85cD2099335328Be845a28c77A8AEf183` |
-| Ethereum USDC | `0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48` |
-| Ethereum TokenMessengerV2 | `0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d` |
+| TokenMessengerMinterV2 | `0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a` |
+| Base USDC | `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` |
+| Base TokenMessengerV2 | `0x28b5a0e9C621a5BadaA536219b3a228C8168cf5d` |
+| Base MessageTransmitterV2 | `0x81D40F21F12A8F0E3252Bccb954D722d4c464B64` |
 
-Default RPC is `https://rpc.starknet.lava.build`. Override with `NEXT_PUBLIC_STARKNET_RPC_URL`. Set `NEXT_PUBLIC_STARKNET_NETWORK=sepolia` only for experiments.
+Default RPC is `https://rpc.starknet.lava.build`. Override with `NEXT_PUBLIC_STARKNET_RPC_URL`. The in-app **Mainnet / Sepolia** switcher overrides `NEXT_PUBLIC_STARKNET_NETWORK` at runtime.
 
 ## Scripts
 

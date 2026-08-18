@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { parseUsdc } from "./amount";
+import { parseTokenAmount, parseUsdc } from "./amount";
 
 describe("parseUsdc", () => {
   it("parses whole and fractional USDC", () => {
@@ -12,5 +12,12 @@ describe("parseUsdc", () => {
   it("rejects empty or invalid input", () => {
     expect(() => parseUsdc("")).toThrow(/amount/i);
     expect(() => parseUsdc("abc")).toThrow(/number/i);
+  });
+});
+
+describe("parseTokenAmount", () => {
+  it("parses strkBTC with 8 decimals", () => {
+    expect(parseTokenAmount("1", 8)).toBe(BigInt(100_000_000));
+    expect(parseTokenAmount("0.00000001", 8)).toBe(BigInt(1));
   });
 });

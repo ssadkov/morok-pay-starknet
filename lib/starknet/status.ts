@@ -1,6 +1,9 @@
 import { RpcProvider } from "starknet";
 
-import { STRK_ADDRESS, STARKNET_RPC_URL, USDC_ADDRESS } from "./constants";
+import { defaultAppNetwork, type AppNetwork } from "@/lib/network";
+
+import { STRK_ADDRESS, starknetOf } from "./constants";
+import { STRKBTC_ADDRESS, type ShieldToken } from "./tokens";
 
 export type AccountDeployStatus = "deployed" | "undeployed" | "unknown";
 
@@ -8,6 +11,7 @@ export type AccountSnapshot = {
   status: AccountDeployStatus;
   strkWei: bigint;
   usdcRaw: bigint;
+  strkBtcRaw: bigint;
 };
 
 function isNotFound(error: unknown): boolean {
@@ -29,8 +33,8 @@ function u256(low: string, high = "0x0"): bigint {
   return BigInt(low) + (BigInt(high) << BigInt(128));
 }
 
-export function createProvider() {
-  return new RpcProvider({ nodeUrl: STARKNET_RPC_URL });
+export function createProvider(network: AppNetwork = defaultAppNetwork()) {
+  return new RpcProvider({ nodeUrl: starknetOf(network).rpc });
 }
 
 async function readTokenBalance(
@@ -53,8 +57,10 @@ async function readTokenBalance(
 
 export async function getAccountSnapshot(
   address: string,
+  network: AppNetwork = defaultAppNetwork(),
 ): Promise<AccountSnapshot> {
-  const provider = createProvider();
+  const provider = createProvider(network);
+  const usdc = starknetOf(network).usdc;
   let status: AccountDeployStatus = "undeployed";
 
   try {
@@ -66,18 +72,26 @@ export async function getAccountSnapshot(
 
   let strkWei = BigInt(0);
   let usdcRaw = BigInt(0);
+  let strkBtcRaw = BigInt(0);
   try {
     strkWei = await readTokenBalance(provider, STRK_ADDRESS, address);
   } catch {
     // Keep 0 if the gas token is unreachable.
   }
   try {
-    usdcRaw = await readTokenBalance(provider, USDC_ADDRESS, address);
+    usdcRaw = await readTokenBalance(provider, usdc, address);
   } catch {
     // Keep 0 until Circle USDC is minted to this account.
   }
+  if (network !== "sepolia") {
+    try {
+      strkBtcRaw = await readTokenBalance(provider, STRKBTC_ADDRESS, address);
+    } catch {
+      // Keep 0 until strkBTC is bridged to this account.
+    }
+  }
 
-  return { status, strkWei, usdcRaw };
+  return { status, strkWei, usdcRaw, strkBtcRaw };
 }
 
 export function formatToken(amount: bigint, decimals: number, maxFrac = 4): string {
@@ -95,4 +109,12 @@ export function formatStrk(wei: bigint): string {
 
 export function formatUsdc(raw: bigint): string {
   return formatToken(raw, 6, 2);
+}
+
+export function formatStrkBtc(raw: bigint): string {
+  return formatToken(raw, 8, 8);
+}
+
+export function formatShieldAmount(raw: bigint, token: ShieldToken): string {
+  return formatToken(raw, token.decimals, token.id === "usdc" ? 2 : 8);
 }

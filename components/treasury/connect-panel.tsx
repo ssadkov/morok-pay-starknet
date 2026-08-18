@@ -28,7 +28,9 @@ export function ConnectPanel() {
         <EmptyTitle>Connect Ready</EmptyTitle>
         <EmptyDescription>
           Ready holds the STRK20 viewing key and talks to the official proving
-          service. Shield and payout both go through the Wallet API.
+          service. Braavos cannot shield. Connect Ready X (or Xverse) on the
+          same network as the header toggle. Sepolia is the default for dry
+          runs.
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>

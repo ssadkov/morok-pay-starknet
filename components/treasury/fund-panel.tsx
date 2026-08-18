@@ -12,9 +12,9 @@ import {
   useWriteContract,
 } from "wagmi";
 import { waitForTransactionReceipt } from "wagmi/actions";
-import { mainnet, sepolia } from "wagmi/chains";
 import { zeroHash, type Address } from "viem";
 
+import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -38,15 +38,13 @@ import { parseUsdc } from "@/lib/amount";
 import { waitForAttestation } from "@/lib/cctp/attestation";
 import { receiveMessageCall, starkAddressToBytes32 } from "@/lib/cctp/bytes";
 import {
+  CCTP_DOMAIN_BASE,
   CCTP_DOMAIN_STARKNET,
   CCTP_MIN_FINALITY_THRESHOLD,
-  ETHEREUM_TOKEN_MESSENGER_V2,
-  ETHEREUM_USDC,
   erc20Abi,
   tokenMessengerV2Abi,
 } from "@/lib/cctp/constants";
 import { shortenAddress } from "@/lib/format";
-import { EXPLORER_URL, STARKNET_NETWORK } from "@/lib/starknet/constants";
 import { formatUsdc } from "@/lib/starknet/status";
 import { wagmiConfig } from "@/lib/wagmi";
 
@@ -60,23 +58,18 @@ type FundStep =
 
 const STEP_LABEL: Record<FundStep, string> = {
   idle: "",
-  approving: "Approve USDC on Ethereum",
-  burning: "Burn USDC on Ethereum",
+  approving: "Approve USDC on Base",
+  burning: "Burn USDC on Base",
   attesting: "Waiting for Circle attestation",
   minting: "Mint USDC on Starknet with Ready",
   done: "USDC arrived on Ready",
 };
 
-const ethChain = STARKNET_NETWORK === "sepolia" ? sepolia : mainnet;
-const ethExplorer =
-  STARKNET_NETWORK === "sepolia"
-    ? "https://sepolia.etherscan.io"
-    : "https://etherscan.io";
-const usdc = ETHEREUM_USDC as Address;
-const messenger = ETHEREUM_TOKEN_MESSENGER_V2 as Address;
-
 export function FundPanel() {
   const { session, refreshBalances } = useTreasury();
+  const { network, starknet, cctp, baseChain } = useNetwork();
+  const usdc = cctp.usdc as Address;
+  const messenger = cctp.tokenMessenger as Address;
   const { address, isConnected, chainId, status } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
@@ -101,12 +94,12 @@ export function FundPanel() {
     }
   }, [amount]);
 
-  const { data: ethUsdc, refetch: refetchEthUsdc } = useReadContract({
+  const { data: baseUsdc, refetch: refetchBaseUsdc } = useReadContract({
     address: usdc,
     abi: erc20Abi,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    chainId: ethChain.id,
+    chainId: baseChain.id,
     query: { enabled: Boolean(address) },
   });
 
@@ -115,7 +108,7 @@ export function FundPanel() {
     abi: erc20Abi,
     functionName: "allowance",
     args: address ? [address, messenger] : undefined,
-    chainId: ethChain.id,
+    chainId: baseChain.id,
     query: { enabled: Boolean(address) },
   });
 
@@ -125,7 +118,7 @@ export function FundPanel() {
   async function mintOnStarknet(message: string, attestation: string) {
     setStep("minting");
     const response = await ready.account.execute(
-      receiveMessageCall(message, attestation),
+      receiveMessageCall(message, attestation, starknet.messageTransmitter),
     );
     toast.success("USDC minted on Starknet", {
       description: response.transaction_hash,
@@ -133,7 +126,7 @@ export function FundPanel() {
         label: "Voyager",
         onClick: () =>
           window.open(
-            `${EXPLORER_URL}/tx/${response.transaction_hash}`,
+            `${starknet.explorer}/tx/${response.transaction_hash}`,
             "_blank",
             "noopener,noreferrer",
           ),
@@ -150,15 +143,15 @@ export function FundPanel() {
       const value = parsedAmount;
       if (!value) throw new Error("Enter a USDC amount");
       if (!isConnected || !address) {
-        if (!connector) throw new Error("Install MetaMask to fund from Ethereum");
-        connect({ connector, chainId: ethChain.id });
+        if (!connector) throw new Error("Install MetaMask to fund from Base");
+        connect({ connector, chainId: baseChain.id });
         throw new Error("Connect MetaMask, then tap Fund Ready again");
       }
-      if (chainId !== ethChain.id) {
-        await switchChainAsync({ chainId: ethChain.id });
+      if (chainId !== baseChain.id) {
+        await switchChainAsync({ chainId: baseChain.id });
       }
 
-      const balance = ethUsdc ?? (await refetchEthUsdc()).data ?? BigInt(0);
+      const balance = baseUsdc ?? (await refetchBaseUsdc()).data ?? BigInt(0);
       if (balance < value) throw new Error("Not enough USDC in MetaMask");
 
       let currentAllowance =
@@ -170,11 +163,11 @@ export function FundPanel() {
           abi: erc20Abi,
           functionName: "approve",
           args: [messenger, value],
-          chainId: ethChain.id,
+          chainId: baseChain.id,
         });
         await waitForTransactionReceipt(wagmiConfig, {
           hash: approveHash,
-          chainId: ethChain.id,
+          chainId: baseChain.id,
         });
       }
 
@@ -192,15 +185,15 @@ export function FundPanel() {
           BigInt(0),
           CCTP_MIN_FINALITY_THRESHOLD,
         ],
-        chainId: ethChain.id,
+        chainId: baseChain.id,
       });
-      toast.success("Burn submitted on Ethereum", {
+      toast.success("Burn submitted on Base", {
         description: burnHash,
         action: {
-          label: "Etherscan",
+          label: "Basescan",
           onClick: () =>
             window.open(
-              `${ethExplorer}/tx/${burnHash}`,
+              `${cctp.explorer}/tx/${burnHash}`,
               "_blank",
               "noopener,noreferrer",
             ),
@@ -208,11 +201,14 @@ export function FundPanel() {
       });
       await waitForTransactionReceipt(wagmiConfig, {
         hash: burnHash,
-        chainId: ethChain.id,
+        chainId: baseChain.id,
       });
 
       setStep("attesting");
-      const attested = await waitForAttestation(burnHash);
+      const attested = await waitForAttestation(burnHash, {
+        sourceDomain: CCTP_DOMAIN_BASE,
+        network,
+      });
       setPendingMint(attested);
       await mintOnStarknet(attested.message, attested.attestation);
     } catch (caught) {
@@ -237,10 +233,13 @@ export function FundPanel() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Fund from Ethereum</CardTitle>
+        <CardTitle>
+          {network === "sepolia" ? "Fund from Base Sepolia" : "Fund from Base"}
+        </CardTitle>
         <CardDescription>
-          Burn USDC on Ethereum with MetaMask. Circle attests the message, then
-          Ready mints native USDC on Starknet.
+          {network === "sepolia"
+            ? "Burn test USDC on Base Sepolia. Circle sandbox attests, then Ready mints on Starknet Sepolia. Get USDC from faucet.circle.com."
+            : "Burn USDC on Base with MetaMask. Circle attests the message, then Ready mints native USDC on Starknet."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -255,20 +254,20 @@ export function FundPanel() {
               onChange={(event) => setAmount(event.target.value)}
             />
             <FieldDescription>
-              Ethereum USDC in MetaMask
-              {ethUsdc !== undefined ? `: ${formatUsdc(ethUsdc)}` : ""}.
+              {network === "sepolia" ? "Base Sepolia" : "Base"} USDC in MetaMask
+              {baseUsdc !== undefined ? `: ${formatUsdc(baseUsdc)}` : ""}.
             </FieldDescription>
           </Field>
         </FieldGroup>
         {isConnected && address ? (
           <p className="text-sm text-muted-foreground">
             MetaMask {shortenAddress(address)}
-            {chainId !== ethChain.id ? ` — switch to ${ethChain.name}` : ""}
+            {chainId !== baseChain.id ? ` — switch to ${baseChain.name}` : ""}
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            MetaMask is only used for the Ethereum burn. Ready stays the
-            Starknet wallet.
+            MetaMask is only used for the Base burn. Ready stays the Starknet
+            wallet.
           </p>
         )}
         {step !== "idle" ? (
@@ -293,7 +292,7 @@ export function FundPanel() {
             disabled={!connector || connecting}
             aria-busy={connecting}
             onClick={() => {
-              if (connector) connect({ connector, chainId: ethChain.id });
+              if (connector) connect({ connector, chainId: baseChain.id });
             }}
           >
             {connecting ? (

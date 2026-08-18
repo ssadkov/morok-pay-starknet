@@ -6,6 +6,7 @@ import { CopyIcon, ExternalLinkIcon } from "lucide-react";
 import { FundPanel } from "@/components/treasury/fund-panel";
 import { PayoutPanel } from "@/components/treasury/payout-panel";
 import { ShieldPanel } from "@/components/treasury/shield-panel";
+import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,20 +21,26 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EXPLORER_URL, STARKNET_NETWORK } from "@/lib/starknet/constants";
-import { formatStrk, formatUsdc } from "@/lib/starknet/status";
+import { formatStrk, formatStrkBtc, formatUsdc } from "@/lib/starknet/status";
 
 export function AccountCard() {
-  const { session, balances, balancesLoading, refreshBalances } = useTreasury();
+  const { session, balances, balancesLoading, refreshBalances, tokens } =
+    useTreasury();
+  const { network, starknet } = useNetwork();
 
   if (!session) return null;
   const ready = session;
 
-  const explorerContract = `${EXPLORER_URL}/contract/${ready.address}`;
+  const explorerContract = `${starknet.explorer}/contract/${ready.address}`;
   const status = balancesLoading && !balances ? "loading" : balances?.status;
   const strkWei = balances?.strkWei ?? BigInt(0);
   const usdcRaw = balances?.usdcRaw ?? BigInt(0);
+  const strkBtcRaw = balances?.strkBtcRaw ?? BigInt(0);
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
+  const privateStrkBtc = balances?.privateStrkBtc ?? BigInt(0);
+  const showStrkBtc = tokens.some((token) => token.id === "strkbtc");
+
+  const loading = balancesLoading && !balances;
 
   async function copyAddress() {
     try {
@@ -50,8 +57,8 @@ export function AccountCard() {
         <CardHeader className="border-b">
           <CardTitle>Ready treasury</CardTitle>
           <CardDescription>
-            Public balances on Starknet {STARKNET_NETWORK}. Private USDC lives
-            in the shared STRK20 pool.
+            Public balances on Starknet {network}. Private USDC and
+            strkBTC live in the shared STRK20 pool.
           </CardDescription>
           <CardAction>
             {status === "loading" || !status ? (
@@ -72,7 +79,7 @@ export function AccountCard() {
           </div>
           <div className="flex flex-col gap-1">
             <p className="text-xs text-muted-foreground">Public STRK</p>
-            {balancesLoading && !balances ? (
+            {loading ? (
               <Skeleton className="h-5 w-24" />
             ) : (
               <p className="font-mono text-sm tabular-nums">
@@ -82,7 +89,7 @@ export function AccountCard() {
           </div>
           <div className="flex flex-col gap-1">
             <p className="text-xs text-muted-foreground">Public USDC</p>
-            {balancesLoading && !balances ? (
+            {loading ? (
               <Skeleton className="h-5 w-24" />
             ) : (
               <p className="font-mono text-sm tabular-nums">
@@ -90,9 +97,21 @@ export function AccountCard() {
               </p>
             )}
           </div>
+          {showStrkBtc ? (
+            <div className="flex flex-col gap-1">
+              <p className="text-xs text-muted-foreground">Public strkBTC</p>
+              {loading ? (
+                <Skeleton className="h-5 w-24" />
+              ) : (
+                <p className="font-mono text-sm tabular-nums">
+                  {formatStrkBtc(strkBtcRaw)} strkBTC
+                </p>
+              )}
+            </div>
+          ) : null}
           <div className="flex flex-col gap-1">
             <p className="text-xs text-muted-foreground">Private USDC</p>
-            {balancesLoading && !balances ? (
+            {loading ? (
               <Skeleton className="h-5 w-24" />
             ) : (
               <p className="font-mono text-sm tabular-nums">
@@ -100,6 +119,18 @@ export function AccountCard() {
               </p>
             )}
           </div>
+          {showStrkBtc ? (
+            <div className="flex flex-col gap-1">
+              <p className="text-xs text-muted-foreground">Private strkBTC</p>
+              {loading ? (
+                <Skeleton className="h-5 w-24" />
+              ) : (
+                <p className="font-mono text-sm tabular-nums">
+                  {formatStrkBtc(privateStrkBtc)} strkBTC
+                </p>
+              )}
+            </div>
+          ) : null}
           {balances?.privateError ? (
             <Alert>
               <AlertTitle>Private balance unavailable</AlertTitle>

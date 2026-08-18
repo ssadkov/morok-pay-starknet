@@ -1,16 +1,13 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
-
+import { TestnetHint } from "@/components/pay/testnet-hint";
 import { AccountCard } from "@/components/treasury/account-card";
-import { AppHeader } from "@/components/treasury/app-header";
 import { ConnectPanel } from "@/components/treasury/connect-panel";
 import { FlowSteps } from "@/components/treasury/flow-steps";
-import {
-  TreasuryProvider,
-  useTreasury,
-} from "@/components/treasury/treasury-context";
+import { useNetwork } from "@/components/network-provider";
+import { useTreasury } from "@/components/treasury/treasury-context";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useSyncExternalStore } from "react";
 
 function useIsClient() {
   return useSyncExternalStore(
@@ -27,53 +24,43 @@ function currentStep(connected: boolean, publicUsdc: bigint, privateUsdc: bigint
   return 4;
 }
 
-function TreasuryBody() {
+export function TreasuryApp() {
   const { session, balances } = useTreasury();
+  const { network } = useNetwork();
   const isClient = useIsClient();
   const connected = Boolean(session);
 
   return (
-    <div className="flex min-h-full flex-col">
-      <AppHeader />
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-8 px-4 py-8 md:px-6 md:py-12">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-semibold tracking-tight">
-            Private USDC treasury
-          </h1>
-          <p className="max-w-prose text-sm text-muted-foreground">
-            Fund Ready from Ethereum, shield USDC into the official STRK20
-            pool, then pay out to a fresh Starknet address.
-          </p>
-        </div>
-        {!isClient ? (
-          <Skeleton className="h-64 w-full rounded-xl" />
-        ) : (
-          <>
-            {!connected ? <ConnectPanel /> : null}
-            {connected ? <AccountCard /> : null}
-          </>
-        )}
-        <section className="flex flex-col gap-4" aria-labelledby="flow-heading">
-          <h2 id="flow-heading" className="text-xl font-semibold">
-            Treasury flow
-          </h2>
-          <FlowSteps
-            currentStep={currentStep(
-              connected,
-              balances?.usdcRaw ?? BigInt(0),
-              balances?.privateUsdc ?? BigInt(0),
-            )}
-          />
-        </section>
-      </main>
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-semibold tracking-tight">Top up</h1>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          {network === "sepolia"
+            ? "Testnet: mint USDC to this Ready from the Circle faucet (Starknet Sepolia), or bridge from Base Sepolia, then shield. Pool fee is 2 STRK."
+            : "Fund Ready from Base, shield into the STRK20 pool, then pay privately or cash out to Base."}
+        </p>
+      </div>
+      <TestnetHint />
+      {!isClient ? (
+        <Skeleton className="h-64 w-full rounded-xl" />
+      ) : (
+        <>
+          {!connected ? <ConnectPanel /> : null}
+          {connected ? <AccountCard /> : null}
+        </>
+      )}
+      <section className="flex flex-col gap-4" aria-labelledby="flow-heading">
+        <h2 id="flow-heading" className="text-xl font-semibold">
+          Funding flow
+        </h2>
+        <FlowSteps
+          currentStep={currentStep(
+            connected,
+            balances?.usdcRaw ?? BigInt(0),
+            balances?.privateUsdc ?? BigInt(0),
+          )}
+        />
+      </section>
     </div>
-  );
-}
-
-export function TreasuryApp() {
-  return (
-    <TreasuryProvider>
-      <TreasuryBody />
-    </TreasuryProvider>
   );
 }

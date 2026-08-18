@@ -5,6 +5,8 @@ import { ThemeProvider } from "next-themes";
 import { useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 
+import { NetworkProvider } from "@/components/network-provider";
+import { TreasuryProvider } from "@/components/treasury/treasury-context";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { wagmiConfig } from "@/lib/wagmi";
@@ -27,8 +29,12 @@ export function Providers({ children }: { children: ReactNode }) {
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
-            {children}
-            <Toaster />
+            <NetworkProvider>
+              <TreasuryProvider>
+                {children}
+                <Toaster />
+              </TreasuryProvider>
+            </NetworkProvider>
           </TooltipProvider>
         </QueryClientProvider>
       </WagmiProvider>

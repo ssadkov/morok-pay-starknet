@@ -6,18 +6,27 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 import type { WalletWithStarknetFeatures } from "@starknet-io/get-starknet-wallet-standard/features";
 import type { WalletAccountV6 } from "starknet";
 
-import { USDC_ADDRESS } from "@/lib/starknet/constants";
-import { privateUsdcFromBalances } from "@/lib/starknet/actions";
+import { useNetwork } from "@/components/network-provider";
+import { privateBalanceFromEntries } from "@/lib/starknet/actions";
+import { formatStrk20Error } from "@/lib/starknet/errors";
 import {
   getAccountSnapshot,
   type AccountSnapshot,
 } from "@/lib/starknet/status";
+import {
+  getShieldToken,
+  listShieldTokens,
+  shieldTokenAddresses,
+  type ShieldToken,
+  type ShieldTokenId,
+} from "@/lib/starknet/tokens";
 import {
   connectReadyWallet,
   listReadyWallets,
@@ -33,6 +42,7 @@ export type ReadySession = {
 
 export type TreasuryBalances = AccountSnapshot & {
   privateUsdc: bigint;
+  privateStrkBtc: bigint;
   privateError: string | null;
 };
 
@@ -43,6 +53,11 @@ type TreasuryContextValue = {
   connectError: string | null;
   balances: TreasuryBalances | null;
   balancesLoading: boolean;
+  tokens: ShieldToken[];
+  token: ShieldToken;
+  setTokenId: (id: ShieldTokenId) => void;
+  publicRaw: bigint;
+  privateRaw: bigint;
   connectWallet: (wallet: WalletWithStarknetFeatures) => Promise<void>;
   disconnect: () => void;
   refreshBalances: () => Promise<void>;
@@ -54,17 +69,37 @@ const EMPTY_BALANCES: TreasuryBalances = {
   status: "unknown",
   strkWei: BigInt(0),
   usdcRaw: BigInt(0),
+  strkBtcRaw: BigInt(0),
   privateUsdc: BigInt(0),
+  privateStrkBtc: BigInt(0),
   privateError: null,
 };
 
+function publicBalance(balances: TreasuryBalances | null, token: ShieldToken) {
+  if (!balances) return BigInt(0);
+  return token.id === "strkbtc" ? balances.strkBtcRaw : balances.usdcRaw;
+}
+
+function privateBalance(balances: TreasuryBalances | null, token: ShieldToken) {
+  if (!balances) return BigInt(0);
+  return token.id === "strkbtc" ? balances.privateStrkBtc : balances.privateUsdc;
+}
+
 export function TreasuryProvider({ children }: { children: ReactNode }) {
+  const { network } = useNetwork();
+  const tokens = useMemo(() => listShieldTokens(network), [network]);
   const [wallets, setWallets] = useState<WalletWithStarknetFeatures[]>([]);
   const [session, setSession] = useState<ReadySession | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
   const [balances, setBalances] = useState<TreasuryBalances | null>(null);
   const [balancesLoading, setBalancesLoading] = useState(false);
+  const [tokenId, setTokenId] = useState<ShieldTokenId>("usdc");
+
+  const token = getShieldToken(
+    network === "sepolia" && tokenId === "strkbtc" ? "usdc" : tokenId,
+    network,
+  );
 
   useEffect(() => {
     return watchWallets((next) => setWallets(listReadyWallets(next)));
@@ -97,29 +132,56 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     setConnectError(null);
   }, [session]);
 
+  const networkReady = useRef(false);
+  useEffect(() => {
+    if (!networkReady.current) {
+      networkReady.current = true;
+      return;
+    }
+    setTokenId("usdc");
+    session?.account.unsubscribeChange();
+    setSession(null);
+    setBalances(null);
+    setConnectError(null);
+    // Disconnect when the user switches Starknet + Base together.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [network]);
+
   const refreshBalances = useCallback(async () => {
     if (!session) return;
     setBalancesLoading(true);
     try {
-      const snapshot = await getAccountSnapshot(session.address);
+      const snapshot = await getAccountSnapshot(session.address, network);
       let privateUsdc = BigInt(0);
+      let privateStrkBtc = BigInt(0);
       let privateError: string | null = null;
       try {
-        const entries = await session.account.strk20Balances([USDC_ADDRESS]);
-        privateUsdc = privateUsdcFromBalances(entries);
+        const entries = await session.account.strk20Balances(
+          shieldTokenAddresses(network),
+        );
+        privateUsdc = privateBalanceFromEntries(
+          entries,
+          getShieldToken("usdc", network).address,
+        );
+        privateStrkBtc = privateBalanceFromEntries(
+          entries,
+          getShieldToken("strkbtc", network).address,
+        );
       } catch (error) {
-        privateError =
-          error instanceof Error
-            ? error.message
-            : "Ready could not read the private USDC balance";
+        privateError = formatStrk20Error(error, "balance");
       }
-      setBalances({ ...snapshot, privateUsdc, privateError });
+      setBalances({
+        ...snapshot,
+        privateUsdc,
+        privateStrkBtc,
+        privateError,
+      });
     } catch {
       setBalances({ ...EMPTY_BALANCES, status: "unknown" });
     } finally {
       setBalancesLoading(false);
     }
-  }, [session]);
+  }, [session, network]);
 
   useEffect(() => {
     if (!session) return;
@@ -131,7 +193,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       setConnecting(true);
       setConnectError(null);
       try {
-        const next = await connectReadyWallet(wallet);
+        const next = await connectReadyWallet(wallet, network);
         setSession(next);
       } catch (error) {
         setConnectError(
@@ -141,7 +203,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         setConnecting(false);
       }
     },
-    [],
+    [network],
   );
 
   const value = useMemo(
@@ -152,6 +214,11 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       connectError,
       balances,
       balancesLoading,
+      tokens,
+      token,
+      setTokenId,
+      publicRaw: publicBalance(balances, token),
+      privateRaw: privateBalance(balances, token),
       connectWallet,
       disconnect,
       refreshBalances,
@@ -163,6 +230,8 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       connectError,
       balances,
       balancesLoading,
+      tokens,
+      token,
       connectWallet,
       disconnect,
       refreshBalances,

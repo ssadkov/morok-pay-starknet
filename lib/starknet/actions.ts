@@ -1,6 +1,6 @@
 import { num, validateAndParseAddress, type WalletAccountV6 } from "starknet";
 
-import { USDC_ADDRESS } from "./constants";
+import type { ShieldToken } from "./tokens";
 
 export function toFelt(amount: bigint) {
   if (amount <= BigInt(0)) {
@@ -9,34 +9,56 @@ export function toFelt(amount: bigint) {
   return num.toHex(amount);
 }
 
-export function privateUsdcFromBalances(
+export function privateBalanceFromEntries(
   entries: { token: string; balance: string }[],
+  token: string,
 ) {
   const match = entries.find(
-    (entry) => BigInt(entry.token) === BigInt(USDC_ADDRESS),
+    (entry) => BigInt(entry.token) === BigInt(token),
   );
   return match ? BigInt(match.balance) : BigInt(0);
 }
 
-export async function shieldUsdc(account: WalletAccountV6, amount: bigint) {
+export async function shieldToken(
+  account: WalletAccountV6,
+  token: ShieldToken,
+  amount: bigint,
+) {
   return account.strk20InvokeTransaction([
     {
       type: "deposit",
-      token: USDC_ADDRESS,
+      token: token.address,
       amount: toFelt(amount),
     },
   ]);
 }
 
-export async function payoutUsdc(
+export async function payoutToken(
   account: WalletAccountV6,
+  token: ShieldToken,
   amount: bigint,
   recipient: string,
 ) {
   return account.strk20InvokeTransaction([
     {
       type: "withdraw",
-      token: USDC_ADDRESS,
+      token: token.address,
+      amount: toFelt(amount),
+      recipient: validateAndParseAddress(recipient),
+    },
+  ]);
+}
+
+export async function transferPrivate(
+  account: WalletAccountV6,
+  token: ShieldToken,
+  amount: bigint,
+  recipient: string,
+) {
+  return account.strk20InvokeTransaction([
+    {
+      type: "transfer",
+      token: token.address,
       amount: toFelt(amount),
       recipient: validateAndParseAddress(recipient),
     },

@@ -12,18 +12,18 @@ const STEPS = [
   },
   {
     id: 2,
-    title: "Fund USDC from Ethereum",
-    body: "Burn USDC on Ethereum with MetaMask. Circle mints native USDC to this Ready address on Starknet.",
+    title: "Fund USDC from Base",
+    body: "Burn USDC on Base with MetaMask. Circle mints native USDC to this Ready address on Starknet.",
   },
   {
     id: 3,
     title: "Shield into STRK20",
-    body: "Deposit public USDC into the shared pool. The amount is public; the remaining notes stay private.",
+    body: "Deposit public USDC or strkBTC into the shared pool. The amount is public; the remaining notes stay private.",
   },
   {
     id: 4,
-    title: "Payout to a fresh address",
-    body: "Unshield privately to a Starknet address you paste. Use a new wallet so the payout is not linked back.",
+    title: "Pay or cash out",
+    body: "Pay a merchant QR from the private balance, or cash out to a Base address.",
   },
 ] as const;
 
