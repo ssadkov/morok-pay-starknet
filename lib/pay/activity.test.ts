@@ -126,4 +126,17 @@ describe("classifyPrivateDelta", () => {
       }),
     ).toEqual({ kind: "pay", amountRaw: BigInt(1_000_000) });
   });
+
+  it("ignores note-scan dust under 0.10 USDC", () => {
+    expect(
+      classifyPrivateDelta({
+        delta: -BigInt(54_655),
+        invoices,
+        merchant: seller,
+        recentShield: false,
+        recentPay: false,
+        recentUnshield: false,
+      }),
+    ).toEqual({ kind: "none" });
+  });
 });

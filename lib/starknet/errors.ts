@@ -24,6 +24,9 @@ export function formatStrk20Error(
   if (/PRIVACY_LEAK/i.test(message)) {
     return "Ready blocked this action because it would leak privacy.";
   }
+  if (/USER_REFUSED/i.test(message) && action === "balance") {
+    return "Ready did not share private balances. Click refresh and approve once.";
+  }
   if (action === "balance") {
     return message || "Ready could not read the private balance";
   }

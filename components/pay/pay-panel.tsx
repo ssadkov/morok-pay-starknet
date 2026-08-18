@@ -28,7 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
-import { recordActivity } from "@/lib/pay/activity";
+import { recordActivity, sameAddress } from "@/lib/pay/activity";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
 import { transferPrivate } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
@@ -182,6 +182,17 @@ export function PayPanel() {
                   ? "…"
                   : formatUsdc(privateRaw)}
               </p>
+            ) : null}
+            {session && sameAddress(request.to, session.address) ? (
+              <Alert>
+                <AlertTitle>Paying your own Ready</AlertTitle>
+                <AlertDescription>
+                  This invoice is addressed to the connected account, so
+                  Payment wallet USDC will not drop by {request.amount}. Pool
+                  fees come from shielded STRK, not USDC. Use a second Ready
+                  profile as the merchant to see a real private transfer.
+                </AlertDescription>
+              </Alert>
             ) : null}
             {privateRaw === BigInt(0) && session ? (
               <Alert>

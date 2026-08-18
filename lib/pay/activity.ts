@@ -27,6 +27,8 @@ export type ActivityItem = {
 
 export const ACTIVITY_STORAGE_KEY = "morokpay.activity";
 export const ACTIVITY_CHANGE_EVENT = "morokpay-activity";
+/** Ignore Ready note-scan jitter below 0.10 USDC (6 decimals). */
+export const PRIVATE_DELTA_DUST_RAW = BigInt(100_000);
 
 function newId() {
   const bytes = new Uint8Array(6);
@@ -184,6 +186,9 @@ export function classifyPrivateDelta(args: {
   recentUnshield: boolean;
 }): PrivateDelta {
   if (args.delta === BigInt(0)) return { kind: "none" };
+  const abs = args.delta < BigInt(0) ? -args.delta : args.delta;
+  // Ready's note scan jitters by a few cents between prompts; ignore that noise.
+  if (abs < PRIVATE_DELTA_DUST_RAW) return { kind: "none" };
   if (args.delta > BigInt(0)) {
     if (args.recentShield) return { kind: "none" };
     const invoice = findIncomingInvoice(args.invoices, {
@@ -193,7 +198,6 @@ export function classifyPrivateDelta(args: {
     if (invoice) return { kind: "sale", invoice };
     return { kind: "receive", amountRaw: args.delta };
   }
-  const abs = -args.delta;
   if (args.recentPay || args.recentUnshield) return { kind: "none" };
   return { kind: "pay", amountRaw: abs };
 }
