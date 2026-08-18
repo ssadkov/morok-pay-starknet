@@ -2,6 +2,7 @@
 
 import { toast } from "sonner";
 
+import { ShieldButton } from "@/components/pay/shield-button";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -36,8 +37,9 @@ export function TestnetHint() {
           is 2 STRK. Sprint evidence still has to be mainnet.
         </p>
         <p>
-          Fast path: test STRK for the fee, test USDC on Starknet Sepolia
-          from Circle, then shield on Top up.
+          Fast path: test STRK for the fee, Circle USDC on Starknet Sepolia
+          into the public Wallet, then Shield — that moves it into the
+          payment wallet. Pool fee is 2 STRK.
         </p>
         <div className="flex flex-wrap gap-2">
           {session ? (
@@ -69,6 +71,7 @@ export function TestnetHint() {
           >
             Get test USDC
           </Button>
+          <ShieldButton />
         </div>
       </AlertDescription>
     </Alert>

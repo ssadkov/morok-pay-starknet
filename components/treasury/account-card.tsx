@@ -143,8 +143,8 @@ export function AccountCard() {
           </Button>
         </CardFooter>
       </Card>
-      <FundPanel />
       <ShieldPanel />
+      <FundPanel />
       <PayoutPanel />
     </div>
   );
