@@ -48,3 +48,38 @@ export async function findInvoiceSettlement(args: {
     blockNumber: Number(event.block_number ?? fromBlock),
   };
 }
+
+export async function currentBlock(
+  network: AppNetwork,
+): Promise<number | undefined> {
+  try {
+    return await createProvider(network).getBlockNumber();
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Ready sometimes never hands the transaction hash back to the page. The
+ * settlement event proves the payment landed, so watch for it as well.
+ */
+export async function waitForInvoiceSettlement(args: {
+  network: AppNetwork;
+  commitment: string;
+  fromBlock?: number;
+  timeoutMs?: number;
+  intervalMs?: number;
+}): Promise<InvoiceSettlement | null> {
+  const deadline = Date.now() + (args.timeoutMs ?? 180_000);
+  const interval = args.intervalMs ?? 5_000;
+  while (Date.now() < deadline) {
+    try {
+      const settlement = await findInvoiceSettlement(args);
+      if (settlement) return settlement;
+    } catch {
+      // Keep polling; the RPC may be rate limiting.
+    }
+    await new Promise((resolve) => setTimeout(resolve, interval));
+  }
+  return null;
+}

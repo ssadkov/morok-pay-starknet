@@ -42,9 +42,17 @@ import {
   formatStrk20Error,
   isUserRefused,
 } from "@/lib/starknet/errors";
+import {
+  currentBlock,
+  waitForInvoiceSettlement,
+} from "@/lib/starknet/invoice-events";
 import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { shortenAddress } from "@/lib/format";
+
+type PayOutcome =
+  | { kind: "hash"; txHash?: string }
+  | { kind: "error"; error: unknown };
 
 export function PayPanel() {
   const searchParams = useSearchParams();
@@ -139,37 +147,74 @@ export function PayPanel() {
       await refreshBalances({ private: false });
     };
 
-    const submit = (invoke?: { contract: string; calldata?: string[] }) =>
-      transferPrivate(session.account, usdc, amount, request.to, invoke);
-
     const giveUp = (caught: unknown) => {
       removeActivity(pending.id);
       setError(formatStrk20Error(caught, "pay"));
     };
 
+    // Ready does not always hand the hash back, so accept the settlement
+    // event as proof too — whichever arrives first ends the spinner.
+    const submit = async (
+      invoke?: { contract: string; calldata?: string[] },
+    ): Promise<PayOutcome> => {
+      const watched = invoke && settlesOnChain ? request.commitment : undefined;
+      const fromBlock = watched ? await currentBlock(network) : undefined;
+      const fromWallet = transferPrivate(
+        session.account,
+        usdc,
+        amount,
+        request.to,
+        invoke,
+      ).then(
+        (response): PayOutcome => ({
+          kind: "hash",
+          txHash: extractTxHash(response),
+        }),
+        (error): PayOutcome => {
+          const txHash = extractTxHash(error);
+          return txHash ? { kind: "hash", txHash } : { kind: "error", error };
+        },
+      );
+      if (!watched) return fromWallet;
+
+      const fromChain = waitForInvoiceSettlement({
+        network,
+        commitment: watched,
+        fromBlock,
+      }).then((settlement) =>
+        settlement
+          ? ({ kind: "hash", txHash: settlement.txHash } as PayOutcome)
+          : null,
+      );
+      return Promise.race([
+        fromWallet,
+        fromChain.then((outcome) => outcome ?? fromWallet),
+      ]);
+    };
+
     try {
-      await confirm(extractTxHash(await submit(settleInvoke)));
-    } catch (caught) {
-      const txHash = extractTxHash(caught);
-      if (txHash) {
-        await confirm(txHash);
-      } else if (isUserRefused(caught) || !settleInvoke) {
-        giveUp(caught);
+      const outcome = await submit(settleInvoke);
+      if (outcome.kind === "hash") {
+        await confirm(outcome.txHash);
+        return;
+      }
+      if (isUserRefused(outcome.error) || !settleInvoke) {
+        giveUp(outcome.error);
+        return;
+      }
+      // The helper call is the only unusual leg here. Drop it and pay
+      // plainly rather than leaving the merchant unpaid.
+      console.error("MorokPay: privacy_invoke helper rejected", outcome.error);
+      setSettleFailed(true);
+      const retry = await submit(undefined);
+      if (retry.kind === "hash") {
+        await confirm(retry.txHash);
+        toast.info("Paid without on-chain settlement", {
+          description:
+            "Ready refused the invoice helper, so the merchant marks this sale manually.",
+        });
       } else {
-        // The helper call is the only unusual leg here. Drop it and pay
-        // plainly rather than leaving the merchant unpaid.
-        console.error("MorokPay: privacy_invoke helper rejected", caught);
-        setSettleFailed(true);
-        try {
-          await confirm(extractTxHash(await submit(undefined)));
-          toast.info("Paid without on-chain settlement", {
-            description: "Ready refused the invoice helper, so the merchant marks this sale manually.",
-          });
-        } catch (retry) {
-          const retryHash = extractTxHash(retry);
-          if (retryHash) await confirm(retryHash);
-          else giveUp(retry);
-        }
+        giveUp(retry.error);
       }
     } finally {
       setPaying(false);

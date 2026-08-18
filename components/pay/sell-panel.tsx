@@ -155,10 +155,10 @@ export function SellPanel() {
     };
   }, [session?.address, network, invoices]);
 
-  async function copyUrl() {
-    if (!payUrl) return;
+  async function copyUrl(url = payUrl) {
+    if (!url) return;
     try {
-      await navigator.clipboard.writeText(payUrl);
+      await navigator.clipboard.writeText(url);
       toast.success("Payment link copied");
     } catch {
       toast.error("Could not copy link");
@@ -295,13 +295,23 @@ export function SellPanel() {
                 className="flex items-center justify-between gap-3 rounded-xl bg-card px-4 py-3 ring-1 ring-foreground/10"
               >
                 <div className="min-w-0">
-                  <p className="truncate text-sm font-medium">
-                    {entry.invoice}
-                    {entry.label ? ` · ${entry.label}` : ""}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {entry.amount} USDC · {shortenAddress(entry.to)}
-                  </p>
+                  <button
+                    type="button"
+                    className="block w-full text-left"
+                    title="Show the QR again and copy the link"
+                    onClick={() => {
+                      setCreated(entry);
+                      void copyUrl(paymentUrl(window.location.origin, entry));
+                    }}
+                  >
+                    <p className="truncate text-sm font-medium underline-offset-4 hover:underline">
+                      {entry.invoice}
+                      {entry.label ? ` · ${entry.label}` : ""}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {entry.amount} USDC · {shortenAddress(entry.to)}
+                    </p>
+                  </button>
                   {entry.settledTx ? (
                     <a
                       href={`${starknet.explorer}/tx/${entry.settledTx}`}
