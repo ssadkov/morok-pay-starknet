@@ -23,19 +23,19 @@ The dapp surface is three wallet methods: `wallet_strk20InvokeTransaction`, `wal
 
 Every page carries a sidebar with two balances: **Wallet** (public Ready) and **Payment wallet** (private STRK20), plus a local activity feed that badges Morok operations.
 
-Default network is Sepolia (`NEXT_PUBLIC_STARKNET_NETWORK`, storage key `morokpay.network.v2`), switchable in the header. Pool fee is 2 STRK on Sepolia, ~6 STRK on mainnet. **Sepolia transactions are not sprint evidence** — the sprint counts mainnet only.
+Default network is Sepolia (`NEXT_PUBLIC_STARKNET_NETWORK`, storage key `morokpay.network.v2`), switchable in the header. The pool fee comes from `get_fee_amount` on the pool: 2 STRK on Sepolia, 6 STRK on mainnet. **Sepolia transactions are not sprint evidence** — the sprint counts mainnet only.
 
-## Uncommitted work in the tree
+## Where the code is
 
-Last commit is `2872782`. Not yet committed:
+Everything below is merged or open on `feat/onchain-invoice-commitment`:
 
-- `components/pay/balance-sidebar.tsx`, wired into `components/pay/app-shell.tsx` (two-column layout, header widened to `max-w-6xl`).
-- `lib/pay/activity.ts` + tests — local activity store, private-balance reconciliation, invoice matching.
-- `recordActivity` calls in `pay-panel`, `shield-panel`, `payout-panel`; `account-card` slimmed so balances are not duplicated.
-- `treasury-context` keeps a `useRef` of the previous private USDC and reconciles deltas; refreshes every 20s.
-- `docs/`, `scripts/`, `.gitignore` entry for `/.secrets`.
+- `components/pay/balance-sidebar.tsx` in a two-column shell, with a local activity feed.
+- `lib/pay/activity.ts` — activity store, private-balance reconciliation, invoice matching. Deltas under 0.10 USDC are dropped as scan jitter.
+- `treasury-context` polls public balances every 20s and asks for private ones only on connect or after an operation, so Ready stops prompting to share balances.
+- `lib/pay/commitment.ts`, `lib/starknet/invoice-events.ts` — Poseidon commitments and the `InvoiceSettled` watcher used by both the till and the payer.
+- `lib/starknet/pool-fee.ts` — reads `get_fee_amount` instead of assuming 2 STRK.
 
-`npx tsc --noEmit` and `npm test` pass (35 tests).
+`npx tsc --noEmit` and `npm test` pass.
 
 ## Decisions made
 
@@ -45,17 +45,18 @@ Last commit is `2872782`. Not yet committed:
 
 ## Test accounts
 
-`node scripts/gen-sepolia-accounts.mjs` wrote three throwaway OZ accounts to `.secrets/sepolia-accounts.json` (gitignored): `deployer`, `payout`, `spare`. Fund from a Sepolia faucet, then `node scripts/deploy-account.mjs deployer`.
+`node scripts/gen-accounts.mjs` wrote three throwaway OZ accounts to `.secrets/sepolia-accounts.json` (gitignored): `deployer`, `payout`, `spare`. Fund from a Sepolia faucet, then `node scripts/deploy-account.mjs deployer`. Pass `mainnet` as the last argument to both for the real network — those keys hold real STRK, so treat the file as a wallet.
 
 These are plain accounts. They can declare, deploy, and receive public tokens. **They cannot shield or pay privately** — that needs Ready. Testing a real purchase end to end means two Ready profiles, one as buyer and one as merchant.
 
 ## Next steps
 
-1. Probe 2: deploy `EchoHelper` on Sepolia, fire `[transfer, invoke]` from Ready, confirm the pool allows an invoke with no withdraw leg and log the caller the helper sees.
-2. `contracts/` Scarb package with `MorokInvoices` + snforge tests.
-3. TypeScript: commitment helper, merchant secret from a Ready signature, invoice counter.
-4. Wire pay flow to append the invoke; sell flow reconciles over `getEvents`.
-5. Mainnet deploy, then fill `strk20.json` and the README.
+The Sepolia loop is done: `EchoHelper` and `MorokInvoices` are deployed, a real payment settled its commitment on-chain (`0x58bfa6aa…`), and both the till and the payer flip from the `InvoiceSettled` event. What is left is mainnet.
+
+1. Deploy `MorokInvoices` on mainnet (`node scripts/deploy-contract.mjs invoices mainnet`) and put the address in `MAINNET.invoices` in `lib/starknet/constants.ts`. The deployer needs real STRK.
+2. Run at least three mainnet payments against the live pool. Each costs 6 STRK of pool fee in shielded STRK, plus gas.
+3. Set `NEXT_PUBLIC_STARKNET_NETWORK=mainnet` on Vercel and swap the public Lava RPC for a keyed endpoint — both the till and the payer poll `getEvents`.
+4. Fill `strk20.json` (transactions, contracts, demo URL, video) and the README table.
 
 ## Do not
 

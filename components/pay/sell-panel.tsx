@@ -66,6 +66,8 @@ export function SellPanel() {
   const [created, setCreated] = useState<PaymentRequest | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Without MorokInvoices on this network the till falls back to Mark paid.
+  const settlesOnChain = Boolean(starknet.invoices);
 
   const payUrl = useMemo(() => {
     if (!created || typeof window === "undefined") return "";
@@ -122,7 +124,7 @@ export function SellPanel() {
   // the till can mark a sale without another share-private-balances prompt.
   useEffect(() => {
     const address = session?.address;
-    if (!address) return;
+    if (!address || !settlesOnChain) return;
     const pending = invoices.filter(
       (entry) => entry.status === "unpaid" && isCommitment(entry.commitment),
     );
@@ -153,7 +155,7 @@ export function SellPanel() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [session?.address, network, invoices]);
+  }, [session?.address, network, invoices, settlesOnChain]);
 
   async function copyUrl(url = payUrl) {
     if (!url) return;
@@ -170,9 +172,11 @@ export function SellPanel() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Get paid</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          {network === "sepolia"
-            ? "Sepolia till: create a test invoice and show the QR. It flips to paid on its own once the pool settles the invoice hash on-chain. Pool fee for the buyer is 2 STRK."
-            : "Your Ready address is the till. Create an invoice, show the QR, and it flips to paid once the pool settles the invoice hash on-chain — no viewing key leaves Ready."}
+          {!settlesOnChain
+            ? "Your Ready address is the till. Create an invoice, show the QR, then mark the sale paid once the payment lands — no viewing key leaves Ready."
+            : network === "sepolia"
+              ? "Sepolia till: create a test invoice and show the QR. It flips to paid on its own once the pool settles the invoice hash on-chain. Pool fee for the buyer is 2 STRK."
+              : "Your Ready address is the till. Create an invoice, show the QR, and it flips to paid once the pool settles the invoice hash on-chain — no viewing key leaves Ready."}
         </p>
       </div>
       <TestnetHint />
@@ -321,7 +325,9 @@ export function SellPanel() {
                     >
                       Settled on-chain
                     </a>
-                  ) : entry.status === "unpaid" && isCommitment(entry.commitment) ? (
+                  ) : entry.status === "unpaid" &&
+                    settlesOnChain &&
+                    isCommitment(entry.commitment) ? (
                     <p className="text-xs text-muted-foreground">
                       Watching the chain for this invoice
                     </p>
