@@ -30,6 +30,11 @@ import { Input } from "@/components/ui/input";
 import { parseUsdc } from "@/lib/amount";
 import { recordMorokSale } from "@/lib/pay/activity";
 import {
+  computeInvoiceCommitment,
+  isCommitment,
+  readMerchantSecret,
+} from "@/lib/pay/commitment";
+import {
   nextInvoiceId,
   readInvoices,
   saveInvoice,
@@ -37,7 +42,8 @@ import {
   type MerchantInvoice,
 } from "@/lib/pay/invoices";
 import { paymentUrl, type PaymentRequest } from "@/lib/pay/request";
-import { formatUsdc } from "@/lib/starknet/status";
+import { findInvoiceSettlement } from "@/lib/starknet/invoice-events";
+import { createProvider, formatUsdc } from "@/lib/starknet/status";
 import { shortenAddress } from "@/lib/format";
 
 const EMPTY_INVOICES: MerchantInvoice[] = [];
@@ -51,13 +57,14 @@ function useInvoices(network: ReturnType<typeof useNetwork>["network"]) {
 }
 
 export function SellPanel() {
-  const { network } = useNetwork();
+  const { network, starknet } = useNetwork();
   const { session, privateRaw, balancesLoading } = useTreasury();
   const invoices = useInvoices(network);
   const [amount, setAmount] = useState("");
   const [label, setLabel] = useState("");
   const [invoice, setInvoice] = useState("");
   const [created, setCreated] = useState<PaymentRequest | null>(null);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const payUrl = useMemo(() => {
@@ -70,22 +77,35 @@ export function SellPanel() {
     setError(null);
   }, [network]);
 
-  function handleCreate() {
+  async function handleCreate() {
     if (!session) return;
     setError(null);
+    setCreating(true);
     try {
       parseUsdc(amount);
+      const invoiceId = invoice.trim() || nextInvoiceId();
       const request: PaymentRequest = {
         network,
         to: session.address,
         amount: amount.trim(),
-        invoice: invoice.trim() || nextInvoiceId(),
+        invoice: invoiceId,
         label: label.trim(),
+        commitment: computeInvoiceCommitment({
+          secret: readMerchantSecret(),
+          invoice: invoiceId,
+        }),
       };
+      let fromBlock: number | undefined;
+      try {
+        fromBlock = await createProvider(network).getBlockNumber();
+      } catch {
+        // Without a height the settlement scan falls back to a recent window.
+      }
       saveInvoice({
         ...request,
         createdAt: Date.now(),
         status: "unpaid",
+        fromBlock,
       });
       setCreated(request);
       setInvoice(nextInvoiceId());
@@ -93,8 +113,47 @@ export function SellPanel() {
       setLabel("");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Invalid amount");
+    } finally {
+      setCreating(false);
     }
   }
+
+  // MorokInvoices logs a commitment hash when the pool settles a payment, so
+  // the till can mark a sale without another share-private-balances prompt.
+  useEffect(() => {
+    const address = session?.address;
+    if (!address) return;
+    const pending = invoices.filter(
+      (entry) => entry.status === "unpaid" && isCommitment(entry.commitment),
+    );
+    if (pending.length === 0) return;
+
+    let cancelled = false;
+    const scan = async () => {
+      for (const entry of pending) {
+        if (cancelled) return;
+        try {
+          const settlement = await findInvoiceSettlement({
+            network,
+            commitment: entry.commitment as string,
+            fromBlock: entry.fromBlock,
+          });
+          if (settlement && !cancelled) {
+            recordMorokSale(entry, address, settlement.txHash);
+          }
+        } catch {
+          // Keep polling; the RPC may be rate limiting.
+        }
+      }
+    };
+
+    void scan();
+    const timer = window.setInterval(() => void scan(), 15_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [session?.address, network, invoices]);
 
   async function copyUrl() {
     if (!payUrl) return;
@@ -112,8 +171,8 @@ export function SellPanel() {
         <h1 className="text-3xl font-semibold tracking-tight">Get paid</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
-            ? "Sepolia till: create a test invoice, show the QR, mark it paid when private test USDC arrives. Pool fee for the buyer is 2 STRK."
-            : "Your Ready address is the till. Create an invoice, show the QR, then mark it paid when the private USDC arrives. Match sales by invoice number — the pool does not store a memo yet."}
+            ? "Sepolia till: create a test invoice and show the QR. It flips to paid on its own once the pool settles the invoice hash on-chain. Pool fee for the buyer is 2 STRK."
+            : "Your Ready address is the till. Create an invoice, show the QR, and it flips to paid once the pool settles the invoice hash on-chain — no viewing key leaves Ready."}
         </p>
       </div>
       <TestnetHint />
@@ -177,7 +236,11 @@ export function SellPanel() {
               type="button"
               size="lg"
               className="min-h-10"
-              onClick={handleCreate}
+              disabled={creating}
+              aria-busy={creating}
+              onClick={() => {
+                void handleCreate();
+              }}
             >
               Create QR invoice
             </Button>
@@ -239,6 +302,20 @@ export function SellPanel() {
                   <p className="text-xs text-muted-foreground">
                     {entry.amount} USDC · {shortenAddress(entry.to)}
                   </p>
+                  {entry.settledTx ? (
+                    <a
+                      href={`${starknet.explorer}/tx/${entry.settledTx}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-xs text-muted-foreground underline underline-offset-2"
+                    >
+                      Settled on-chain
+                    </a>
+                  ) : entry.status === "unpaid" && isCommitment(entry.commitment) ? (
+                    <p className="text-xs text-muted-foreground">
+                      Watching the chain for this invoice
+                    </p>
+                  ) : null}
                 </div>
                 {entry.status === "paid" ? (
                   <Badge>Paid</Badge>

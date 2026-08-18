@@ -123,12 +123,17 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   const lastPrivate = useRef<LastPrivate>({ ...EMPTY_PRIVATE });
   const sessionRef = useRef(session);
   const privateInFlight = useRef(false);
-  sessionRef.current = session;
 
   const token = getShieldToken(
     network === "sepolia" && tokenId === "strkbtc" ? "usdc" : tokenId,
     network,
   );
+
+  // Keep refreshBalances stable across renders while it still sees the
+  // current session. Declared first so later effects read a fresh ref.
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
 
   useEffect(() => {
     return watchWallets((next) => setWallets(listReadyWallets(next)));

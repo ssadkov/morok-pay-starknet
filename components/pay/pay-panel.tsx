@@ -34,6 +34,7 @@ import {
   sameAddress,
   updateActivity,
 } from "@/lib/pay/activity";
+import { isCommitment } from "@/lib/pay/commitment";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
 import { transferPrivate } from "@/lib/starknet/actions";
 import {
@@ -67,6 +68,20 @@ export function PayPanel() {
   const [error, setError] = useState<string | null>(null);
 
   const request = fromQuery ?? fromPaste;
+
+  // The pool calls `privacy_invoke` after the transfer. With a commitment that
+  // lands on MorokInvoices so the merchant can settle the invoice on-chain;
+  // older links keep hitting the EchoHelper probe.
+  const settleInvoke = useMemo(() => {
+    if (!request) return undefined;
+    if (starknet.invoices && isCommitment(request.commitment)) {
+      return { contract: starknet.invoices, calldata: [request.commitment] };
+    }
+    return starknet.echoHelper ? { contract: starknet.echoHelper } : undefined;
+  }, [request, starknet.invoices, starknet.echoHelper]);
+  const settlesOnChain = Boolean(
+    starknet.invoices && isCommitment(request?.commitment),
+  );
 
   useEffect(() => {
     if (fromQuery && fromQuery.network !== network) {
@@ -109,9 +124,7 @@ export function PayPanel() {
         usdc,
         amount,
         request.to,
-        starknet.echoHelper
-          ? { contract: starknet.echoHelper }
-          : undefined,
+        settleInvoke,
       );
       const txHash = extractTxHash(response);
       updateActivity(pending.id, { txHash, status: "confirmed" });
@@ -165,8 +178,8 @@ export function PayPanel() {
         <h1 className="text-3xl font-semibold tracking-tight">Pay privately</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
-            ? "Sepolia: send shielded test USDC to a merchant Ready. Pool fee is 2 STRK. The invoice number stays on this request, not on-chain."
-            : "Send shielded USDC to a merchant Ready address. The invoice number stays on this request so they can match the sale. It is not written on-chain yet."}
+            ? "Sepolia: send shielded test USDC to a merchant Ready. Pool fee is 2 STRK. The invoice number stays on this request — only its hash is settled on-chain."
+            : "Send shielded USDC to a merchant Ready address. The invoice number stays on this request; the pool publishes only its hash so the merchant can match the sale."}
         </p>
       </div>
       <TestnetHint />
@@ -219,6 +232,13 @@ export function PayPanel() {
             <p className="text-sm text-muted-foreground">
               To {shortenAddress(request.to)} on Starknet {request.network}.
             </p>
+            {settlesOnChain ? (
+              <p className="text-sm text-muted-foreground">
+                The pool will settle this invoice on-chain, so the merchant sees
+                it without asking you for anything. Only a hash is published —
+                not the amount, the invoice number, or either address.
+              </p>
+            ) : null}
             {session ? (
               <p className="text-sm tabular-nums">
                 Your private USDC:{" "}
