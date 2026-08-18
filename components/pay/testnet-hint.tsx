@@ -71,8 +71,8 @@ export function TestnetHint() {
           >
             Get test USDC
           </Button>
-          <ShieldButton />
         </div>
+        <ShieldButton />
       </AlertDescription>
     </Alert>
   );
