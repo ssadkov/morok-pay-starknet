@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTIVITY_STORAGE_KEY,
   classifyPrivateDelta,
   findIncomingInvoice,
+  readActivity,
   sameAddress,
 } from "./activity";
 import type { MerchantInvoice } from "./invoices";
@@ -34,6 +36,33 @@ describe("sameAddress", () => {
         seller,
       ),
     ).toBe(true);
+  });
+});
+
+describe("readActivity", () => {
+  it("hides payments the wallet never accepted", () => {
+    const store = new Map<string, string>([
+      [
+        ACTIVITY_STORAGE_KEY,
+        JSON.stringify([
+          { id: "failed", network: "sepolia", kind: "pay", status: "failed", amount: "5", at: 2 },
+          { id: "kept", network: "sepolia", kind: "pay", status: "confirmed", amount: "5", at: 1 },
+        ]),
+      ],
+    ]);
+    const globals = globalThis as { window?: unknown };
+    const original = globals.window;
+    globals.window = {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+      },
+    };
+    try {
+      expect(readActivity("sepolia").map((item) => item.id)).toEqual(["kept"]);
+    } finally {
+      globals.window = original;
+    }
   });
 });
 

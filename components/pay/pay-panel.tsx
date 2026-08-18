@@ -66,6 +66,8 @@ export function PayPanel() {
   );
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Ready refused the settlement helper once; keep paying without it.
+  const [settleFailed, setSettleFailed] = useState(false);
 
   const request = fromQuery ?? fromPaste;
 
@@ -73,14 +75,14 @@ export function PayPanel() {
   // lands on MorokInvoices so the merchant can settle the invoice on-chain;
   // older links keep hitting the EchoHelper probe.
   const settleInvoke = useMemo(() => {
-    if (!request) return undefined;
+    if (!request || settleFailed) return undefined;
     if (starknet.invoices && isCommitment(request.commitment)) {
       return { contract: starknet.invoices, calldata: [request.commitment] };
     }
     return starknet.echoHelper ? { contract: starknet.echoHelper } : undefined;
-  }, [request, starknet.invoices, starknet.echoHelper]);
+  }, [request, settleFailed, starknet.invoices, starknet.echoHelper]);
   const settlesOnChain = Boolean(
-    starknet.invoices && isCommitment(request?.commitment),
+    !settleFailed && starknet.invoices && isCommitment(request?.commitment),
   );
 
   useEffect(() => {
@@ -118,15 +120,7 @@ export function PayPanel() {
       counterparty: request.to,
       address: session.address,
     });
-    try {
-      const response = await transferPrivate(
-        session.account,
-        usdc,
-        amount,
-        request.to,
-        settleInvoke,
-      );
-      const txHash = extractTxHash(response);
+    const confirm = async (txHash: string | undefined) => {
       updateActivity(pending.id, { txHash, status: "confirmed" });
       toast.success("Paid privately", {
         description: txHash,
@@ -143,29 +137,39 @@ export function PayPanel() {
           : undefined,
       });
       await refreshBalances({ private: false });
+    };
+
+    const submit = (invoke?: { contract: string; calldata?: string[] }) =>
+      transferPrivate(session.account, usdc, amount, request.to, invoke);
+
+    const giveUp = (caught: unknown) => {
+      removeActivity(pending.id);
+      setError(formatStrk20Error(caught, "pay"));
+    };
+
+    try {
+      await confirm(extractTxHash(await submit(settleInvoke)));
     } catch (caught) {
       const txHash = extractTxHash(caught);
       if (txHash) {
-        updateActivity(pending.id, { txHash, status: "confirmed" });
-        toast.success("Paid privately", {
-          description: txHash,
-          action: {
-            label: "Voyager",
-            onClick: () =>
-              window.open(
-                `${starknet.explorer}/tx/${txHash}`,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-          },
-        });
-        await refreshBalances({ private: false });
-      } else if (isUserRefused(caught)) {
-        removeActivity(pending.id);
-        setError(formatStrk20Error(caught, "pay"));
+        await confirm(txHash);
+      } else if (isUserRefused(caught) || !settleInvoke) {
+        giveUp(caught);
       } else {
-        updateActivity(pending.id, { status: "failed" });
-        setError(formatStrk20Error(caught, "pay"));
+        // The helper call is the only unusual leg here. Drop it and pay
+        // plainly rather than leaving the merchant unpaid.
+        console.error("MorokPay: privacy_invoke helper rejected", caught);
+        setSettleFailed(true);
+        try {
+          await confirm(extractTxHash(await submit(undefined)));
+          toast.info("Paid without on-chain settlement", {
+            description: "Ready refused the invoice helper, so the merchant marks this sale manually.",
+          });
+        } catch (retry) {
+          const retryHash = extractTxHash(retry);
+          if (retryHash) await confirm(retryHash);
+          else giveUp(retry);
+        }
       }
     } finally {
       setPaying(false);

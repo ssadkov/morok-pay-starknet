@@ -49,11 +49,9 @@ function activityCopy(item: ActivityItem) {
         title:
           item.status === "pending"
             ? "Sending"
-            : item.status === "failed"
-              ? "Pay not confirmed"
-              : morok
-                ? "Purchase"
-                : "Private out",
+            : morok
+              ? "Purchase"
+              : "Private out",
         icon: ArrowUpRightIcon,
         sign: "−" as const,
       };

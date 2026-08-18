@@ -10,6 +10,42 @@ function errorText(error: unknown): string {
 
 const TX_HASH_RE = /0x[0-9a-fA-F]{49,}/;
 
+/**
+ * Ready collapses helper failures into "An error occurred (UNKNOWN_ERROR)".
+ * Walk the nested payload so the UI can show something actionable.
+ */
+export function describeError(error: unknown, depth = 0): string {
+  if (depth > 4 || error == null) return "";
+  if (typeof error === "string") return error;
+  if (typeof error === "number" || typeof error === "boolean") {
+    return String(error);
+  }
+  if (Array.isArray(error)) {
+    return error.map((item) => describeError(item, depth + 1)).filter(Boolean).join(" | ");
+  }
+  if (error instanceof Error) {
+    const nested = describeError(
+      (error as Error & { data?: unknown; cause?: unknown }).data ??
+        (error as Error & { cause?: unknown }).cause,
+      depth + 1,
+    );
+    return [error.message, nested].filter(Boolean).join(" — ");
+  }
+  if (typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const parts = ["message", "revert_error", "execution_error", "error", "data", "cause"]
+      .map((key) => describeError(record[key], depth + 1))
+      .filter(Boolean);
+    if (parts.length > 0) return Array.from(new Set(parts)).join(" — ");
+    try {
+      return JSON.stringify(error).slice(0, 400);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
+
 export function extractTxHash(value: unknown): string | undefined {
   if (typeof value === "string") {
     return value.match(TX_HASH_RE)?.[0];
@@ -56,6 +92,8 @@ export function formatStrk20Error(
   if (action === "balance") {
     return message || "Ready could not read the private balance";
   }
-  if (action === "pay") return message || "Payment failed";
+  if (action === "pay") {
+    return describeError(error) || message || "Payment failed";
+  }
   return message || (action === "shield" ? "Shield failed" : "Payout failed");
 }

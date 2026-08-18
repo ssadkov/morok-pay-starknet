@@ -70,6 +70,8 @@ export function readActivity(
   const value = readAll()
     .filter((item) => {
       if (item.network !== network) return false;
+      // A payment Ready never accepted is not history; the UI shows the error.
+      if (item.status === "failed") return false;
       if (!address || !item.address) return true;
       return sameAddress(item.address, address);
     })
