@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatStrk20Error } from "./errors";
+import { extractTxHash, formatStrk20Error, isUserRefused } from "./errors";
 
 describe("formatStrk20Error", () => {
   it("explains NOT_REGISTERED", () => {
@@ -13,5 +13,25 @@ describe("formatStrk20Error", () => {
     expect(
       formatStrk20Error(new Error("USER_REFUSED_OP"), "balance"),
     ).toMatch(/did not share private balances/i);
+  });
+});
+
+describe("extractTxHash", () => {
+  const hash =
+    "0x014d2aba19ece00931b5434dc48720197cf21691a12c664a3abdd7d3983954a2";
+
+  it("reads transaction_hash from a wallet response", () => {
+    expect(extractTxHash({ transaction_hash: hash })).toBe(hash);
+  });
+
+  it("pulls a hash out of an error message", () => {
+    expect(extractTxHash(new Error(`timeout ${hash}`))).toBe(hash);
+  });
+});
+
+describe("isUserRefused", () => {
+  it("detects Ready refusals", () => {
+    expect(isUserRefused(new Error("USER_REFUSED_OP"))).toBe(true);
+    expect(isUserRefused(new Error("timeout"))).toBe(false);
   });
 });

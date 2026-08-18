@@ -28,10 +28,19 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
-import { recordActivity, sameAddress } from "@/lib/pay/activity";
+import {
+  recordActivity,
+  removeActivity,
+  sameAddress,
+  updateActivity,
+} from "@/lib/pay/activity";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
 import { transferPrivate } from "@/lib/starknet/actions";
-import { formatStrk20Error } from "@/lib/starknet/errors";
+import {
+  extractTxHash,
+  formatStrk20Error,
+  isUserRefused,
+} from "@/lib/starknet/errors";
 import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { shortenAddress } from "@/lib/format";
@@ -69,11 +78,32 @@ export function PayPanel() {
     if (!session || !request) return;
     setError(null);
     setPaying(true);
+    let amount: bigint;
     try {
-      const amount = parseUsdc(request.amount);
-      if (privateRaw < amount) {
-        throw new Error("INSUFFICIENT_PRIVATE_BALANCE");
-      }
+      amount = parseUsdc(request.amount);
+    } catch (caught) {
+      setError(formatStrk20Error(caught, "pay"));
+      setPaying(false);
+      return;
+    }
+    if (privateRaw < amount) {
+      setError(formatStrk20Error(new Error("INSUFFICIENT_PRIVATE_BALANCE"), "pay"));
+      setPaying(false);
+      return;
+    }
+    const pending = recordActivity({
+      network,
+      kind: "pay",
+      source: "morok",
+      status: "pending",
+      amount: request.amount,
+      amountRaw: amount.toString(),
+      invoice: request.invoice || undefined,
+      label: request.label || undefined,
+      counterparty: request.to,
+      address: session.address,
+    });
+    try {
       const response = await transferPrivate(
         session.account,
         usdc,
@@ -83,33 +113,47 @@ export function PayPanel() {
           ? { contract: starknet.echoHelper }
           : undefined,
       );
-      recordActivity({
-        network,
-        kind: "pay",
-        source: "morok",
-        amount: request.amount,
-        amountRaw: amount.toString(),
-        invoice: request.invoice || undefined,
-        label: request.label || undefined,
-        counterparty: request.to,
-        address: session.address,
-        txHash: response.transaction_hash,
-      });
+      const txHash = extractTxHash(response);
+      updateActivity(pending.id, { txHash, status: "confirmed" });
       toast.success("Paid privately", {
-        description: response.transaction_hash,
-        action: {
-          label: "Voyager",
-          onClick: () =>
-            window.open(
-              `${starknet.explorer}/tx/${response.transaction_hash}`,
-              "_blank",
-              "noopener,noreferrer",
-            ),
-        },
+        description: txHash,
+        action: txHash
+          ? {
+              label: "Voyager",
+              onClick: () =>
+                window.open(
+                  `${starknet.explorer}/tx/${txHash}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                ),
+            }
+          : undefined,
       });
-      await refreshBalances();
+      await refreshBalances({ private: false });
     } catch (caught) {
-      setError(formatStrk20Error(caught, "pay"));
+      const txHash = extractTxHash(caught);
+      if (txHash) {
+        updateActivity(pending.id, { txHash, status: "confirmed" });
+        toast.success("Paid privately", {
+          description: txHash,
+          action: {
+            label: "Voyager",
+            onClick: () =>
+              window.open(
+                `${starknet.explorer}/tx/${txHash}`,
+                "_blank",
+                "noopener,noreferrer",
+              ),
+          },
+        });
+        await refreshBalances({ private: false });
+      } else if (isUserRefused(caught)) {
+        removeActivity(pending.id);
+        setError(formatStrk20Error(caught, "pay"));
+      } else {
+        updateActivity(pending.id, { status: "failed" });
+        setError(formatStrk20Error(caught, "pay"));
+      }
     } finally {
       setPaying(false);
     }

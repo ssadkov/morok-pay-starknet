@@ -9,12 +9,14 @@ import {
 
 export type ActivityKind = "pay" | "receive" | "shield" | "unshield";
 export type ActivitySource = "morok" | "private";
+export type ActivityStatus = "pending" | "confirmed" | "failed";
 
 export type ActivityItem = {
   id: string;
   network: AppNetwork;
   kind: ActivityKind;
   source?: ActivitySource;
+  status?: ActivityStatus;
   amount: string;
   amountRaw?: string;
   invoice?: string;
@@ -93,6 +95,20 @@ export function recordActivity(
   };
   writeAll([next, ...readAll()]);
   return next;
+}
+
+export function updateActivity(id: string, patch: Partial<ActivityItem>) {
+  const items = readAll();
+  const index = items.findIndex((item) => item.id === id);
+  if (index < 0) return null;
+  const next = { ...items[index], ...patch, id };
+  items[index] = next;
+  writeAll(items);
+  return next;
+}
+
+export function removeActivity(id: string) {
+  writeAll(readAll().filter((item) => item.id !== id));
 }
 
 export function subscribeActivity(onStoreChange: () => void) {
