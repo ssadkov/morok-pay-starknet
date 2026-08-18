@@ -28,7 +28,7 @@ export function AppHeader() {
 
   return (
     <header className="border-b border-border">
-      <div className="mx-auto flex min-h-14 max-w-3xl items-center justify-between gap-4 px-4 py-3 md:px-6">
+      <div className="mx-auto flex min-h-14 max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
         <div className="flex min-w-0 items-center gap-3">
           <Link href="/" className="flex min-w-0 flex-col">
             <p className="text-sm font-medium tracking-tight">MorokPay</p>
@@ -99,7 +99,7 @@ export function AppHeader() {
       </div>
       <nav
         aria-label="Primary"
-        className="mx-auto flex max-w-3xl gap-1 px-4 pb-3 sm:hidden md:px-6"
+        className="mx-auto flex max-w-6xl gap-1 px-4 pb-3 sm:hidden md:px-6"
       >
         {NAV.map((item) => (
           <Link

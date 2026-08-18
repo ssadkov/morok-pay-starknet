@@ -54,13 +54,22 @@ export async function transferPrivate(
   token: ShieldToken,
   amount: bigint,
   recipient: string,
+  invoke?: { contract: string; calldata?: string[] },
 ) {
-  return account.strk20InvokeTransaction([
+  const actions: Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0] = [
     {
       type: "transfer",
       token: token.address,
       amount: toFelt(amount),
       recipient: validateAndParseAddress(recipient),
     },
-  ]);
+  ];
+  if (invoke?.contract) {
+    actions.push({
+      type: "invoke",
+      contract: validateAndParseAddress(invoke.contract),
+      calldata: invoke.calldata ?? [],
+    });
+  }
+  return account.strk20InvokeTransaction(actions);
 }

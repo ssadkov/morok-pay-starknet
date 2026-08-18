@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseTokenAmount } from "@/lib/amount";
+import { recordActivity } from "@/lib/pay/activity";
 import { shieldToken } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatShieldAmount } from "@/lib/starknet/status";
@@ -54,6 +55,17 @@ export function ShieldPanel() {
         ? parseTokenAmount(amount, token.decimals)
         : publicRaw;
       const response = await shieldToken(ready.account, token, parsed);
+      if (token.id === "usdc") {
+        recordActivity({
+          network,
+          kind: "shield",
+          source: "morok",
+          amount: formatShieldAmount(parsed, token),
+          amountRaw: parsed.toString(),
+          address: ready.address,
+          txHash: response.transaction_hash,
+        });
+      }
       toast.success(`${token.symbol} shielded`, {
         description: response.transaction_hash,
         action: {

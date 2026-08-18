@@ -11,7 +11,7 @@ Private USDC payments on Starknet for the [STRK20 Private Sprint](https://strk20
 3. **Pay privately** — buyer opens the link, confirms in Ready. `wallet_strk20InvokeTransaction` `{ type: "transfer" }` stays inside the pool.
 4. **Top up** — burn USDC on Base, mint on Starknet, shield. Cash out to Base remains on the same screen.
 
-The invoice number lives on the payment request so the merchant can match the sale. The pool does not store a memo yet.
+The invoice number lives on the payment request so the merchant can match the sale. The pool does not store a memo yet. Ready does not expose private history to dapps (`wallet_strk20Balances` only), so the sidebar lists activity this browser recorded — pays, shields, unmatched private balance changes — and highlights Morok invoices. Moving that match on-chain is designed in [docs/private-invoices.md](docs/private-invoices.md).
 
 Pitch later, not in this cut: a company treasury that lands payroll funds, and a private card (issuer rails; a USDC card on Aptos already exists).
 
@@ -22,9 +22,10 @@ The official STRK20 pool only accepts deposits with proof facts from the hosted 
 ## Plan
 
 1. **Now — private pay on Sepolia first.** The app defaults to Starknet Sepolia (2 STRK pool fee). Create a QR, pay from a second Ready, then switch the header to Mainnet for sprint evidence. Fast fund: Circle faucet → Starknet Sepolia USDC → shield. Base Sepolia CCTP still works on Top up.
-2. **CCTP anonymizer.** Helper the pool calls via `privacy_invoke` so outbound burns do not unshield onto Ready. Proofs still go through Ready.
-3. **Solana out.** Same CCTP V2 pattern as Base (domain 5). Aptos is not a native V2 route.
-4. **Later.** Payroll treasury, private card, payment memos, `OutboundAnonymizer` from [privacy-bridge](https://github.com/starkware-libs/privacy-bridge).
+2. **`MorokInvoices` helper.** A `privacy_invoke` contract that records an opaque invoice commitment in the same STRK20 transaction as the payment, so a merchant reconciles sales from any device instead of one browser tab. Design and privacy tradeoffs: [docs/private-invoices.md](docs/private-invoices.md).
+3. **CCTP anonymizer.** Helper the pool calls via `privacy_invoke` so outbound burns do not unshield onto Ready. Proofs still go through Ready.
+4. **Solana out.** Same CCTP V2 pattern as Base (domain 5). Aptos is not a native V2 route.
+5. **Later.** Payroll treasury, private card, `OutboundAnonymizer` from [privacy-bridge](https://github.com/starkware-libs/privacy-bridge).
 
 ## Addresses (Starknet mainnet)
 
@@ -48,6 +49,8 @@ cp .env.example .env.local
 npm run dev
 npm test
 ```
+
+Research and setup helpers live in `scripts/`: `probe-pool-sender.mjs` and `probe-pool-address.mjs` inspect how real pool transactions are shaped, `gen-sepolia-accounts.mjs` and `deploy-account.mjs` create throwaway Sepolia accounts for contract work. Current working state for a fresh session: [docs/handoff.md](docs/handoff.md).
 
 Open [http://localhost:3000](http://localhost:3000). Install [Ready X](https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb) before connecting.
 

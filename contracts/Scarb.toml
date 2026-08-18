@@ -1,0 +1,23 @@
+# cairo-test covers the Poseidon commitment helper.
+# snforge/ has pool-caller tests; they need Starknet Foundry (no Windows binary).
+[package]
+name = "morok_pay"
+version = "0.1.0"
+edition = "2024_07"
+license = "MIT"
+
+[dependencies]
+starknet = "2.12.0"
+
+[dev-dependencies]
+cairo_test = "2.12.0"
+
+[scripts]
+test = "scarb cairo-test"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+
+[tool.fmt]
+sort-module-level-items = true

@@ -35,6 +35,12 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local test keys — never commit
+/.secrets
+
+# cairo build
+/contracts/target
+
 # vercel
 .vercel
 

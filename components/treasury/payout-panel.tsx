@@ -50,6 +50,7 @@ import {
   messageTransmitterV2Abi,
 } from "@/lib/cctp/constants";
 import { shortenAddress } from "@/lib/format";
+import { recordActivity } from "@/lib/pay/activity";
 import { payoutToken } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatShieldAmount, formatUsdc } from "@/lib/starknet/status";
@@ -169,6 +170,18 @@ export function PayoutPanel() {
       parsed,
       recipient,
     );
+    if (token.id === "usdc") {
+      recordActivity({
+        network,
+        kind: "unshield",
+        source: "morok",
+        amount: formatShieldAmount(parsed, token),
+        amountRaw: parsed.toString(),
+        counterparty: recipient,
+        address: ready.address,
+        txHash: response.transaction_hash,
+      });
+    }
     toast.success("Payout submitted", {
       description: response.transaction_hash,
       action: {
@@ -209,6 +222,16 @@ export function PayoutPanel() {
         need,
         ready.address,
       );
+      recordActivity({
+        network,
+        kind: "unshield",
+        source: "morok",
+        amount: formatUsdc(need),
+        amountRaw: need.toString(),
+        counterparty: ready.address,
+        address: ready.address,
+        txHash: withdraw.transaction_hash,
+      });
       toast.success("Unshield submitted", {
         description: withdraw.transaction_hash,
         action: {

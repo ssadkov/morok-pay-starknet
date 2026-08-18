@@ -28,8 +28,8 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { parseUsdc } from "@/lib/amount";
+import { recordMorokSale } from "@/lib/pay/activity";
 import {
-  markInvoicePaid,
   nextInvoiceId,
   readInvoices,
   saveInvoice,
@@ -220,7 +220,7 @@ export function SellPanel() {
         </Card>
       ) : null}
 
-      {session && invoices.length ? (
+      {session && invoices.length > 0 ? (
         <section className="flex flex-col gap-3" aria-labelledby="invoices-heading">
           <h2 id="invoices-heading" className="text-xl font-semibold">
             Invoices
@@ -247,7 +247,7 @@ export function SellPanel() {
                     type="button"
                     variant="outline"
                     size="sm"
-                    onClick={() => markInvoicePaid(entry.network, entry.invoice)}
+                    onClick={() => recordMorokSale(entry, session.address)}
                   >
                     Mark paid
                   </Button>

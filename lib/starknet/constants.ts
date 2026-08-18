@@ -11,6 +11,8 @@ const MAINNET = {
     "0x02EBB5777B6dD8B26ea11D68Fdf1D2c85cD2099335328Be845a28c77A8AEf183",
   tokenMessengerMinter:
     "0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a",
+  echoHelper: "",
+  invoices: "",
 } as const;
 
 const SEPOLIA = {
@@ -24,6 +26,10 @@ const SEPOLIA = {
     "0x04db7926C64f1f32a840F3Fa95cB551f3801a3600Bae87aF87807A54DCE12Fe8",
   tokenMessengerMinter:
     "0x04bDdE1E09a4B09a2F95d893D94a967b7717eB85A3f6dEcA8c080Ee01fBc3370",
+  echoHelper:
+    "0x012ec63321392b74063bafa1fb27804b84ba35482a1310f01d3510962b093a03",
+  invoices:
+    "0x064502ea9d69e918ed75f84d7bccee4156310bf78b68fd6ec5d880fe35c3d235",
 } as const;
 
 const STARKNET = {

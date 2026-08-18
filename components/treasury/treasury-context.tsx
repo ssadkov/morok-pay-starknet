@@ -14,6 +14,7 @@ import type { WalletWithStarknetFeatures } from "@starknet-io/get-starknet-walle
 import type { WalletAccountV6 } from "starknet";
 
 import { useNetwork } from "@/components/network-provider";
+import { reconcilePrivateBalance } from "@/lib/pay/activity";
 import { privateBalanceFromEntries } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import {
@@ -95,6 +96,8 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   const [balances, setBalances] = useState<TreasuryBalances | null>(null);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [tokenId, setTokenId] = useState<ShieldTokenId>("usdc");
+  const previousPrivateUsdc = useRef<bigint | null>(null);
+  const previousAddress = useRef<string | null>(null);
 
   const token = getShieldToken(
     network === "sepolia" && tokenId === "strkbtc" ? "usdc" : tokenId,
@@ -127,6 +130,8 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(() => {
     session?.account.unsubscribeChange();
+    previousPrivateUsdc.current = null;
+    previousAddress.current = null;
     setSession(null);
     setBalances(null);
     setConnectError(null);
@@ -139,6 +144,8 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       return;
     }
     setTokenId("usdc");
+    previousPrivateUsdc.current = null;
+    previousAddress.current = null;
     session?.account.unsubscribeChange();
     setSession(null);
     setBalances(null);
@@ -176,6 +183,19 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         privateStrkBtc,
         privateError,
       });
+      if (!privateError) {
+        const sameAccount = previousAddress.current === session.address;
+        if (sameAccount && previousPrivateUsdc.current !== null) {
+          reconcilePrivateBalance({
+            network,
+            address: session.address,
+            previousRaw: previousPrivateUsdc.current,
+            nextRaw: privateUsdc,
+          });
+        }
+        previousAddress.current = session.address;
+        previousPrivateUsdc.current = privateUsdc;
+      }
     } catch {
       setBalances({ ...EMPTY_BALANCES, status: "unknown" });
     } finally {
@@ -186,6 +206,10 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!session) return;
     void refreshBalances();
+    const timer = window.setInterval(() => {
+      void refreshBalances();
+    }, 20_000);
+    return () => window.clearInterval(timer);
   }, [session, refreshBalances]);
 
   const connectWallet = useCallback(

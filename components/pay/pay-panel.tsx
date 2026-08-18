@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
+import { recordActivity } from "@/lib/pay/activity";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
 import { transferPrivate } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
@@ -78,7 +79,22 @@ export function PayPanel() {
         usdc,
         amount,
         request.to,
+        starknet.echoHelper
+          ? { contract: starknet.echoHelper }
+          : undefined,
       );
+      recordActivity({
+        network,
+        kind: "pay",
+        source: "morok",
+        amount: request.amount,
+        amountRaw: amount.toString(),
+        invoice: request.invoice || undefined,
+        label: request.label || undefined,
+        counterparty: request.to,
+        address: session.address,
+        txHash: response.transaction_hash,
+      });
       toast.success("Paid privately", {
         description: response.transaction_hash,
         action: {

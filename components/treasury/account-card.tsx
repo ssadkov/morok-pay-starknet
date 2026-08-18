@@ -21,7 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatStrk, formatStrkBtc, formatUsdc } from "@/lib/starknet/status";
+import { formatStrkBtc } from "@/lib/starknet/status";
 
 export function AccountCard() {
   const { session, balances, balancesLoading, refreshBalances, tokens } =
@@ -33,10 +33,7 @@ export function AccountCard() {
 
   const explorerContract = `${starknet.explorer}/contract/${ready.address}`;
   const status = balancesLoading && !balances ? "loading" : balances?.status;
-  const strkWei = balances?.strkWei ?? BigInt(0);
-  const usdcRaw = balances?.usdcRaw ?? BigInt(0);
   const strkBtcRaw = balances?.strkBtcRaw ?? BigInt(0);
-  const privateUsdc = balances?.privateUsdc ?? BigInt(0);
   const privateStrkBtc = balances?.privateStrkBtc ?? BigInt(0);
   const showStrkBtc = tokens.some((token) => token.id === "strkbtc");
 
@@ -57,8 +54,8 @@ export function AccountCard() {
         <CardHeader className="border-b">
           <CardTitle>Ready treasury</CardTitle>
           <CardDescription>
-            Public balances on Starknet {network}. Private USDC and
-            strkBTC live in the shared STRK20 pool.
+            Ready address on Starknet {network}. Wallet and payment-wallet
+            balances stay in the sidebar.
           </CardDescription>
           <CardAction>
             {status === "loading" || !status ? (
@@ -77,26 +74,6 @@ export function AccountCard() {
               {ready.address}
             </p>
           </div>
-          <div className="flex flex-col gap-1">
-            <p className="text-xs text-muted-foreground">Public STRK</p>
-            {loading ? (
-              <Skeleton className="h-5 w-24" />
-            ) : (
-              <p className="font-mono text-sm tabular-nums">
-                {formatStrk(strkWei)} STRK
-              </p>
-            )}
-          </div>
-          <div className="flex flex-col gap-1">
-            <p className="text-xs text-muted-foreground">Public USDC</p>
-            {loading ? (
-              <Skeleton className="h-5 w-24" />
-            ) : (
-              <p className="font-mono text-sm tabular-nums">
-                {formatUsdc(usdcRaw)} USDC
-              </p>
-            )}
-          </div>
           {showStrkBtc ? (
             <div className="flex flex-col gap-1">
               <p className="text-xs text-muted-foreground">Public strkBTC</p>
@@ -109,16 +86,6 @@ export function AccountCard() {
               )}
             </div>
           ) : null}
-          <div className="flex flex-col gap-1">
-            <p className="text-xs text-muted-foreground">Private USDC</p>
-            {loading ? (
-              <Skeleton className="h-5 w-24" />
-            ) : (
-              <p className="font-mono text-sm tabular-nums">
-                {formatUsdc(privateUsdc)} USDC
-              </p>
-            )}
-          </div>
           {showStrkBtc ? (
             <div className="flex flex-col gap-1">
               <p className="text-xs text-muted-foreground">Private strkBTC</p>
