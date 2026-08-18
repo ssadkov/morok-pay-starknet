@@ -46,7 +46,14 @@ function activityCopy(item: ActivityItem) {
   switch (item.kind) {
     case "pay":
       return {
-        title: morok ? "Purchase" : "Private out",
+        title:
+          item.status === "pending"
+            ? "Sending"
+            : item.status === "failed"
+              ? "Pay not confirmed"
+              : morok
+                ? "Purchase"
+                : "Private out",
         icon: ArrowUpRightIcon,
         sign: "−" as const,
       };
@@ -72,7 +79,7 @@ function activityCopy(item: ActivityItem) {
 }
 
 export function BalanceSidebar() {
-  const { network } = useNetwork();
+  const { network, starknet } = useNetwork();
   const { session, balances, balancesLoading, refreshBalances } = useTreasury();
   const items = useActivity(network, session?.address);
   const loading = balancesLoading && !balances;
@@ -194,7 +201,17 @@ export function BalanceSidebar() {
                           Private pool
                         </span>
                       )}
-                      <span className="text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        {item.txHash ? (
+                          <a
+                            href={`${starknet.explorer}/tx/${item.txHash}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline underline-offset-2"
+                          >
+                            Voyager
+                          </a>
+                        ) : null}
                         {new Date(item.at).toLocaleString()}
                       </span>
                     </div>

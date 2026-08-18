@@ -8,6 +8,32 @@ function errorText(error: unknown): string {
   }
 }
 
+const TX_HASH_RE = /0x[0-9a-fA-F]{49,}/;
+
+export function extractTxHash(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value.match(TX_HASH_RE)?.[0];
+  }
+  if (value instanceof Error) {
+    return extractTxHash(value.message);
+  }
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["transaction_hash", "transactionHash", "txHash", "hash"]) {
+    const field = record[key];
+    if (typeof field === "string" && TX_HASH_RE.test(field)) return field;
+  }
+  return (
+    extractTxHash(record.error) ??
+    extractTxHash(record.data) ??
+    extractTxHash(record.cause)
+  );
+}
+
+export function isUserRefused(error: unknown) {
+  return /USER_REFUSED/i.test(errorText(error));
+}
+
 export function formatStrk20Error(
   error: unknown,
   action: "shield" | "payout" | "pay" | "balance",
