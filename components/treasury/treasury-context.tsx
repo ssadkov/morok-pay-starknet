@@ -21,6 +21,7 @@ import {
   getAccountSnapshot,
   type AccountSnapshot,
 } from "@/lib/starknet/status";
+import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import {
   getShieldToken,
   listShieldTokens,
@@ -43,6 +44,7 @@ export type ReadySession = {
 
 export type TreasuryBalances = AccountSnapshot & {
   privateUsdc: bigint;
+  privateStrk: bigint;
   privateStrkBtc: bigint;
   privateError: string | null;
 };
@@ -72,6 +74,7 @@ const EMPTY_BALANCES: TreasuryBalances = {
   usdcRaw: BigInt(0),
   strkBtcRaw: BigInt(0),
   privateUsdc: BigInt(0),
+  privateStrk: BigInt(0),
   privateStrkBtc: BigInt(0),
   privateError: null,
 };
@@ -160,16 +163,19 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     try {
       const snapshot = await getAccountSnapshot(session.address, network);
       let privateUsdc = BigInt(0);
+      let privateStrk = BigInt(0);
       let privateStrkBtc = BigInt(0);
       let privateError: string | null = null;
       try {
-        const entries = await session.account.strk20Balances(
-          shieldTokenAddresses(network),
-        );
+        const entries = await session.account.strk20Balances([
+          ...shieldTokenAddresses(network),
+          STRK_ADDRESS,
+        ]);
         privateUsdc = privateBalanceFromEntries(
           entries,
           getShieldToken("usdc", network).address,
         );
+        privateStrk = privateBalanceFromEntries(entries, STRK_ADDRESS);
         privateStrkBtc = privateBalanceFromEntries(
           entries,
           getShieldToken("strkbtc", network).address,
@@ -180,6 +186,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       setBalances({
         ...snapshot,
         privateUsdc,
+        privateStrk,
         privateStrkBtc,
         privateError,
       });

@@ -24,10 +24,18 @@ export async function shieldToken(
   token: ShieldToken,
   amount: bigint,
 ) {
+  return shieldAsset(account, token.address, amount);
+}
+
+export async function shieldAsset(
+  account: WalletAccountV6,
+  token: string,
+  amount: bigint,
+) {
   return account.strk20InvokeTransaction([
     {
       type: "deposit",
-      token: token.address,
+      token,
       amount: toFelt(amount),
     },
   ]);

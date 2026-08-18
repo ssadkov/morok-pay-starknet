@@ -37,9 +37,8 @@ export function TestnetHint() {
           is 2 STRK. Sprint evidence still has to be mainnet.
         </p>
         <p>
-          Fast path: test STRK for the fee, Circle USDC on Starknet Sepolia
-          into the public Wallet, then Shield — that moves it into the
-          payment wallet. Pool fee is 2 STRK.
+          Fast path: Get test STRK, shield at least 2 STRK for the pool fee,
+          then Circle USDC into the public Wallet and Shield USDC.
         </p>
         <div className="flex flex-wrap gap-2">
           {session ? (

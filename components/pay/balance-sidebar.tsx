@@ -119,7 +119,7 @@ export function BalanceSidebar() {
                 hint="Public Ready account"
                 loading={loading}
                 amount={`${formatUsdc(publicUsdc)} USDC`}
-                extra={`${formatStrk(publicStrk)} STRK for pool fees`}
+                extra={`${formatStrk(publicStrk)} public STRK · ${formatStrk(balances?.privateStrk ?? BigInt(0))} shielded for pool fees`}
                 action={<ShieldButton />}
               />
               <BalanceRow
