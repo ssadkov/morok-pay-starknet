@@ -96,7 +96,8 @@ export function BalanceSidebar() {
                 type="button"
                 size="icon"
                 variant="ghost"
-                aria-label="Refresh balances"
+                aria-label="Refresh balances (asks Ready to share private balances)"
+                title="Refresh — Ready will ask to share private balances once"
                 onClick={() => {
                   void refreshBalances();
                 }}
