@@ -17,8 +17,7 @@ import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 
-const POOL_FEE_STRK = BigInt(2) * BigInt(10) ** BigInt(18);
-const DEFAULT_FEE_SHIELD = BigInt(10) * BigInt(10) ** BigInt(18);
+import { usePoolFee } from "./use-pool-fee";
 
 export function ShieldButton() {
   const { session, balances, refreshBalances } = useTreasury();
@@ -29,7 +28,10 @@ export function ShieldButton() {
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
   const privateStrk = balances?.privateStrk ?? BigInt(0);
-  const needsFeeStrk = privateStrk < POOL_FEE_STRK;
+  // Sepolia charges 2 STRK, mainnet 6, so ask the pool instead of guessing.
+  const poolFee = usePoolFee();
+  const defaultFeeShield = poolFee * BigInt(2);
+  const needsFeeStrk = privateStrk < poolFee;
 
   if (!session) return null;
 
@@ -46,9 +48,11 @@ export function ShieldButton() {
       if (needsFeeStrk) {
         const parsed = amount.trim()
           ? parseTokenAmount(amount, 18)
-          : DEFAULT_FEE_SHIELD;
-        if (parsed < POOL_FEE_STRK) {
-          throw new Error("Shield at least 2 STRK — that is the pool fee");
+          : defaultFeeShield;
+        if (parsed < poolFee) {
+          throw new Error(
+            `Shield at least ${formatStrk(poolFee)} STRK — that is the pool fee`,
+          );
         }
         if (parsed > publicStrk) {
           throw new Error(
@@ -119,7 +123,7 @@ export function ShieldButton() {
 
   const available = needsFeeStrk ? publicStrk : publicUsdc;
   const placeholder = needsFeeStrk
-    ? formatStrk(DEFAULT_FEE_SHIELD)
+    ? formatStrk(defaultFeeShield)
     : publicUsdc > BigInt(0)
       ? formatUsdc(publicUsdc)
       : "0.00";
@@ -128,7 +132,7 @@ export function ShieldButton() {
     <div className="flex w-full flex-col gap-2">
       <p className="text-xs text-muted-foreground">
         {needsFeeStrk
-          ? "Pool fee is 2 shielded STRK, not the public Wallet balance. Shield STRK first, then USDC."
+          ? `Pool fee is ${formatStrk(poolFee)} shielded STRK, not the public Wallet balance. Shield STRK first, then USDC.`
           : "Moves public USDC into the private payment wallet."}
       </p>
       <div className="flex gap-2">

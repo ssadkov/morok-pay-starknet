@@ -6,9 +6,12 @@ export type PaymentRequest = {
   amount: string;
   invoice: string;
   label: string;
+  /** Poseidon invoice commitment settled through MorokInvoices. */
+  commitment?: string;
 };
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
+const FELT_RE = /^0x[0-9a-fA-F]{1,64}$/;
 
 function firstParam(
   params: URLSearchParams,
@@ -26,12 +29,15 @@ export function parsePaymentRequest(
   if (!ADDRESS_RE.test(to) || !amount) return null;
   if (!/^\d+(\.\d+)?$/.test(amount)) return null;
 
+  const commitment = firstParam(params, "c");
+
   return {
     network: parseAppNetwork(params.get("n"), fallbackNetwork),
     to,
     amount,
     invoice: firstParam(params, "inv").slice(0, 64),
     label: firstParam(params, "label").slice(0, 80),
+    commitment: FELT_RE.test(commitment) ? commitment : undefined,
   };
 }
 
@@ -42,6 +48,7 @@ export function serializePaymentRequest(request: PaymentRequest): URLSearchParam
   params.set("amount", request.amount);
   if (request.invoice) params.set("inv", request.invoice);
   if (request.label) params.set("label", request.label);
+  if (request.commitment) params.set("c", request.commitment);
   return params;
 }
 

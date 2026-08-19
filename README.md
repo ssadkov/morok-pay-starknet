@@ -32,6 +32,7 @@ The official STRK20 pool only accepts deposits with proof facts from the hosted 
 | What | Address |
 | --- | --- |
 | STRK20 pool | `0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a` |
+| MorokInvoices | `0x051587ed22ddfc47496cdc9486697d927a3f29b5edec6903efc21d94aeb441b8` |
 | Starknet USDC | `0x033068F6539f8e6e6b131e6B2B814e6c34A5224bC66947c47DaB9dFeE93b35fb` |
 | MessageTransmitterV2 | `0x02EBB5777B6dD8B26ea11D68Fdf1D2c85cD2099335328Be845a28c77A8AEf183` |
 | TokenMessengerMinterV2 | `0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a` |
@@ -40,6 +41,8 @@ The official STRK20 pool only accepts deposits with proof facts from the hosted 
 | Base MessageTransmitterV2 | `0x81D40F21F12A8F0E3252Bccb954D722d4c464B64` |
 
 Default RPC is `https://rpc.starknet.lava.build`. Override with `NEXT_PUBLIC_STARKNET_RPC_URL`. The in-app **Mainnet / Sepolia** switcher overrides `NEXT_PUBLIC_STARKNET_NETWORK` at runtime.
+
+The pool fee is read from `get_fee_amount` on the pool itself: 2 STRK on Sepolia, 6 STRK on mainnet. It is paid in shielded STRK, not from the public wallet.
 
 ## Scripts
 
@@ -50,7 +53,18 @@ npm run dev
 npm test
 ```
 
-Research and setup helpers live in `scripts/`: `probe-pool-sender.mjs` and `probe-pool-address.mjs` inspect how real pool transactions are shaped, `gen-sepolia-accounts.mjs` and `deploy-account.mjs` create throwaway Sepolia accounts for contract work. Current working state for a fresh session: [docs/handoff.md](docs/handoff.md).
+Research and setup helpers live in `scripts/`: `probe-pool-sender.mjs` and `probe-pool-address.mjs` inspect how real pool transactions are shaped, `gen-accounts.mjs` and `deploy-account.mjs` create accounts for contract work. Current working state for a fresh session: [docs/handoff.md](docs/handoff.md).
+
+Deploying `MorokInvoices`, Sepolia by default and mainnet with the extra argument:
+
+```bash
+node scripts/gen-accounts.mjs mainnet      # keys land in .secrets, gitignored
+node scripts/deploy-account.mjs deployer mainnet
+cd contracts && scarb build && cd ..
+node scripts/deploy-contract.mjs invoices mainnet
+```
+
+The deployed address then goes into `MAINNET.invoices` in `lib/starknet/constants.ts`. Until it does, mainnet pays privately but the till reconciles with `Mark paid` instead of chain state. The constructor pins the pool that may call `privacy_invoke`, so it differs per network.
 
 Open [http://localhost:3000](http://localhost:3000). Install [Ready X](https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb) before connecting.
 

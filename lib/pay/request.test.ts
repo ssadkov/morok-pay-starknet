@@ -32,6 +32,21 @@ describe("payment request", () => {
     expect(parsePaymentLink(paymentPath(request), "mainnet")).toEqual(request);
   });
 
+  it("round-trips the invoice commitment", () => {
+    const withCommitment = { ...request, commitment: "0x1e03577436026" };
+    expect(
+      parsePaymentLink(paymentPath(withCommitment), "mainnet"),
+    ).toEqual(withCommitment);
+  });
+
+  it("drops a commitment that is not a felt", () => {
+    const parsed = parsePaymentRequest(
+      new URLSearchParams("to=0x1234&amount=1&c=nope"),
+      "sepolia",
+    );
+    expect(parsed?.commitment).toBeUndefined();
+  });
+
   it("rejects missing amount or address", () => {
     expect(
       parsePaymentRequest(new URLSearchParams("to=0x1234"), "mainnet"),

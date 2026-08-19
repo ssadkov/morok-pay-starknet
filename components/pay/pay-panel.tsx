@@ -34,6 +34,7 @@ import {
   sameAddress,
   updateActivity,
 } from "@/lib/pay/activity";
+import { isCommitment } from "@/lib/pay/commitment";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
 import { transferPrivate } from "@/lib/starknet/actions";
 import {
@@ -41,9 +42,17 @@ import {
   formatStrk20Error,
   isUserRefused,
 } from "@/lib/starknet/errors";
+import {
+  currentBlock,
+  waitForInvoiceSettlement,
+} from "@/lib/starknet/invoice-events";
 import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { shortenAddress } from "@/lib/format";
+
+type PayOutcome =
+  | { kind: "hash"; txHash?: string }
+  | { kind: "error"; error: unknown };
 
 export function PayPanel() {
   const searchParams = useSearchParams();
@@ -65,8 +74,24 @@ export function PayPanel() {
   );
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Ready refused the settlement helper once; keep paying without it.
+  const [settleFailed, setSettleFailed] = useState(false);
 
   const request = fromQuery ?? fromPaste;
+
+  // The pool calls `privacy_invoke` after the transfer. With a commitment that
+  // lands on MorokInvoices so the merchant can settle the invoice on-chain;
+  // older links keep hitting the EchoHelper probe.
+  const settleInvoke = useMemo(() => {
+    if (!request || settleFailed) return undefined;
+    if (starknet.invoices && isCommitment(request.commitment)) {
+      return { contract: starknet.invoices, calldata: [request.commitment] };
+    }
+    return starknet.echoHelper ? { contract: starknet.echoHelper } : undefined;
+  }, [request, settleFailed, starknet.invoices, starknet.echoHelper]);
+  const settlesOnChain = Boolean(
+    !settleFailed && starknet.invoices && isCommitment(request?.commitment),
+  );
 
   useEffect(() => {
     if (fromQuery && fromQuery.network !== network) {
@@ -103,17 +128,7 @@ export function PayPanel() {
       counterparty: request.to,
       address: session.address,
     });
-    try {
-      const response = await transferPrivate(
-        session.account,
-        usdc,
-        amount,
-        request.to,
-        starknet.echoHelper
-          ? { contract: starknet.echoHelper }
-          : undefined,
-      );
-      const txHash = extractTxHash(response);
+    const confirm = async (txHash: string | undefined) => {
       updateActivity(pending.id, { txHash, status: "confirmed" });
       toast.success("Paid privately", {
         description: txHash,
@@ -130,29 +145,76 @@ export function PayPanel() {
           : undefined,
       });
       await refreshBalances({ private: false });
-    } catch (caught) {
-      const txHash = extractTxHash(caught);
-      if (txHash) {
-        updateActivity(pending.id, { txHash, status: "confirmed" });
-        toast.success("Paid privately", {
-          description: txHash,
-          action: {
-            label: "Voyager",
-            onClick: () =>
-              window.open(
-                `${starknet.explorer}/tx/${txHash}`,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-          },
+    };
+
+    const giveUp = (caught: unknown) => {
+      removeActivity(pending.id);
+      setError(formatStrk20Error(caught, "pay"));
+    };
+
+    // Ready does not always hand the hash back, so accept the settlement
+    // event as proof too — whichever arrives first ends the spinner.
+    const submit = async (
+      invoke?: { contract: string; calldata?: string[] },
+    ): Promise<PayOutcome> => {
+      const watched = invoke && settlesOnChain ? request.commitment : undefined;
+      const fromBlock = watched ? await currentBlock(network) : undefined;
+      const fromWallet = transferPrivate(
+        session.account,
+        usdc,
+        amount,
+        request.to,
+        invoke,
+      ).then(
+        (response): PayOutcome => ({
+          kind: "hash",
+          txHash: extractTxHash(response),
+        }),
+        (error): PayOutcome => {
+          const txHash = extractTxHash(error);
+          return txHash ? { kind: "hash", txHash } : { kind: "error", error };
+        },
+      );
+      if (!watched) return fromWallet;
+
+      const fromChain = waitForInvoiceSettlement({
+        network,
+        commitment: watched,
+        fromBlock,
+      }).then((settlement) =>
+        settlement
+          ? ({ kind: "hash", txHash: settlement.txHash } as PayOutcome)
+          : null,
+      );
+      return Promise.race([
+        fromWallet,
+        fromChain.then((outcome) => outcome ?? fromWallet),
+      ]);
+    };
+
+    try {
+      const outcome = await submit(settleInvoke);
+      if (outcome.kind === "hash") {
+        await confirm(outcome.txHash);
+        return;
+      }
+      if (isUserRefused(outcome.error) || !settleInvoke) {
+        giveUp(outcome.error);
+        return;
+      }
+      // The helper call is the only unusual leg here. Drop it and pay
+      // plainly rather than leaving the merchant unpaid.
+      console.error("MorokPay: privacy_invoke helper rejected", outcome.error);
+      setSettleFailed(true);
+      const retry = await submit(undefined);
+      if (retry.kind === "hash") {
+        await confirm(retry.txHash);
+        toast.info("Paid without on-chain settlement", {
+          description:
+            "Ready refused the invoice helper, so the merchant marks this sale manually.",
         });
-        await refreshBalances({ private: false });
-      } else if (isUserRefused(caught)) {
-        removeActivity(pending.id);
-        setError(formatStrk20Error(caught, "pay"));
       } else {
-        updateActivity(pending.id, { status: "failed" });
-        setError(formatStrk20Error(caught, "pay"));
+        giveUp(retry.error);
       }
     } finally {
       setPaying(false);
@@ -165,8 +227,8 @@ export function PayPanel() {
         <h1 className="text-3xl font-semibold tracking-tight">Pay privately</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
-            ? "Sepolia: send shielded test USDC to a merchant Ready. Pool fee is 2 STRK. The invoice number stays on this request, not on-chain."
-            : "Send shielded USDC to a merchant Ready address. The invoice number stays on this request so they can match the sale. It is not written on-chain yet."}
+            ? "Sepolia: send shielded test USDC to a merchant Ready. Pool fee is 2 STRK. The invoice number stays on this request — only its hash is settled on-chain."
+            : "Send shielded USDC to a merchant Ready address. The invoice number stays on this request; the pool publishes only its hash so the merchant can match the sale."}
         </p>
       </div>
       <TestnetHint />
@@ -219,6 +281,13 @@ export function PayPanel() {
             <p className="text-sm text-muted-foreground">
               To {shortenAddress(request.to)} on Starknet {request.network}.
             </p>
+            {settlesOnChain ? (
+              <p className="text-sm text-muted-foreground">
+                The pool will settle this invoice on-chain, so the merchant sees
+                it without asking you for anything. Only a hash is published —
+                not the amount, the invoice number, or either address.
+              </p>
+            ) : null}
             {session ? (
               <p className="text-sm tabular-nums">
                 Your private USDC:{" "}

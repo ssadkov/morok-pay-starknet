@@ -70,6 +70,8 @@ export function readActivity(
   const value = readAll()
     .filter((item) => {
       if (item.network !== network) return false;
+      // A payment Ready never accepted is not history; the UI shows the error.
+      if (item.status === "failed") return false;
       if (!address || !item.address) return true;
       return sameAddress(item.address, address);
     })
@@ -228,8 +230,12 @@ export function hasInvoiceActivity(
   );
 }
 
-export function recordMorokSale(invoice: MerchantInvoice, address: string) {
-  markInvoicePaid(invoice.network, invoice.invoice);
+export function recordMorokSale(
+  invoice: MerchantInvoice,
+  address: string,
+  txHash?: string,
+) {
+  markInvoicePaid(invoice.network, invoice.invoice, txHash);
   if (hasInvoiceActivity(invoice.network, address, invoice.invoice)) return;
   let amountRaw: string | undefined;
   try {
@@ -241,12 +247,14 @@ export function recordMorokSale(invoice: MerchantInvoice, address: string) {
     network: invoice.network,
     kind: "receive",
     source: "morok",
+    status: "confirmed",
     amount: invoice.amount,
     amountRaw,
     invoice: invoice.invoice,
     label: invoice.label,
     counterparty: invoice.to,
     address,
+    txHash,
   });
 }
 

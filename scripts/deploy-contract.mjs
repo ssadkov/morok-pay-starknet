@@ -1,12 +1,14 @@
 /**
- * Declares and deploys a compiled MorokPay helper on Starknet Sepolia.
+ * Declares and deploys a compiled MorokPay helper on Starknet.
  *
  * Usage:
  *   node scripts/deploy-contract.mjs echo
  *   node scripts/deploy-contract.mjs invoices
+ *   node scripts/deploy-contract.mjs invoices mainnet
  *
- * Requires a funded deployer in .secrets/sepolia-accounts.json and
- * `scarb build` artifacts under contracts/target/dev.
+ * Requires a funded deployer in .secrets/<network>-accounts.json and
+ * `scarb build` artifacts under contracts/target/dev. On mainnet the declare
+ * costs real STRK, so check the printed pool address before confirming.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -14,13 +16,11 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Account, CallData, RpcProvider, json } from "starknet";
 
+import { resolveNetwork } from "./lib/networks.mjs";
+
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const RPC =
-  process.env.STARKNET_SEPOLIA_RPC_URL ??
-  "https://api.cartridge.gg/x/starknet/sepolia";
-const SEPOLIA_POOL =
-  "0x0254a6b2997ef52e9f830ce1f543f6b29768295e8d17e2267d672c552cfe0d91";
 const TARGET = process.argv[2] ?? "echo";
+const network = resolveNetwork(process.argv[3]);
 
 const CONTRACTS = {
   echo: {
@@ -33,7 +33,8 @@ const CONTRACTS = {
     name: "MorokInvoices",
     sierra: "morok_pay_MorokInvoices.contract_class.json",
     casm: "morok_pay_MorokInvoices.compiled_contract_class.json",
-    constructor: [SEPOLIA_POOL],
+    // Only this pool may call privacy_invoke, so it is network specific.
+    constructor: [network.pool],
   },
 };
 
@@ -43,7 +44,7 @@ if (!spec) {
 }
 
 const store = json.parse(
-  readFileSync(join(ROOT, ".secrets", "sepolia-accounts.json"), "utf8"),
+  readFileSync(join(ROOT, network.accountsFile), "utf8"),
 );
 const deployer = store.accounts.find((item) => item.role === "deployer");
 if (!deployer) throw new Error("No deployer account in .secrets");
@@ -57,13 +58,17 @@ if (!existsSync(sierraPath) || !existsSync(casmPath)) {
 const sierra = json.parse(readFileSync(sierraPath, "utf8"));
 const casm = json.parse(readFileSync(casmPath, "utf8"));
 
-const provider = new RpcProvider({ nodeUrl: RPC });
+const provider = new RpcProvider({ nodeUrl: network.rpc });
 const account = new Account({
   provider,
   address: deployer.address,
   signer: deployer.privateKey,
 });
 
+console.log(`network    ${network.name} (${network.rpc})`);
+if (spec.constructor.length > 0) {
+  console.log(`constructor ${spec.constructor.join(", ")}`);
+}
 console.log(`declareAndDeploy ${spec.name} from ${deployer.address}`);
 const result = await account.declareAndDeploy({
   contract: sierra,
@@ -77,19 +82,20 @@ console.log(`declare tx ${result.declare.transaction_hash || "(already declared)
 console.log(`class      ${classHash}`);
 console.log(`deploy tx  ${result.deploy.transaction_hash}`);
 console.log(`${spec.name} live at ${address}`);
+console.log(`${network.explorer}/contract/${address}`);
 
-const outPath = join(ROOT, ".secrets", "sepolia-contracts.json");
+const outPath = join(ROOT, network.contractsFile);
 mkdirSync(dirname(outPath), { recursive: true });
 const previous = existsSync(outPath)
   ? json.parse(readFileSync(outPath, "utf8"))
-  : { network: "sepolia" };
+  : { network: network.name };
 writeFileSync(
   outPath,
   `${JSON.stringify(
     {
       ...previous,
-      network: "sepolia",
-      pool: SEPOLIA_POOL,
+      network: network.name,
+      pool: network.pool,
       [TARGET]: {
         name: spec.name,
         classHash,
@@ -101,4 +107,4 @@ writeFileSync(
     2,
   )}\n`,
 );
-console.log(`addresses written to ${outPath} (gitignored)`);
+console.log(`addresses written to ${network.contractsFile} (gitignored)`);

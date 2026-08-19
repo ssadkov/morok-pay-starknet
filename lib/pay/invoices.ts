@@ -6,6 +6,10 @@ export type InvoiceStatus = "unpaid" | "paid";
 export type MerchantInvoice = PaymentRequest & {
   createdAt: number;
   status: InvoiceStatus;
+  /** Block height when the invoice was created, so event scans stay short. */
+  fromBlock?: number;
+  /** Set once MorokInvoices emitted InvoiceSettled for this commitment. */
+  settledTx?: string;
 };
 
 export const INVOICE_STORAGE_KEY = "morokpay.invoices";
@@ -62,11 +66,15 @@ export function saveInvoice(invoice: MerchantInvoice) {
   writeAll([invoice, ...rest]);
 }
 
-export function markInvoicePaid(network: AppNetwork, invoice: string) {
+export function markInvoicePaid(
+  network: AppNetwork,
+  invoice: string,
+  settledTx?: string,
+) {
   writeAll(
     readAll().map((entry) =>
       entry.network === network && entry.invoice === invoice
-        ? { ...entry, status: "paid" }
+        ? { ...entry, status: "paid", settledTx: settledTx ?? entry.settledTx }
         : entry,
     ),
   );
