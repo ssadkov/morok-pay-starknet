@@ -31,6 +31,8 @@ function writeAll(items: EscrowClaim[]) {
   window.dispatchEvent(new Event(CLAIMS_CHANGE_EVENT));
 }
 
+let claimsCache: { key: string; value: EscrowClaim[] } | null = null;
+
 export function subscribeClaims(onStoreChange: () => void) {
   window.addEventListener(CLAIMS_CHANGE_EVENT, onStoreChange);
   window.addEventListener("storage", onStoreChange);
@@ -41,9 +43,13 @@ export function subscribeClaims(onStoreChange: () => void) {
 }
 
 export function readClaims(network: AppNetwork): EscrowClaim[] {
-  return readAll()
+  const value = readAll()
     .filter((item) => item.network === network)
     .sort((left, right) => right.createdAt - left.createdAt);
+  const key = `${network}:${JSON.stringify(value)}`;
+  if (claimsCache?.key === key) return claimsCache.value;
+  claimsCache = { key, value };
+  return value;
 }
 
 export function saveClaim(claim: EscrowClaim) {
