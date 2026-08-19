@@ -32,6 +32,7 @@ The official STRK20 pool only accepts deposits with proof facts from the hosted 
 | What | Address |
 | --- | --- |
 | STRK20 pool | `0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a` |
+| MorokInvoices | `0x051587ed22ddfc47496cdc9486697d927a3f29b5edec6903efc21d94aeb441b8` |
 | Starknet USDC | `0x033068F6539f8e6e6b131e6B2B814e6c34A5224bC66947c47DaB9dFeE93b35fb` |
 | MessageTransmitterV2 | `0x02EBB5777B6dD8B26ea11D68Fdf1D2c85cD2099335328Be845a28c77A8AEf183` |
 | TokenMessengerMinterV2 | `0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a` |

@@ -12,7 +12,8 @@ const MAINNET = {
   tokenMessengerMinter:
     "0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a",
   echoHelper: "",
-  invoices: "",
+  invoices:
+    "0x051587ed22ddfc47496cdc9486697d927a3f29b5edec6903efc21d94aeb441b8",
 } as const;
 
 const SEPOLIA = {

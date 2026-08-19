@@ -53,7 +53,7 @@ These are plain accounts. They can declare, deploy, and receive public tokens. *
 
 The Sepolia loop is done: `EchoHelper` and `MorokInvoices` are deployed, a real payment settled its commitment on-chain (`0x58bfa6aa…`), and both the till and the payer flip from the `InvoiceSettled` event. What is left is mainnet.
 
-1. Deploy `MorokInvoices` on mainnet (`node scripts/deploy-contract.mjs invoices mainnet`) and put the address in `MAINNET.invoices` in `lib/starknet/constants.ts`. The deployer needs real STRK.
+1. ~~Deploy `MorokInvoices` on mainnet.~~ Live at `0x051587ed…`, pinned to the mainnet pool, declared in `0x3b49401d…`. The deploy cost 2.1 STRK all in.
 2. Run at least three mainnet payments against the live pool. Each costs 6 STRK of pool fee in shielded STRK, plus gas.
 3. Set `NEXT_PUBLIC_STARKNET_NETWORK=mainnet` on Vercel and swap the public Lava RPC for a keyed endpoint — both the till and the payer poll `getEvents`.
 4. Fill `strk20.json` (transactions, contracts, demo URL, video) and the README table.
