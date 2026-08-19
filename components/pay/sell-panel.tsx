@@ -46,6 +46,8 @@ import { findInvoiceSettlement } from "@/lib/starknet/invoice-events";
 import { createProvider, formatUsdc } from "@/lib/starknet/status";
 import { shortenAddress } from "@/lib/format";
 
+import { useAccountPresence } from "./use-account-presence";
+
 const EMPTY_INVOICES: MerchantInvoice[] = [];
 
 function useInvoices(network: ReturnType<typeof useNetwork>["network"]) {
@@ -68,6 +70,7 @@ export function SellPanel() {
   const [error, setError] = useState<string | null>(null);
   // Without MorokInvoices on this network the till falls back to Mark paid.
   const settlesOnChain = Boolean(starknet.invoices);
+  const presence = useAccountPresence(session?.address);
 
   const payUrl = useMemo(() => {
     if (!created || typeof window === "undefined") return "";
@@ -182,6 +185,17 @@ export function SellPanel() {
       <TestnetHint />
 
       {!session ? <ConnectPanel /> : null}
+
+      {presence === "undeployed" ? (
+        <Alert>
+          <AlertTitle>This Ready is not on Starknet {network} yet</AlertTitle>
+          <AlertDescription>
+            Your QR will scan, but the pool cannot deliver a private note to an
+            address that has never transacted here. Shield once on {network} to
+            activate the account, then share the link.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {session ? (
         <Card>

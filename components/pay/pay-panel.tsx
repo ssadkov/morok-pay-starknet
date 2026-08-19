@@ -50,6 +50,8 @@ import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { shortenAddress } from "@/lib/format";
 
+import { useAccountPresence } from "./use-account-presence";
+
 type PayOutcome =
   | { kind: "hash"; txHash?: string }
   | { kind: "error"; error: unknown };
@@ -92,6 +94,7 @@ export function PayPanel() {
   const settlesOnChain = Boolean(
     !settleFailed && starknet.invoices && isCommitment(request?.commitment),
   );
+  const recipientPresence = useAccountPresence(request?.to);
 
   useEffect(() => {
     if (fromQuery && fromQuery.network !== network) {
@@ -302,9 +305,19 @@ export function PayPanel() {
                 <AlertTitle>Paying your own Ready</AlertTitle>
                 <AlertDescription>
                   This invoice is addressed to the connected account, so
-                  Payment wallet USDC will not drop by {request.amount}. Pool
-                  fees come from shielded STRK, not USDC. Use a second Ready
-                  profile as the merchant to see a real private transfer.
+                  Payment wallet USDC will only drop by the pool fee. Use a
+                  second Ready profile as the merchant to see a real private
+                  transfer.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {recipientPresence === "undeployed" ? (
+              <Alert>
+                <AlertTitle>Merchant is not on Starknet {network} yet</AlertTitle>
+                <AlertDescription>
+                  This address has never transacted on {network}, so the pool
+                  cannot credit a private note to it. Ask the merchant to switch
+                  Ready to Starknet {network} and shield once, then pay again.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -334,7 +347,11 @@ export function PayPanel() {
                 type="button"
                 size="lg"
                 className="min-h-10"
-                disabled={paying || privateRaw === BigInt(0)}
+                disabled={
+                  paying ||
+                  privateRaw === BigInt(0) ||
+                  recipientPresence === "undeployed"
+                }
                 aria-busy={paying}
                 onClick={() => {
                   void handlePay();
