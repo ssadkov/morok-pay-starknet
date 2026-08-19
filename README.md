@@ -22,7 +22,7 @@ The official STRK20 pool only accepts deposits with proof facts from the hosted 
 ## Plan
 
 1. **Now — private pay on Sepolia first.** The app defaults to Starknet Sepolia (2 STRK pool fee). Create a QR, pay from a second Ready, then switch the header to Mainnet for sprint evidence. Fast fund: Circle faucet → Starknet Sepolia USDC → shield. Base Sepolia CCTP still works on Top up.
-2. **Private Drop.** Entrants create a payable QR only after their STRK20 public key is registered. The first ten valid entries receive privately assigned rewards from a fixed 30 USDC pool. Campaign mechanics: [docs/handoff.md](docs/handoff.md#private-drop-mechanics).
+2. **Private Drop.** Entrants create a payable QR only after their STRK20 public key is registered. The first ten valid entries receive privately assigned rewards from a fixed 30 USDC pool. Campaign rules: [docs/private-first-10.md](docs/private-first-10.md); technical handoff: [docs/handoff.md](docs/handoff.md#private-drop-mechanics).
 3. **CCTP anonymizer.** Helper the pool calls via `privacy_invoke` so outbound burns do not unshield onto Ready. Proofs still go through Ready.
 4. **Solana out.** Same CCTP V2 pattern as Base (domain 5). Aptos is not a native V2 route.
 5. **Later.** Payroll treasury, private card, `OutboundAnonymizer` from [privacy-bridge](https://github.com/starkware-libs/privacy-bridge).

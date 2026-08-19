@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { WalletIcon } from "lucide-react";
 
+import { MorokMark } from "@/components/brand/morok-mark";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
@@ -31,11 +32,20 @@ export function AppHeader() {
     <header className="border-b border-border">
       <div className="mx-auto flex min-h-14 max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
         <div className="flex min-w-0 items-center gap-3">
-          <Link href="/" className="flex min-w-0 flex-col">
-            <p className="text-sm font-medium tracking-tight">MorokPay</p>
-            <p className="text-xs text-muted-foreground">
-              {network === "sepolia" ? "Private USDC · testnet" : "Private USDC"}
-            </p>
+          <Link
+            href="/"
+            aria-label="MorokPay home"
+            className="flex min-w-0 items-center gap-2"
+          >
+            <MorokMark className="size-8" />
+            <span className="flex min-w-0 flex-col">
+              <span className="text-sm font-medium tracking-tight">MorokPay</span>
+              <span className="text-xs text-muted-foreground">
+                {network === "sepolia"
+                  ? "Private USDC · testnet"
+                  : "Private USDC"}
+              </span>
+            </span>
           </Link>
           <nav aria-label="Primary" className="hidden items-center gap-1 sm:flex">
             {NAV.map((item) => (

@@ -100,11 +100,12 @@ verified: 2 STRK on Sepolia and 6 STRK on mainnet).
 ## Identity
 
 The earlier Aptos MorokPay repo at `C:\work\confident` has no reusable logo
-asset. Its recognizable identity is the restrained near-black wallet surface
-and plain MorokPay wordmark. Reuse that product lineage, but create a small
-portable mark designed for QR/video use rather than pretending an old logo file
-exists. Do not overwrite `brand.md` or the current theme until a palette and mark
-direction are explicitly selected.
+asset, but its `// morokpay` treatment supplied the direction. The app now uses
+a geometric mint M whose diagonal cut echoes those private-payment rails:
+`components/brand/morok-mark.tsx` in the header, `app/icon.svg` for Next.js
+file-based favicon metadata, and `public/morok-mark.svg` as the portable asset.
+The full palette remains deferred in `brand.md`; do not overwrite the theme
+until a palette is explicitly selected.
 
 ## Safety
 
