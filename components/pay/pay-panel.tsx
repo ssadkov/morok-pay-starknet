@@ -205,9 +205,10 @@ export function PayPanel() {
       // The helper call is the only unusual leg here. Drop it and pay
       // plainly rather than leaving the merchant unpaid.
       console.error("MorokPay: privacy_invoke helper rejected", outcome.error);
-      setSettleFailed(true);
       const retry = await submit(undefined);
       if (retry.kind === "hash") {
+        // Only the helper was at fault, so stop adding it this session.
+        setSettleFailed(true);
         await confirm(retry.txHash);
         toast.info("Paid without on-chain settlement", {
           description:
