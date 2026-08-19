@@ -1,12 +1,30 @@
-import { num, validateAndParseAddress, type WalletAccountV6 } from "starknet";
+import { validateAndParseAddress, type WalletAccountV6 } from "starknet";
 
 import type { ShieldToken } from "./tokens";
+
+/** Ready's Wallet API rejects padded felts in invoke calldata. */
+const CALLDATA_FELT_RE =
+  /^0x(0|[a-fA-F1-9]{1}[a-fA-F0-9]{0,62})$/;
 
 export function toFelt(amount: bigint) {
   if (amount <= BigInt(0)) {
     throw new Error("Amount must be greater than 0");
   }
-  return num.toHex(amount);
+  return toCalldataFelt(amount);
+}
+
+export function toCalldataFelt(value: string | bigint): string {
+  const hex = `0x${BigInt(value).toString(16)}`;
+  if (!CALLDATA_FELT_RE.test(hex)) {
+    throw new Error(`Value does not fit a Wallet API felt: ${value}`);
+  }
+  return hex;
+}
+
+function invokeCalldata(values: string[]): string[] {
+  return values.map((value) =>
+    value.startsWith("${") ? value : toCalldataFelt(value),
+  );
 }
 
 export function privateBalanceFromEntries(
@@ -76,7 +94,7 @@ export async function transferPrivate(
     actions.push({
       type: "invoke",
       contract: validateAndParseAddress(invoke.contract),
-      calldata: invoke.calldata ?? [],
+      calldata: invokeCalldata(invoke.calldata ?? []),
     });
   }
   return account.strk20InvokeTransaction(actions);
@@ -102,14 +120,14 @@ export async function depositToEscrow(
     {
       type: "invoke",
       contract,
-      calldata: [
+      calldata: invokeCalldata([
         "0x0",
         commitment,
         tokenAddress,
         toFelt(amount),
         "0x0",
         "0x0",
-      ],
+      ]),
     },
   ]);
 }
@@ -136,14 +154,14 @@ export async function claimFromEscrow(
     {
       type: "invoke",
       contract,
-      calldata: [
+      calldata: invokeCalldata([
         "0x1",
         "0x0",
         "0x0",
         "0x0",
         secret,
         "${openNoteIds[0]}",
-      ],
+      ]),
     },
   ]);
 }
