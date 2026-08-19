@@ -16,6 +16,7 @@ import type { AppNetwork } from "@/lib/network";
 const NAV = [
   { href: "/pay", label: "Pay" },
   { href: "/sell", label: "Get paid" },
+  { href: "/claim", label: "Claim" },
   { href: "/treasury", label: "Top up" },
 ] as const;
 

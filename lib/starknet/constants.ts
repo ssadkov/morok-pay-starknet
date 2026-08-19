@@ -14,6 +14,7 @@ const MAINNET = {
   echoHelper: "",
   invoices:
     "0x051587ed22ddfc47496cdc9486697d927a3f29b5edec6903efc21d94aeb441b8",
+  escrow: "",
 } as const;
 
 const SEPOLIA = {
@@ -31,6 +32,8 @@ const SEPOLIA = {
     "0x012ec63321392b74063bafa1fb27804b84ba35482a1310f01d3510962b093a03",
   invoices:
     "0x064502ea9d69e918ed75f84d7bccee4156310bf78b68fd6ec5d880fe35c3d235",
+  escrow:
+    "0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5",
 } as const;
 
 const STARKNET = {

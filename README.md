@@ -66,6 +66,15 @@ node scripts/deploy-contract.mjs invoices mainnet
 
 The deployed address then goes into `MAINNET.invoices` in `lib/starknet/constants.ts`. Until it does, mainnet pays privately but the till reconciles with `Mark paid` instead of chain state. The constructor pins the pool that may call `privacy_invoke`, so it differs per network.
 
+For a recipient who has not joined the pool yet:
+
+```bash
+node scripts/deploy-contract.mjs escrow sepolia
+node scripts/deploy-contract.mjs escrow mainnet
+```
+
+Park USDC from Get paid → Claim link, then share the `/claim` QR. The amount sits in `MorokEscrow` as plain USDC until they register and claim.
+
 Open [http://localhost:3000](http://localhost:3000). Install [Ready X](https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb) before connecting.
 
 Sprint evidence (`strk20.json` transactions, demo URL, 3-minute video) is filled after the first mainnet txs that touch the official pool.

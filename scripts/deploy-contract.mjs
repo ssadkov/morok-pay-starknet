@@ -36,11 +36,17 @@ const CONTRACTS = {
     // Only this pool may call privacy_invoke, so it is network specific.
     constructor: [network.pool],
   },
+  escrow: {
+    name: "MorokEscrow",
+    sierra: "morok_pay_MorokEscrow.contract_class.json",
+    casm: "morok_pay_MorokEscrow.compiled_contract_class.json",
+    constructor: [network.pool],
+  },
 };
 
 const spec = CONTRACTS[TARGET];
 if (!spec) {
-  throw new Error(`Unknown target "${TARGET}". Use echo or invoices.`);
+  throw new Error(`Unknown target "${TARGET}". Use echo, invoices, or escrow.`);
 }
 
 const store = json.parse(

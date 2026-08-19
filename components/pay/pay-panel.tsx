@@ -316,8 +316,8 @@ export function PayPanel() {
                 <AlertTitle>Merchant is not on Starknet {network} yet</AlertTitle>
                 <AlertDescription>
                   This address has never transacted on {network}, so the pool
-                  cannot credit a private note to it. Ask the merchant to switch
-                  Ready to Starknet {network} and shield once, then pay again.
+                  cannot credit a private note to it. Use a claim link from Get
+                  paid instead — that parks the USDC until they join the pool.
                 </AlertDescription>
               </Alert>
             ) : null}
