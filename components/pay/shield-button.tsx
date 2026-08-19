@@ -24,14 +24,17 @@ export function ShieldButton() {
   const { network, starknet } = useNetwork();
   const [amount, setAmount] = useState("");
   const [shielding, setShielding] = useState(false);
+  const [skipFeeStrk, setSkipFeeStrk] = useState(false);
   const usdc = getShieldToken("usdc", network);
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
   const privateStrk = balances?.privateStrk ?? BigInt(0);
   // Sepolia charges 2 STRK, mainnet 6, so ask the pool instead of guessing.
   const poolFee = usePoolFee();
+  // The deposit pays a fee of its own, so shielding the fee itself credits
+  // nothing and the wallet rejects it.
   const defaultFeeShield = poolFee * BigInt(2);
-  const needsFeeStrk = privateStrk < poolFee;
+  const needsFeeStrk = privateStrk < poolFee && !skipFeeStrk;
 
   if (!session) return null;
 
@@ -49,9 +52,9 @@ export function ShieldButton() {
         const parsed = amount.trim()
           ? parseTokenAmount(amount, 18)
           : defaultFeeShield;
-        if (parsed < poolFee) {
+        if (parsed <= poolFee) {
           throw new Error(
-            `Shield at least ${formatStrk(poolFee)} STRK — that is the pool fee`,
+            `The deposit costs ${formatStrk(poolFee)} STRK itself, so shield more than that`,
           );
         }
         if (parsed > publicStrk) {
@@ -132,9 +135,21 @@ export function ShieldButton() {
     <div className="flex w-full flex-col gap-2">
       <p className="text-xs text-muted-foreground">
         {needsFeeStrk
-          ? `Pool fee is ${formatStrk(poolFee)} shielded STRK, not the public Wallet balance. Shield STRK first, then USDC.`
+          ? `Each private operation costs ${formatStrk(poolFee)} STRK, including this deposit — shield more than that or it credits nothing.`
           : "Moves public USDC into the private payment wallet."}
       </p>
+      {needsFeeStrk ? (
+        <button
+          type="button"
+          className="self-start text-xs text-muted-foreground underline underline-offset-2"
+          onClick={() => {
+            setSkipFeeStrk(true);
+            setAmount("");
+          }}
+        >
+          Shield USDC instead — Ready may take the fee from it
+        </button>
+      ) : null}
       <div className="flex gap-2">
         <Input
           id="shield-amount"
