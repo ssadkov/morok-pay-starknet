@@ -1,6 +1,6 @@
 # Handoff
 
-Working state of MorokPay for a fresh session. Read this first, then [private-invoices.md](private-invoices.md) if you are touching the contract work.
+Working state of MorokPay for a fresh session. Read this first, then [private-invoices.md](private-invoices.md) for merchant QR matching and [claim-links.md](claim-links.md) for pay-before-they-register / giveaway envelopes.
 
 ## What this is
 
