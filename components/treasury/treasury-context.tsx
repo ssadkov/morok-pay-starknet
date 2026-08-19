@@ -139,9 +139,10 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     return watchWallets((next) => setWallets(listReadyWallets(next)));
   }, []);
 
+  const sessionAccount = session?.account;
   useEffect(() => {
-    if (!session) return;
-    const account = session.account;
+    if (!sessionAccount) return;
+    const account = sessionAccount;
     return account.onChange((change) => {
       const nextAccount = change.accounts?.[0];
       if (!nextAccount) return;
@@ -157,7 +158,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         };
       });
     });
-  }, [session?.account]);
+  }, [sessionAccount]);
 
   const disconnect = useCallback(() => {
     session?.account.unsubscribeChange();
@@ -287,11 +288,16 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!session?.address) return;
-    void refreshBalances({ private: true });
+    const initial = window.setTimeout(() => {
+      void refreshBalances({ private: true });
+    }, 0);
     const timer = window.setInterval(() => {
       void refreshBalances({ private: false });
     }, 20_000);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
   }, [session?.address, refreshBalances]);
 
   const connectWallet = useCallback(

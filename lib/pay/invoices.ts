@@ -8,7 +8,7 @@ export type MerchantInvoice = PaymentRequest & {
   status: InvoiceStatus;
   /** Block height when the invoice was created, so event scans stay short. */
   fromBlock?: number;
-  /** Set once MorokInvoices emitted InvoiceSettled for this commitment. */
+  /** Legacy display-only transaction hash; never treated as payment proof. */
   settledTx?: string;
 };
 
@@ -25,8 +25,8 @@ function randomId() {
   return `INV-${token}`;
 }
 
-export function nextInvoiceId(): string {
-  return randomId();
+export function nextInvoiceId(prefix = "INV"): string {
+  return randomId().replace("INV", prefix.replace(/[^A-Z0-9]/gi, "").toUpperCase() || "INV");
 }
 
 function readAll(): MerchantInvoice[] {

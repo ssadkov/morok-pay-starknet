@@ -4,29 +4,27 @@ import { useEffect, useState } from "react";
 
 import { useNetwork } from "@/components/network-provider";
 import {
-  accountPresence,
-  type AccountPresence,
+  poolRegistration,
+  type PoolRegistration,
 } from "@/lib/starknet/account-status";
 
-/** Whether an address exists on the selected network. */
-export function useAccountPresence(address: string | undefined): AccountPresence {
+/** Whether an address has registered a STRK20 viewing key on this network. */
+export function usePoolRegistration(
+  address: string | undefined,
+): PoolRegistration {
   const { network } = useNetwork();
   const key = address ? `${network}:${address.toLowerCase()}` : "";
   const [result, setResult] = useState<{
     key: string;
-    value: AccountPresence;
+    value: PoolRegistration;
   }>({ key: "", value: "unknown" });
 
   useEffect(() => {
     if (!address) return;
     let cancelled = false;
-    accountPresence(network, address)
-      .then((value) => {
-        if (!cancelled) setResult({ key, value });
-      })
-      .catch(() => {
-        // Leave it unknown; the UI only warns on a definite answer.
-      });
+    poolRegistration(network, address).then((value) => {
+      if (!cancelled) setResult({ key, value });
+    });
     return () => {
       cancelled = true;
     };

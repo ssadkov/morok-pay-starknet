@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { CopyIcon } from "lucide-react";
 
@@ -27,13 +27,9 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { parseUsdc } from "@/lib/amount";
 import { recordMorokSale } from "@/lib/pay/activity";
-import {
-  computeInvoiceCommitment,
-  isCommitment,
-  readMerchantSecret,
-} from "@/lib/pay/commitment";
 import {
   nextInvoiceId,
   readInvoices,
@@ -41,14 +37,55 @@ import {
   subscribeInvoices,
   type MerchantInvoice,
 } from "@/lib/pay/invoices";
-import { paymentUrl, type PaymentRequest } from "@/lib/pay/request";
-import { findInvoiceSettlement } from "@/lib/starknet/invoice-events";
-import { createProvider, formatUsdc } from "@/lib/starknet/status";
+import {
+  paymentUrl,
+  type PaymentKind,
+  type PaymentRequest,
+} from "@/lib/pay/request";
+import { formatUsdc } from "@/lib/starknet/status";
 import { shortenAddress } from "@/lib/format";
 
 import { useAccountPresence } from "./use-account-presence";
+import { usePoolRegistration } from "./use-pool-registration";
 
 const EMPTY_INVOICES: MerchantInvoice[] = [];
+
+const REQUEST_KINDS: Array<{
+  value: PaymentKind;
+  label: string;
+  title: string;
+  placeholder: string;
+  prefix: string;
+}> = [
+  {
+    value: "invoice",
+    label: "Invoice",
+    title: "New invoice",
+    placeholder: "Consulting, order #42",
+    prefix: "INV",
+  },
+  {
+    value: "sale",
+    label: "Sale",
+    title: "Private checkout",
+    placeholder: "Coffee, T-shirt, event ticket",
+    prefix: "SALE",
+  },
+  {
+    value: "donation",
+    label: "Donation",
+    title: "Private donation QR",
+    placeholder: "Support my channel",
+    prefix: "TIP",
+  },
+  {
+    value: "drop",
+    label: "Private Drop",
+    title: "Private Drop entry",
+    placeholder: "MorokPay Private Drop",
+    prefix: "DROP",
+  },
+];
 
 function useInvoices(network: ReturnType<typeof useNetwork>["network"]) {
   return useSyncExternalStore(
@@ -60,60 +97,55 @@ function useInvoices(network: ReturnType<typeof useNetwork>["network"]) {
 
 export function SellPanel() {
   const { network, starknet } = useNetwork();
-  const { session, privateRaw, balancesLoading } = useTreasury();
+  const { session, privateRaw, balancesLoading, refreshBalances } = useTreasury();
   const invoices = useInvoices(network);
+  const [kind, setKind] = useState<PaymentKind>("invoice");
   const [amount, setAmount] = useState("");
   const [label, setLabel] = useState("");
   const [invoice, setInvoice] = useState("");
   const [created, setCreated] = useState<PaymentRequest | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Without MorokInvoices on this network the till falls back to Mark paid.
-  const settlesOnChain = Boolean(starknet.invoices);
   const presence = useAccountPresence(session?.address);
+  const registration = usePoolRegistration(session?.address);
+  const requestKind =
+    REQUEST_KINDS.find((entry) => entry.value === kind) ?? REQUEST_KINDS[0];
+  const canReceive = presence !== "undeployed" && registration !== "unregistered";
+  const canCreate = canReceive && (kind !== "drop" || registration === "registered");
+  const visibleCreated = created?.network === network ? created : null;
 
   const payUrl = useMemo(() => {
-    if (!created || typeof window === "undefined") return "";
-    return paymentUrl(window.location.origin, created);
-  }, [created]);
-
-  useEffect(() => {
-    setCreated(null);
-    setError(null);
-  }, [network]);
+    if (!visibleCreated || typeof window === "undefined") return "";
+    return paymentUrl(window.location.origin, visibleCreated);
+  }, [visibleCreated]);
 
   async function handleCreate() {
     if (!session) return;
     setError(null);
     setCreating(true);
     try {
-      parseUsdc(amount);
-      const invoiceId = invoice.trim() || nextInvoiceId();
+      if ((kind !== "donation" && kind !== "drop") || amount.trim()) {
+        parseUsdc(amount);
+      }
+      if (!canCreate) {
+        throw new Error("Activate STRK20 on this network before creating a QR");
+      }
+      const invoiceId = invoice.trim() || nextInvoiceId(requestKind.prefix);
       const request: PaymentRequest = {
         network,
         to: session.address,
         amount: amount.trim(),
         invoice: invoiceId,
-        label: label.trim(),
-        commitment: computeInvoiceCommitment({
-          secret: readMerchantSecret(),
-          invoice: invoiceId,
-        }),
+        label: label.trim() || requestKind.placeholder,
+        kind,
       };
-      let fromBlock: number | undefined;
-      try {
-        fromBlock = await createProvider(network).getBlockNumber();
-      } catch {
-        // Without a height the settlement scan falls back to a recent window.
-      }
       saveInvoice({
         ...request,
         createdAt: Date.now(),
         status: "unpaid",
-        fromBlock,
       });
       setCreated(request);
-      setInvoice(nextInvoiceId());
+      setInvoice(nextInvoiceId(requestKind.prefix));
       setAmount("");
       setLabel("");
     } catch (caught) {
@@ -122,43 +154,6 @@ export function SellPanel() {
       setCreating(false);
     }
   }
-
-  // MorokInvoices logs a commitment hash when the pool settles a payment, so
-  // the till can mark a sale without another share-private-balances prompt.
-  useEffect(() => {
-    const address = session?.address;
-    if (!address || !settlesOnChain) return;
-    const pending = invoices.filter(
-      (entry) => entry.status === "unpaid" && isCommitment(entry.commitment),
-    );
-    if (pending.length === 0) return;
-
-    let cancelled = false;
-    const scan = async () => {
-      for (const entry of pending) {
-        if (cancelled) return;
-        try {
-          const settlement = await findInvoiceSettlement({
-            network,
-            commitment: entry.commitment as string,
-            fromBlock: entry.fromBlock,
-          });
-          if (settlement && !cancelled) {
-            recordMorokSale(entry, address, settlement.txHash);
-          }
-        } catch {
-          // Keep polling; the RPC may be rate limiting.
-        }
-      }
-    };
-
-    void scan();
-    const timer = window.setInterval(() => void scan(), 15_000);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [session?.address, network, invoices, settlesOnChain]);
 
   async function copyUrl(url = payUrl) {
     if (!url) return;
@@ -175,11 +170,9 @@ export function SellPanel() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Get paid</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          {!settlesOnChain
-            ? "Your Ready address is the till. Create an invoice, show the QR, then mark the sale paid once the payment lands — no viewing key leaves Ready."
-            : network === "sepolia"
-              ? "Sepolia till: create a test invoice and show the QR. It flips to paid on its own once the pool settles the invoice hash on-chain. Pool fee for the buyer is 2 STRK."
-              : "Your Ready address is the till. Create an invoice, show the QR, and it flips to paid once the pool settles the invoice hash on-chain — no viewing key leaves Ready."}
+          Create one private-payment QR for an invoice, a sale, a donation, or
+          the MorokPay Private Drop. Ready keeps the viewing key; the label and
+          reference stay off-chain.
         </p>
       </div>
       <TestnetHint />
@@ -197,10 +190,21 @@ export function SellPanel() {
         </Alert>
       ) : null}
 
+      {presence !== "undeployed" && registration === "unregistered" ? (
+        <Alert>
+          <AlertTitle>Activate private payments first</AlertTitle>
+          <AlertDescription>
+            This Ready exists on {network}, but it has no STRK20 viewing key
+            registered yet. Shield once in Top up, then return here. That makes
+            every contest QR a real, payable private account.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {session ? (
         <Card>
           <CardHeader>
-            <CardTitle>New invoice</CardTitle>
+            <CardTitle>{requestKind.title}</CardTitle>
             <CardDescription>
               Private USDC on this Ready:{" "}
               {balancesLoading && privateRaw === BigInt(0)
@@ -211,34 +215,75 @@ export function SellPanel() {
           <CardContent>
             <FieldGroup>
               <Field>
+                <FieldLabel>Request type</FieldLabel>
+                <ToggleGroup
+                  aria-label="Payment request type"
+                  variant="outline"
+                  value={[kind]}
+                  onValueChange={(next) => {
+                    const value = next[0] as PaymentKind | undefined;
+                    if (value) {
+                      setKind(value);
+                      setInvoice("");
+                      setLabel("");
+                    }
+                  }}
+                  className="flex flex-wrap justify-start"
+                >
+                  {REQUEST_KINDS.map((entry) => (
+                    <ToggleGroupItem key={entry.value} value={entry.value}>
+                      {entry.label}
+                    </ToggleGroupItem>
+                  ))}
+                </ToggleGroup>
+                {kind === "drop" ? (
+                  <FieldDescription>
+                    Use this for the public contest: connect and activate Ready,
+                    generate your QR, then publish it under the contest post.
+                  </FieldDescription>
+                ) : null}
+              </Field>
+              <Field>
                 <FieldLabel htmlFor="invoice-amount">Amount (USDC)</FieldLabel>
                 <Input
                   id="invoice-amount"
                   inputMode="decimal"
                   value={amount}
-                  placeholder="12.50"
+                  placeholder={
+                    kind === "donation" || kind === "drop"
+                      ? "Optional"
+                      : "12.50"
+                  }
                   onChange={(event) => setAmount(event.target.value)}
                 />
+                {kind === "donation" || kind === "drop" ? (
+                  <FieldDescription>
+                    Leave empty so the
+                    {kind === "drop" ? " organizer" : " supporter"} chooses the
+                    amount after scanning.
+                  </FieldDescription>
+                ) : null}
               </Field>
               <Field>
                 <FieldLabel htmlFor="invoice-label">What is it for</FieldLabel>
                 <Input
                   id="invoice-label"
                   value={label}
-                  placeholder="Coffee"
+                  placeholder={requestKind.placeholder}
                   onChange={(event) => setLabel(event.target.value)}
                 />
               </Field>
               <Field>
-                <FieldLabel htmlFor="invoice-id">Account number</FieldLabel>
+                <FieldLabel htmlFor="invoice-id">Reference</FieldLabel>
                 <Input
                   id="invoice-id"
                   value={invoice}
-                  placeholder="INV-9K2M"
+                  placeholder={`${requestKind.prefix}-9K2M`}
                   onChange={(event) => setInvoice(event.target.value)}
                 />
                 <FieldDescription>
-                  Printed on the QR so you can match the sale later.
+                  Kept in the QR link and your local list; it is not published
+                  in the private transfer.
                 </FieldDescription>
               </Field>
             </FieldGroup>
@@ -254,31 +299,42 @@ export function SellPanel() {
               type="button"
               size="lg"
               className="min-h-10"
-              disabled={creating}
+              disabled={creating || !canCreate}
               aria-busy={creating}
               onClick={() => {
                 void handleCreate();
               }}
             >
-              Create QR invoice
+              Create private payment QR
             </Button>
           </CardFooter>
         </Card>
       ) : null}
 
-      {created && payUrl ? (
+      {visibleCreated && payUrl ? (
         <Card>
           <CardHeader>
-            <CardTitle>{created.label || "Invoice"}</CardTitle>
+            <CardTitle>{visibleCreated.label || "Private payment"}</CardTitle>
             <CardDescription>
-              {created.amount} USDC · {created.invoice}
-              {created.network === "sepolia" ? " · Sepolia" : ""}
+              {visibleCreated.amount
+                ? `${visibleCreated.amount} USDC`
+                : visibleCreated.kind === "drop"
+                  ? "Organizer chooses reward"
+                  : "Supporter chooses amount"}{" "}
+              · {visibleCreated.invoice}
+              {visibleCreated.network === "sepolia" ? " · Sepolia" : ""}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col items-start gap-4">
             <QrCode
               value={payUrl}
-              label={`Pay ${created.amount} USDC, invoice ${created.invoice}`}
+              label={
+                visibleCreated.amount
+                  ? `Pay ${visibleCreated.amount} USDC, reference ${visibleCreated.invoice}`
+                  : visibleCreated.kind === "drop"
+                    ? `Private Drop entry, reference ${visibleCreated.invoice}`
+                    : `Private donation, reference ${visibleCreated.invoice}`
+              }
             />
             <p className="break-all font-mono text-xs text-muted-foreground">
               {payUrl}
@@ -327,7 +383,8 @@ export function SellPanel() {
                       {entry.label ? ` · ${entry.label}` : ""}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {entry.amount} USDC · {shortenAddress(entry.to)}
+                      {entry.amount ? `${entry.amount} USDC` : "Open amount"} ·{" "}
+                      {shortenAddress(entry.to)}
                     </p>
                   </button>
                   {entry.settledTx ? (
@@ -339,25 +396,29 @@ export function SellPanel() {
                     >
                       Settled on-chain
                     </a>
-                  ) : entry.status === "unpaid" &&
-                    settlesOnChain &&
-                    isCommitment(entry.commitment) ? (
-                    <p className="text-xs text-muted-foreground">
-                      Watching the chain for this invoice
-                    </p>
                   ) : null}
                 </div>
                 {entry.status === "paid" ? (
                   <Badge>Paid</Badge>
                 ) : (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => recordMorokSale(entry, session.address)}
-                  >
-                    Mark paid
-                  </Button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => void refreshBalances({ private: true })}
+                    >
+                      Check balance
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => recordMorokSale(entry, session.address)}
+                    >
+                      Mark paid
+                    </Button>
+                  </div>
                 )}
               </li>
             ))}

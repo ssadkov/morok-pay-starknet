@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { SendIcon, WalletIcon } from "lucide-react";
 import {
@@ -107,18 +107,7 @@ export function PayoutPanel() {
   } | null>(null);
 
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
-  const toBase = destination === "base";
-
-  useEffect(() => {
-    setAmount("");
-    setError(null);
-  }, [token.id, destination]);
-
-  useEffect(() => {
-    if (token.id !== "usdc" && destination === "base") {
-      setDestination("starknet");
-    }
-  }, [token.id, destination]);
+  const toBase = token.id === "usdc" && destination === "base";
 
   if (!session) return null;
   const ready = session;
@@ -209,7 +198,7 @@ export function PayoutPanel() {
         : publicUsdc;
     if (parsed <= BigInt(0)) throw new Error("Enter a USDC amount");
 
-    let availablePublic = publicUsdc;
+    const availablePublic = publicUsdc;
     if (availablePublic < parsed) {
       const need = parsed - availablePublic;
       if (privateRaw < need) {
@@ -346,12 +335,14 @@ export function PayoutPanel() {
           <ToggleGroup
             aria-labelledby="payout-destination-label"
             spacing={2}
-            value={[destination]}
+            value={[toBase ? "base" : "starknet"]}
             onValueChange={(next) => {
               const value = next[0];
               if (value === "base" || value === "starknet") {
                 if (value === "base") setTokenId("usdc");
                 setDestination(value);
+                setAmount("");
+                setError(null);
               }
             }}
           >
@@ -359,7 +350,15 @@ export function PayoutPanel() {
             <ToggleGroupItem value="starknet">Starknet</ToggleGroupItem>
           </ToggleGroup>
         </Field>
-        {toBase ? null : <TokenPicker labelledBy="payout-token-label" />}
+        {toBase ? null : (
+          <TokenPicker
+            labelledBy="payout-token-label"
+            onTokenChange={() => {
+              setAmount("");
+              setError(null);
+            }}
+          />
+        )}
         <FieldGroup>
           <Field>
             <FieldLabel htmlFor="payout-recipient">Recipient</FieldLabel>

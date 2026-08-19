@@ -5,7 +5,13 @@ import { Field, FieldTitle } from "@/components/ui/field";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { ShieldTokenId } from "@/lib/starknet/tokens";
 
-export function TokenPicker({ labelledBy = "token-picker-label" }: { labelledBy?: string }) {
+export function TokenPicker({
+  labelledBy = "token-picker-label",
+  onTokenChange,
+}: {
+  labelledBy?: string;
+  onTokenChange?: () => void;
+}) {
   const { token, tokens, setTokenId } = useTreasury();
 
   if (tokens.length < 2) return null;
@@ -20,6 +26,7 @@ export function TokenPicker({ labelledBy = "token-picker-label" }: { labelledBy?
         onValueChange={(next) => {
           const id = next[0];
           if (id === "usdc" || id === "strkbtc") {
+            onTokenChange?.();
             setTokenId(id as ShieldTokenId);
           }
         }}

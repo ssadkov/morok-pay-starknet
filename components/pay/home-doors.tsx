@@ -19,7 +19,7 @@ export function HomeDoors() {
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
             ? "Testnet loop: pay or get paid with a QR on Starknet Sepolia. Ready holds the keys. Switch the header to Mainnet when you want sprint evidence."
-            : "Pay a merchant from your shielded balance, or get paid with a QR invoice. Ready holds the keys. Nobody else sees who paid whom."}
+            : "Pay from a shielded balance, or create a QR for an invoice, a sale, a private donation, or the MorokPay Private Drop. Ready holds the keys."}
         </p>
       </div>
       <TestnetHint />
@@ -34,7 +34,7 @@ export function HomeDoors() {
           href="/sell"
           icon={<QrCodeIcon />}
           title="Get paid"
-          body="Create an invoice, show a QR, match the account number later. Your Ready address is the till."
+          body="Create a private-payment QR for checkout, invoices, creator donations, or the Private Drop."
         />
       </div>
       <p className="text-sm text-muted-foreground">

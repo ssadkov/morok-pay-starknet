@@ -1,66 +1,115 @@
 # Handoff
 
-Working state of MorokPay for a fresh session. Read this first, then [private-invoices.md](private-invoices.md) for merchant QR matching and [claim-links.md](claim-links.md) for pay-before-they-register / giveaway envelopes.
+MorokPay is a private-payments product on Starknet built for the STRK20 Private
+Sprint. The strongest demo is no longer a generic wallet: it is a merchant and
+creator payment surface with a public participation loop called **Private
+Drop**.
 
-## What this is
+## Product thesis
 
-Private USDC payments on Starknet, built for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon). Submissions close **31 Aug 2026, 23:59 UTC**; whatever the public repo shows at that moment is the entry. Judging: STRK20 integration depth 30%, working mainnet product 30%, innovation 25%, docs and open-source quality 15%. To place at all, the app must run on **mainnet** against the live pool with at least three mainnet transactions, a demo anyone can open, and `strk20.json` filled in (transactions, contracts, demo URL, video).
+One QR interaction covers four real use cases:
 
-Repo `ssadkov/morok-pay-starknet`, MIT, demo at https://morok-pay-starknet.vercel.app.
+1. a merchant invoice;
+2. an in-person fixed-price sale;
+3. a reusable creator donation QR with an optional supporter-chosen amount;
+4. a Private Drop entry that can receive a private reward.
 
-## Locked architecture
+The creator can put the donation QR in a video. A contest participant connects
+Ready, activates STRK20 once, generates a Private Drop QR, and publishes it.
+MorokPay checks the pool's public-key registry before enabling that entry, so it
+is a payable STRK20 account rather than an arbitrary pasted Starknet address.
 
-**Ready Wallet API only.** The official pool accepts deposits only with proof facts from the hosted proving service, and that service is IP-whitelisted to Ready and Xverse. Direct Privacy SDK `apply_actions` reverts `EMPTY_PROOF_FACTS`, and Braavos cannot shield. Do not try to derive accounts or hold viewing keys in the app.
+This proves wallet activation, not unique humanity. Social eligibility and one
+entry per account remain contest rules, not a Sybil guarantee.
 
-The dapp surface is three wallet methods: `wallet_strk20InvokeTransaction`, `wallet_strk20Balances`, `wallet_strk20Mode`. **There is no history API**, so the app cannot list private transfers; it infers them from private balance deltas it observes while open.
+## Locked technical boundary
 
-## Product surface
+Ready holds the viewing key. MorokPay uses Wallet API methods for private
+balances and `wallet_strk20InvokeTransaction` for a normal private transfer.
+It does not extract keys or call the hosted prover directly.
 
-- `/` — two doors: pay or get paid.
-- `/pay` — opens a QR/link and sends `{ type: "transfer" }` inside the pool.
-- `/sell` — merchant invoice (amount, label, invoice number) rendered as QR + link; invoices in `localStorage`.
-- `/treasury` — top up from Base over CCTP, shield, cash out.
+Ready exposes balances, not private transfer history. Therefore:
 
-Every page carries a sidebar with two balances: **Wallet** (public Ready) and **Payment wallet** (private STRK20), plus a local activity feed that badges Morok operations.
+- labels and references remain in the QR and local browser storage;
+- the merchant refreshes private balance and explicitly marks a request paid;
+- the deployed `MorokInvoices` event is not trusted as settlement proof;
+- an empty-note helper cannot prove the hidden recipient, token, or amount of a
+  separate transfer action. See [private-invoices.md](private-invoices.md).
 
-Default network is Sepolia (`NEXT_PUBLIC_STARKNET_NETWORK`, storage key `morokpay.network.v2`), switchable in the header. The pool fee comes from `get_fee_amount` on the pool: 2 STRK on Sepolia, 6 STRK on mainnet. **Sepolia transactions are not sprint evidence** — the sprint counts mainnet only.
+## Private Drop mechanics
 
-## Where the code is
+Recommended first campaign:
 
-Everything below is merged or open on `feat/onchain-invoice-commitment`:
+1. Publish the campaign post and a short demo video.
+2. Entrants open Get paid → Private Drop on Starknet mainnet.
+3. They connect Ready and shield once if their STRK20 public key is not yet
+   registered.
+4. They generate an open-reward QR and reply with the link or QR image.
+5. Freeze the first ten eligible entries and publish the list before the
+   announced randomness block.
+6. Use a future finalized Starknet block hash as the randomness seed. Everyone
+   receives a reward: one entry gets 10 USDC, two get 3 USDC, and seven get 2
+   USDC, for an exact 30 USDC budget.
+7. Open all ten requests in MorokPay and pay them privately from a funded Ready
+   account.
+8. Publish only pool transaction hashes as execution evidence. Do not claim
+   those hashes publicly identify the winner or amount.
 
-- `components/pay/balance-sidebar.tsx` in a two-column shell, with a local activity feed.
-- `lib/pay/activity.ts` — activity store, private-balance reconciliation, invoice matching. Deltas under 0.10 USDC are dropped as scan jitter.
-- `treasury-context` polls public balances every 20s and asks for private ones only on connect or after an operation, so Ready stops prompting to share balances.
-- `lib/pay/commitment.ts`, `lib/starknet/invoice-events.ts` — Poseidon commitments and the `InvoiceSettled` watcher used by both the till and the payer.
-- `lib/starknet/pool-fee.ts` — reads `get_fee_amount` instead of assuming 2 STRK.
+Freeze one absolute `/pay?...&kind=drop` URL per line in `entries.txt`, publish
+the file hash before the announced block, then run:
 
-`npx tsc --noEmit` and `npm test` pass.
+```bash
+node scripts/draw-private-drop.mjs entries.txt 0xFINALIZED_BLOCK_HASH
+```
 
-## Decisions made
+The script rejects duplicates, non-mainnet links, fixed self-selected reward
+amounts, and non-Drop links. It prints the canonical eligible-list hash, scoring
+algorithm, seed, and allocations. Pool registration still needs to be checked when
+freezing the eligible list; QR generation and the payment screen perform that
+check against `get_public_key`.
 
-**Invoice matching moves on-chain via a `privacy_invoke` helper.** Design, privacy analysis, and accepted tradeoffs are in [private-invoices.md](private-invoices.md). Short version: a payment becomes `[transfer, invoke]` in one transaction, and `MorokInvoices` emits `poseidon(TAG, merchant_secret, invoice_seq)` so a merchant reconciles from any device. The static-QR linkability tradeoff is knowingly accepted for now.
+All first ten valid participants are rewarded, so the campaign is not a lucky
+draw. The block hash only assigns the 10/3/3/2 USDC reward tiers. Allocation is
+auditable while payout recipient and amount remain private on-chain. The public
+QR itself necessarily reveals the entry address to people who see it.
 
-**Probe result: the buyer signs.** 40 000 mainnet blocks of pool events gave 19 transactions with 18 distinct senders — no relayer. The buyer's address is public on every private payment; the amount, the merchant, and the invoice are not.
+## App map
 
-## Test accounts
+- `/` — pay or get paid.
+- `/pay` — scan/paste request, optionally choose donation amount, private pay.
+- `/sell` — invoice, sale, donation, and Private Drop QR creation.
+- `/treasury` — Base CCTP top-up, shield, private balances, payout.
+- invoices and MorokPay activity are stored locally.
 
-`node scripts/gen-accounts.mjs` wrote three throwaway OZ accounts to `.secrets/sepolia-accounts.json` (gitignored): `deployer`, `payout`, `spare`. Fund from a Sepolia faucet, then `node scripts/deploy-account.mjs deployer`. Pass `mainnet` as the last argument to both for the real network — those keys hold real STRK, so treat the file as a wallet.
+Default network is controlled by `NEXT_PUBLIC_STARKNET_NETWORK`; the header can
+switch between Sepolia and mainnet. Pool fee is read from `get_fee_amount` (last
+verified: 2 STRK on Sepolia and 6 STRK on mainnet).
 
-These are plain accounts. They can declare, deploy, and receive public tokens. **They cannot shield or pay privately** — that needs Ready. Testing a real purchase end to end means two Ready profiles, one as buyer and one as merchant.
+## Submission state and next gates
 
-## Next steps
+- Unit tests, TypeScript, lint, and production build must all be green.
+- `strk20.json` already has three candidate mainnet pool transaction hashes, but
+  they must be the intended end-to-end product actions before submission.
+- Do not list the `MorokInvoices` address as proof of payment integration.
+- Record a mainnet demo: activate participant, generate Private Drop QR, fund
+  payer, scan and pay, refresh recipient balance.
+- Add final demo and video URLs to `strk20.json` only when public and verified.
+- Replace the public unauthenticated RPC with a reliable keyed endpoint before
+  campaign traffic.
 
-The Sepolia loop is done: `EchoHelper` and `MorokInvoices` are deployed, a real payment settled its commitment on-chain (`0x58bfa6aa…`), and both the till and the payer flip from the `InvoiceSettled` event. What is left is mainnet.
+## Identity
 
-1. ~~Deploy `MorokInvoices` on mainnet.~~ Live at `0x051587ed…`, pinned to the mainnet pool, declared in `0x3b49401d…`. The deploy cost 2.1 STRK all in.
-2. Run at least three mainnet payments against the live pool. Each costs 6 STRK of pool fee in shielded STRK, plus gas.
-3. Set `NEXT_PUBLIC_STARKNET_NETWORK=mainnet` on Vercel and swap the public Lava RPC for a keyed endpoint — both the till and the payer poll `getEvents`.
-4. Fill `strk20.json` (transactions, contracts, demo URL, video) and the README table.
+The earlier Aptos MorokPay repo at `C:\work\confident` has no reusable logo
+asset. Its recognizable identity is the restrained near-black wallet surface
+and plain MorokPay wordmark. Reuse that product lineage, but create a small
+portable mark designed for QR/video use rather than pretending an old logo file
+exists. Do not overwrite `brand.md` or the current theme until a palette and mark
+direction are explicitly selected.
 
-## Do not
+## Safety
 
-- Commit unless asked.
-- Take viewing keys out of Ready, or call the Privacy SDK proving service directly.
-- Treat Sepolia transactions as sprint evidence.
-- Commit `.secrets/` or any funded key.
+- Never commit `.secrets/` or funded keys.
+- Sepolia transactions are not hackathon mainnet evidence.
+- Do not describe a payment request, local status, or `InvoiceSettled` event as
+  cryptographic proof of payment.
+- Do not promise sender anonymity: the Ready account calling the pool is public.

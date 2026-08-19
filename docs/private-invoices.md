@@ -1,70 +1,64 @@
-# On-chain invoice matching
+# Private payment requests and reconciliation
 
-Status: design accepted, not implemented. Two probes must pass before any Cairo is written.
+## Current security boundary
 
-## Problem
+A MorokPay QR is a payment request. It may contain the recipient Ready address,
+an amount, a local reference, a label, and a request type. The payer submits a
+normal STRK20 private transfer. The label and reference are not sent to the pool.
 
-A merchant cannot tell which sale a private payment settles.
+The deployed `MorokInvoices` helper is **not used as payment proof**. Its
+`privacy_invoke` entry point can verify that the pool called the helper, but an
+empty-note helper cannot verify that a second action in the same private
+transaction transferred a particular token or amount to a particular hidden
+recipient. Anyone who knows a commitment could therefore emit the same receipt
+without paying the intended merchant.
 
-STRK20 notes encrypt a fixed set of fields — amount, token, sender address, recipient address, channel key, index. There is no free-form field, and the Wallet API `transfer` action accepts only `token`, `amount`, `recipient`. So the invoice number cannot ride along with the payment.
+Consequences:
 
-Today the invoice number lives on the payment link, and the merchant matches a sale by watching the private balance move in an open browser tab. That fails as soon as the merchant reconciles from another device, since Ready exposes no private history to dapps.
+- the app never marks an invoice paid from `InvoiceSettled`;
+- the merchant refreshes their private balance and marks the local request paid;
+- a historical `settledTx` may still be displayed for old local records, but is
+  not presented as cryptographic settlement proof;
+- `MorokInvoices` should not be listed as a core contest integration until a
+  helper can bind settlement to authenticated private note data.
 
-## Mechanism
+## Request types
 
-The Wallet API has a fourth action next to deposit / withdraw / transfer:
+- **Invoice** — fixed amount, label, and merchant reference.
+- **Sale** — fixed-price point-of-sale QR.
+- **Donation** — fixed amount or a reusable open-amount QR. For an open request,
+  each supporter chooses the amount after scanning; the public QR stays the same.
+- **Private Drop** — open reward request used as a contest entry. Creation is
+  enabled only after the app confirms the Ready address has a registered STRK20
+  public key in the selected pool.
 
-```
-{ type: "invoke", contract, calldata }
-```
+## What is private
 
-The pool calls the named contract through `INVOKE_SELECTOR` inside the same STRK20 transaction, and the contract returns `Span<OpenNoteDeposit>`. This is the anonymizer path used by the Ekubo, Vesu, and CCTP bridge helpers.
+The STRK20 transfer hides the transferred amount and recipient relationship from
+ordinary on-chain observers. It does not make everything around the payment
+private:
 
-`MorokInvoices` uses it without moving any tokens: it emits one event and returns an empty span. The escrow example in the STRK20 docs establishes that an empty span is a valid return ("credit nothing"), so a helper is not required to touch funds.
+- the Ready account submitting the pool transaction is public;
+- anyone who sees a QR can read the recipient address, fixed amount, label, and
+  reference encoded in that QR;
+- publishing a QR in a video intentionally makes those request fields public;
+- MorokPay activity and invoice status are local browser records, not private
+  history supplied by Ready.
 
-A payment becomes two actions in one transaction:
+For a creator donation QR, omit the amount and use a generic label. This gives
+the creator one durable link while keeping each supporter's chosen amount out of
+the shared QR.
 
-```
-[ { type: "transfer", token, amount, recipient: merchant },
-  { type: "invoke",   contract: MOROK_INVOICES, calldata: [commitment] } ]
-```
+## Future cross-device reconciliation
 
-## Commitment
+Do not revive the old opaque-commitment event without a binding proof. Safe
+directions are:
 
-The event carries a single opaque felt:
+1. an STRK20/Wallet API receipt primitive authenticated to the output note;
+2. a helper that receives authenticated open-note data and enforces token,
+   recipient channel, and amount before emitting a receipt;
+3. an encrypted merchant inbox where each payer creates a fresh ciphertext,
+   avoiding a static public event shared by everyone scanning the same QR.
 
-```
-commitment = poseidon([TAG, merchant_secret, invoice_seq])
-```
-
-- `merchant_secret` is derived from a Ready signature over a fixed message, so the merchant can recompute it on any device without syncing storage.
-- `invoice_seq` is a per-merchant counter, so the merchant enumerates `1..N` when reconciling and looks each commitment up by event key over plain RPC — no indexer.
-- Nothing else goes in. Amount and label stay off-chain; a fresh device learns *which invoices are settled*, not what they were for.
-
-Forgery needs `merchant_secret`, and `privacy_invoke` asserts the caller is the pool, so nobody can emit events by calling the contract directly. A repeated commitment is treated as the first occurrence.
-
-## What this leaks
-
-The buyer's account signs the pool transaction, so their address is already public on every private payment. The contract call adds one bit on top: that address paid *through MorokPay* at that time, which makes MorokPay users a publicly enumerable subset of the pool's anonymity set. The merchant address, the amount, and the invoice number stay hidden. The merchant signs nothing and never appears on chain.
-
-Anyone holding the payment link can recompute the commitment and confirm that a specific buyer settled a specific invoice. With a per-sale link that secret is shared by two parties, which is acceptable.
-
-**Accepted tradeoff:** a static QR reuses one `invoice_seq` across many buyers, so all of its payments carry an identical commitment and form a publicly linkable cluster; photographing the QR de-anonymizes that cluster. This is accepted for now. The fix, if it becomes worth building, is an announcement scheme — the buyer encrypts the invoice number to the merchant's public key, producing a distinct ciphertext per payment that only the merchant can scan for.
-
-## Probes
-
-1. **Who signs — answered, the buyer does.** `scripts/probe-pool-sender.mjs` scanned 40 000 mainnet blocks of pool events: 19 pool transactions, 18 distinct `sender_address` values. Nobody relays, so the buyer's account is public on every private payment and the leak above stands as written.
-
-   The same scan showed accounts calling `0x127021a1b5a52d3174c2ab077c2b043c80369250d29428cee956d76ee51584f` rather than the pool directly; the pool at `0x0403…812a` then emits its own events inside that transaction (`scripts/probe-pool-address.mjs`). Since the pool is what performs `privacy_invoke`, the pool address is what `MorokInvoices` must accept as caller — but confirm that in probe 2 before hardcoding it.
-
-2. **Bare invoke — open.** Deploy the docs' `EchoHelper` on Sepolia and send `[transfer, invoke]` from Ready. Confirms two unknowns at once: that the pool accepts an invoke with no withdraw leg, and that Ready does not block an unfamiliar contract. Log the caller the helper sees.
-
-If probe 2 fails, the fallback is a unique per-invoice amount nonce (for example `12.500137`), which makes the existing balance-delta match exact and writes nothing on chain — at the cost of cross-device reconciliation.
-
-## Build order
-
-1. Probe 2 above.
-2. Scarb package under `contracts/` with `MorokInvoices` and `snforge` tests.
-3. TypeScript: commitment helper, merchant key derivation, invoice counter.
-4. Pay flow appends the invoke action; sell flow reconciles by reading events over `getEvents`.
-5. Deploy to Sepolia, then mainnet; record addresses in `strk20.json` and the README.
+Until one exists, balance refresh plus explicit merchant confirmation is the
+honest product boundary.

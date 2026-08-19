@@ -154,7 +154,7 @@ export function FundPanel() {
       const balance = baseUsdc ?? (await refetchBaseUsdc()).data ?? BigInt(0);
       if (balance < value) throw new Error("Not enough USDC in MetaMask");
 
-      let currentAllowance =
+      const currentAllowance =
         allowance ?? (await refetchAllowance()).data ?? BigInt(0);
       if (currentAllowance < value) {
         setStep("approving");

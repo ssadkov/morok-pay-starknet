@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { ShieldIcon } from "lucide-react";
 
@@ -38,11 +38,6 @@ export function ShieldPanel() {
   const [amount, setAmount] = useState("");
   const [shielding, setShielding] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setAmount("");
-    setError(null);
-  }, [token.id]);
 
   if (!session) return null;
   const ready = session;
@@ -97,7 +92,13 @@ export function ShieldPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <TokenPicker labelledBy="shield-token-label" />
+        <TokenPicker
+          labelledBy="shield-token-label"
+          onTokenChange={() => {
+            setAmount("");
+            setError(null);
+          }}
+        />
         <p className="text-sm text-muted-foreground">
           Private balance: {formatShieldAmount(privateRaw, token)} {token.symbol}
         </p>

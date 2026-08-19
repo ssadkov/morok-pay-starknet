@@ -14,6 +14,7 @@ describe("payment request", () => {
     amount: "12.50",
     invoice: "INV-9K2M",
     label: "Coffee",
+    kind: "invoice" as const,
   };
 
   it("round-trips query params", () => {
@@ -32,19 +33,24 @@ describe("payment request", () => {
     expect(parsePaymentLink(paymentPath(request), "mainnet")).toEqual(request);
   });
 
-  it("round-trips the invoice commitment", () => {
-    const withCommitment = { ...request, commitment: "0x1e03577436026" };
-    expect(
-      parsePaymentLink(paymentPath(withCommitment), "mainnet"),
-    ).toEqual(withCommitment);
+  it("round-trips a private drop request", () => {
+    const drop = {
+      ...request,
+      amount: "",
+      kind: "drop" as const,
+      label: "MorokPay Private Drop",
+    };
+    expect(parsePaymentLink(paymentPath(drop), "mainnet")).toEqual(drop);
   });
 
-  it("drops a commitment that is not a felt", () => {
-    const parsed = parsePaymentRequest(
-      new URLSearchParams("to=0x1234&amount=1&c=nope"),
-      "sepolia",
-    );
-    expect(parsed?.commitment).toBeUndefined();
+  it("round-trips a reusable donation request without a fixed amount", () => {
+    const donation = {
+      ...request,
+      amount: "",
+      kind: "donation" as const,
+      label: "Support my channel",
+    };
+    expect(parsePaymentLink(paymentPath(donation), "mainnet")).toEqual(donation);
   });
 
   it("rejects missing amount or address", () => {

@@ -1,17 +1,29 @@
 import { parseAppNetwork, type AppNetwork } from "@/lib/network";
 
+export type PaymentKind = "invoice" | "sale" | "donation" | "drop";
+
 export type PaymentRequest = {
   network: AppNetwork;
   to: string;
   amount: string;
   invoice: string;
   label: string;
-  /** Poseidon invoice commitment settled through MorokInvoices. */
-  commitment?: string;
+  kind?: PaymentKind;
 };
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{1,64}$/;
-const FELT_RE = /^0x[0-9a-fA-F]{1,64}$/;
+const PAYMENT_KINDS = new Set<PaymentKind>([
+  "invoice",
+  "sale",
+  "donation",
+  "drop",
+]);
+
+function paymentKind(value: string): PaymentKind {
+  return PAYMENT_KINDS.has(value as PaymentKind)
+    ? (value as PaymentKind)
+    : "invoice";
+}
 
 function firstParam(
   params: URLSearchParams,
@@ -26,10 +38,10 @@ export function parsePaymentRequest(
 ): PaymentRequest | null {
   const to = firstParam(params, "to");
   const amount = firstParam(params, "amount");
-  if (!ADDRESS_RE.test(to) || !amount) return null;
-  if (!/^\d+(\.\d+)?$/.test(amount)) return null;
-
-  const commitment = firstParam(params, "c");
+  const kind = paymentKind(firstParam(params, "kind"));
+  if (!ADDRESS_RE.test(to)) return null;
+  if (!amount && kind !== "donation" && kind !== "drop") return null;
+  if (amount && !/^\d+(\.\d+)?$/.test(amount)) return null;
 
   return {
     network: parseAppNetwork(params.get("n"), fallbackNetwork),
@@ -37,7 +49,7 @@ export function parsePaymentRequest(
     amount,
     invoice: firstParam(params, "inv").slice(0, 64),
     label: firstParam(params, "label").slice(0, 80),
-    commitment: FELT_RE.test(commitment) ? commitment : undefined,
+    kind,
   };
 }
 
@@ -45,10 +57,12 @@ export function serializePaymentRequest(request: PaymentRequest): URLSearchParam
   const params = new URLSearchParams();
   params.set("n", request.network);
   params.set("to", request.to);
-  params.set("amount", request.amount);
+  if (request.amount) params.set("amount", request.amount);
   if (request.invoice) params.set("inv", request.invoice);
   if (request.label) params.set("label", request.label);
-  if (request.commitment) params.set("c", request.commitment);
+  if (request.kind && request.kind !== "invoice") {
+    params.set("kind", request.kind);
+  }
   return params;
 }
 
