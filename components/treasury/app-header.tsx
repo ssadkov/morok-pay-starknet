@@ -29,9 +29,9 @@ export function AppHeader() {
   const wallet = wallets[0];
 
   return (
-    <header className="border-b border-border">
-      <div className="mx-auto flex min-h-14 max-w-6xl items-center justify-between gap-4 px-4 py-3 md:px-6">
-        <div className="flex min-w-0 items-center gap-3">
+    <header className="border-b border-border/80 bg-background/90 backdrop-blur-xl">
+      <div className="mx-auto grid min-h-16 max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 px-4 py-3 sm:flex sm:gap-4 md:px-6">
+        <div className="flex min-w-0 items-center gap-3 sm:flex-1">
           <Link
             href="/"
             aria-label="MorokPay home"
@@ -53,37 +53,38 @@ export function AppHeader() {
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground",
-                  pathname === item.href && "bg-muted text-foreground",
+                  "rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                  pathname === item.href && "bg-accent text-accent-foreground",
                 )}
               >
                 {item.label}
               </Link>
             ))}
           </nav>
-          <ToggleGroup
-            aria-label="Network"
-            spacing={0}
-            size="sm"
-            variant="outline"
-            value={[network]}
-            onValueChange={(next) => {
-              const value = next[0];
-              if (value === "mainnet" || value === "sepolia") {
-                setNetwork(value as AppNetwork);
-              }
-            }}
-          >
-            <ToggleGroupItem value="mainnet">Mainnet</ToggleGroupItem>
-            <ToggleGroupItem value="sepolia">Sepolia</ToggleGroupItem>
-          </ToggleGroup>
         </div>
+        <ToggleGroup
+          aria-label="Network"
+          spacing={0}
+          size="sm"
+          variant="outline"
+          value={[network]}
+          className="col-span-2 row-start-2 justify-self-end sm:col-auto sm:row-auto"
+          onValueChange={(next) => {
+            const value = next[0];
+            if (value === "mainnet" || value === "sepolia") {
+              setNetwork(value as AppNetwork);
+            }
+          }}
+        >
+          <ToggleGroupItem value="mainnet">Mainnet</ToggleGroupItem>
+          <ToggleGroupItem value="sepolia">Sepolia</ToggleGroupItem>
+        </ToggleGroup>
         {session ? (
           <Button
             type="button"
             variant="outline"
             size="lg"
-            className="min-h-10"
+            className="min-h-10 max-w-44 truncate"
             onClick={disconnect}
           >
             {shortenAddress(session.address)}
@@ -92,7 +93,7 @@ export function AppHeader() {
           <Button
             type="button"
             size="lg"
-            className="min-h-10"
+            className="min-h-10 px-3 text-sm sm:px-5 sm:text-base"
             disabled={!wallet || connecting}
             aria-busy={connecting}
             onClick={() => {
@@ -117,8 +118,8 @@ export function AppHeader() {
             key={item.href}
             href={item.href}
             className={cn(
-              "rounded-md px-2 py-1 text-xs font-medium text-muted-foreground hover:text-foreground",
-              pathname === item.href && "bg-muted text-foreground",
+              "rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              pathname === item.href && "bg-accent text-accent-foreground",
             )}
           >
             {item.label}

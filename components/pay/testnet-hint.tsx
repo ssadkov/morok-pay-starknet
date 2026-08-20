@@ -49,6 +49,7 @@ export function TestnetHint() {
             type="button"
             variant="outline"
             size="sm"
+            nativeButton={false}
             render={
               <a
                 href={STARKNET_SEPOLIA_STRK_FAUCET_URL}
@@ -63,6 +64,7 @@ export function TestnetHint() {
             type="button"
             variant="outline"
             size="sm"
+            nativeButton={false}
             render={
               <a href={CIRCLE_FAUCET_URL} target="_blank" rel="noreferrer" />
             }
