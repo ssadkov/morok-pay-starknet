@@ -1,10 +1,11 @@
-# MorokPay Private First 10
+# MorokPay First 10 Donation Contest
 
-Status: approved campaign mechanic.
+Status: planned after the donation UI ships. Do not open the campaign while
+Get paid still presents invoice / sale / Drop as equal doors.
 
 ## Offer
 
-The first ten valid Private Drop entries all receive private USDC. Nobody in
+The first ten valid Donation QR entries all receive private USDC. Nobody in
 the accepted ten loses. The fixed campaign budget is exactly 30 USDC:
 
 | Recipients | Reward each | Subtotal |
@@ -21,11 +22,14 @@ assigns the reward tiers among the first ten eligible Ready addresses.
 
 1. Open MorokPay on Starknet mainnet.
 2. Connect Ready and activate STRK20 by shielding once.
-3. Open Get paid → Private Drop.
-4. Generate an open-amount Drop QR and submit its absolute link before the
+3. Create a Donation QR (amount empty) and submit its absolute link before the
    campaign closes.
-5. One registered Ready address counts once. The app verifies pool registration
+4. One registered Ready address counts once. The app verifies pool registration
    through `get_public_key`; social rules still handle duplicate people and bots.
+
+Until the UI pass lands, the same open-amount QR is still created as
+**Private Drop** (`kind=drop`). The allocator already treats those links as
+the contest entry. After the UI pass, freeze `kind=donation` links.
 
 QR creation and receiving a transfer do not charge the participant. A new user
 does pay the pool fee when they first shield to activate STRK20. Campaign copy
@@ -48,6 +52,9 @@ algorithm, and allocation result before sending payments.
 
 The current app pays one QR at a time. Do not budget as if batch payout already
 reduces the pool fee; that must first be demonstrated on Sepolia. For every
-payment, the organizer enters the allocated amount after opening the Drop link.
-The public allocation is auditable, while the normal STRK20 transfer does not
-publish its recipient and amount as a MorokPay receipt.
+payment, the organizer enters the allocated amount after opening the donation
+link. The public allocation is auditable, while the normal STRK20 transfer does
+not publish its recipient and amount as a MorokPay receipt.
+
+Do not route contest payouts through DonationPot. The contest is the private
+rail (hidden amount). The pot is a later, optional public-total rail.
