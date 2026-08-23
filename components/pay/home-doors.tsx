@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRightIcon, QrCodeIcon, WalletIcon } from "lucide-react";
+import { ArrowUpRightIcon, HeartIcon, QrCodeIcon } from "lucide-react";
 
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { useNetwork } from "@/components/network-provider";
@@ -18,34 +18,34 @@ export function HomeDoors() {
       />
       <div className="flex flex-col gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-          Private payments on Starknet
+          Private donations on Starknet
         </p>
         <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">
-          Private USDC payments
+          Support a creator privately
         </h1>
         <p className="max-w-2xl text-base leading-7 text-muted-foreground">
           {network === "sepolia"
-            ? "Testnet loop: pay or get paid with a QR on Starknet Sepolia. Ready holds the keys. Switch the header to Mainnet when you want sprint evidence."
-            : "Pay from a shielded balance, or create a QR for an invoice, a sale, a private donation, or the MorokPay Private Drop. Ready holds the keys."}
+            ? "Testnet: create a donation QR or open one, then pay with Ready on Starknet Sepolia. Switch the header to Mainnet for the contest."
+            : "One QR. The supporter chooses the amount. The transfer stays inside the STRK20 pool, so the shared link never shows how much was sent."}
         </p>
       </div>
       <TestnetHint />
       <div className="grid gap-4 sm:grid-cols-2">
         <Door
           href="/pay"
-          icon={<WalletIcon />}
-          title="Pay privately"
-          body="Open a payment link or scan a QR. Confirm in Ready. The transfer stays inside the STRK20 pool."
+          icon={<HeartIcon />}
+          title="Donate"
+          body="Open a donation link or scan a QR. Pick an amount. Confirm in Ready."
         />
         <Door
           href="/sell"
           icon={<QrCodeIcon />}
-          title="Get paid"
-          body="Create a private-payment QR for checkout, invoices, creator donations, or the Private Drop."
+          title="My QR"
+          body="Create one durable donation QR. Share it anywhere. Watch incoming USDC in Activity."
         />
       </div>
       <p className="text-sm text-muted-foreground">
-        Need to fund the private balance first?{" "}
+        Need private USDC first?{" "}
         <Link href="/treasury" className="underline underline-offset-4">
           {network === "sepolia"
             ? "Top up on Sepolia (faucet, then shield)"

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACTIVITY_STORAGE_KEY,
+  activityParties,
   classifyPrivateDelta,
   findIncomingInvoice,
   readActivity,
   sameAddress,
+  type ActivityItem,
 } from "./activity";
 import type { MerchantInvoice } from "./invoices";
 
@@ -63,6 +65,37 @@ describe("readActivity", () => {
     } finally {
       globals.window = original;
     }
+  });
+});
+
+describe("activityParties", () => {
+  const base = {
+    id: "1",
+    network: "sepolia" as const,
+    amount: "5",
+    at: 1,
+    address: seller,
+  };
+
+  it("uses explicit from/to on a sent donation", () => {
+    expect(
+      activityParties({
+        ...base,
+        kind: "pay",
+        from: seller,
+        to: "0xabc",
+      } as ActivityItem),
+    ).toEqual({ from: seller, to: "0xabc" });
+  });
+
+  it("does not treat the creator as the donor on old receive rows", () => {
+    expect(
+      activityParties({
+        ...base,
+        kind: "receive",
+        counterparty: seller,
+      } as ActivityItem),
+    ).toEqual({ from: undefined, to: seller });
   });
 });
 

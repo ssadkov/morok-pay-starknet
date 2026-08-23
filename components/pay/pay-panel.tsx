@@ -34,11 +34,7 @@ import {
   sameAddress,
   updateActivity,
 } from "@/lib/pay/activity";
-import {
-  parsePaymentLink,
-  parsePaymentRequest,
-  type PaymentKind,
-} from "@/lib/pay/request";
+import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
 import { transferPrivate } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import { formatUsdc } from "@/lib/starknet/status";
@@ -48,22 +44,16 @@ import { shortenAddress } from "@/lib/format";
 import { useAccountPresence } from "./use-account-presence";
 import { usePoolRegistration } from "./use-pool-registration";
 
-const KIND_COPY: Record<PaymentKind, string> = {
-  invoice: "Private USDC invoice",
-  sale: "Private USDC purchase",
-  donation: "Private USDC donation",
-  drop: "MorokPay Private Drop",
-};
+const PRESETS = ["2", "5", "10", "25"];
+
+function isOpenAmount(kind?: string, amount?: string) {
+  return !amount && (kind === "donation" || kind === "drop" || kind === undefined);
+}
 
 export function PayPanel() {
   const searchParams = useSearchParams();
   const { network, setNetwork, starknet } = useNetwork();
-  const {
-    session,
-    privateRaw,
-    balancesLoading,
-    refreshBalances,
-  } = useTreasury();
+  const { session, privateRaw, balancesLoading, refreshBalances } = useTreasury();
   const usdc = getShieldToken("usdc", network);
   const fromQuery = useMemo(
     () => parsePaymentRequest(searchParams, network),
@@ -78,6 +68,9 @@ export function PayPanel() {
   const [donationAmount, setDonationAmount] = useState("");
 
   const request = fromQuery ?? fromPaste;
+  const openAmount = request
+    ? isOpenAmount(request.kind, request.amount)
+    : false;
   const amountText = request?.amount || donationAmount;
   const recipientPresence = useAccountPresence(request?.to);
   const recipientRegistration = usePoolRegistration(request?.to);
@@ -114,12 +107,14 @@ export function PayPanel() {
       amountRaw: amount.toString(),
       invoice: request.invoice || undefined,
       label: request.label || undefined,
+      from: session.address,
+      to: request.to,
       counterparty: request.to,
       address: session.address,
     });
     const confirm = async (txHash: string | undefined) => {
       updateActivity(pending.id, { txHash, status: "confirmed" });
-      toast.success("Paid privately", {
+      toast.success("Donated privately", {
         description: txHash,
         action: txHash
           ? {
@@ -161,11 +156,11 @@ export function PayPanel() {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Pay privately</h1>
+        <h1 className="text-3xl font-semibold tracking-tight">Donate</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
-            ? "Sepolia: send shielded test USDC to a registered Ready. The reference stays in this payment link; the transfer itself remains inside STRK20."
-            : "Send shielded USDC to a registered Ready. Use the same QR flow for an invoice, a purchase, a donation, or a Private Drop reward."}
+            ? "Sepolia: send shielded test USDC to a registered Ready. The amount is not written into the QR."
+            : "Send shielded USDC to a creator. The shared QR never shows how much you chose."}
         </p>
       </div>
       <TestnetHint />
@@ -173,20 +168,20 @@ export function PayPanel() {
       {!fromQuery ? (
         <Card>
           <CardHeader>
-            <CardTitle>Open a request</CardTitle>
+            <CardTitle>Open a donation</CardTitle>
             <CardDescription>
-              Paste a MorokPay payment link if you did not scan a QR.
+              Paste a MorokPay link if you did not scan a QR.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <FieldGroup>
               <Field>
-                <FieldLabel htmlFor="pay-link">Payment link</FieldLabel>
+                <FieldLabel htmlFor="pay-link">Donation link</FieldLabel>
                 <Input
                   id="pay-link"
                   value={pasted}
                   inputMode="url"
-                  placeholder="/pay?to=0x…&amount=12.50&inv=INV-9K2M"
+                  placeholder="/pay?to=0x…&kind=donation"
                   onChange={(event) => {
                     const value = event.target.value;
                     setPasted(value);
@@ -194,9 +189,6 @@ export function PayPanel() {
                     setError(null);
                   }}
                 />
-                <FieldDescription>
-                  Ask the merchant for a QR, or paste the link they sent you.
-                </FieldDescription>
               </Field>
             </FieldGroup>
           </CardContent>
@@ -206,32 +198,37 @@ export function PayPanel() {
       {request ? (
         <Card>
           <CardHeader>
-            <CardTitle>
-              {request.label || KIND_COPY[request.kind ?? "invoice"]}
-            </CardTitle>
+            <CardTitle>{request.label || "Private donation"}</CardTitle>
             <CardDescription>
-              {request.amount ? `${request.amount} USDC` : "Choose your amount"}
-              {request.invoice ? ` · ${request.invoice}` : ""}
+              To {shortenAddress(request.to)} on Starknet {request.network}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            <p className="text-sm text-muted-foreground">
-              To {shortenAddress(request.to)} on Starknet {request.network}.
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Ready creates a normal private transfer inside the pool. The
-              label and reference are not written on-chain.
-            </p>
-            {!request.amount &&
-            (request.kind === "donation" || request.kind === "drop") ? (
+            {openAmount ? (
               <Field>
-                <FieldLabel htmlFor="payment-amount">
-                  {request.kind === "drop" ? "Reward" : "Donation"} (USDC)
-                </FieldLabel>
+                <FieldLabel htmlFor="payment-amount">Amount (USDC)</FieldLabel>
+                <div className="flex flex-wrap gap-2">
+                  {PRESETS.map((preset) => (
+                    <Button
+                      key={preset}
+                      type="button"
+                      size="lg"
+                      variant={donationAmount === preset ? "default" : "outline"}
+                      className="min-h-10 min-w-16"
+                      onClick={() => {
+                        setDonationAmount(preset);
+                        setError(null);
+                      }}
+                    >
+                      {preset}
+                    </Button>
+                  ))}
+                </div>
                 <Input
                   id="payment-amount"
+                  className="mt-2"
                   inputMode="decimal"
-                  placeholder="5.00"
+                  placeholder="Or enter an amount"
                   value={donationAmount}
                   onChange={(event) => {
                     setDonationAmount(event.target.value);
@@ -239,11 +236,13 @@ export function PayPanel() {
                   }}
                 />
                 <FieldDescription>
-                  The recipient gets a private STRK20 transfer. Your chosen
-                  amount is not added to the shared QR.
+                  This amount stays off the shared QR. Activity records your
+                  Ready as From and the creator as To.
                 </FieldDescription>
               </Field>
-            ) : null}
+            ) : (
+              <p className="text-sm tabular-nums">{request.amount} USDC</p>
+            )}
             {session ? (
               <p className="text-sm tabular-nums">
                 Your private USDC:{" "}
@@ -254,32 +253,28 @@ export function PayPanel() {
             ) : null}
             {session && sameAddress(request.to, session.address) ? (
               <Alert>
-                <AlertTitle>Paying your own Ready</AlertTitle>
+                <AlertTitle>This is your own QR</AlertTitle>
                 <AlertDescription>
-                  This invoice is addressed to the connected account, so
-                  Payment wallet USDC will only drop by the pool fee. Use a
-                  second Ready profile as the merchant to see a real private
-                  transfer.
+                  Paying it only costs the pool fee. Use a second Ready to see a
+                  real donation land.
                 </AlertDescription>
               </Alert>
             ) : null}
             {recipientPresence === "undeployed" ? (
               <Alert>
-                <AlertTitle>Merchant is not on Starknet {network} yet</AlertTitle>
+                <AlertTitle>Creator is not on Starknet {network} yet</AlertTitle>
                 <AlertDescription>
-                  This address has never transacted on {network}, so the pool
-                  cannot credit a private note to it. Use a claim link from Get
-                  paid instead — that parks the USDC until they join the pool.
+                  This Ready has never transacted here, so the pool cannot
+                  credit a note. Ask them to shield once, then try again.
                 </AlertDescription>
               </Alert>
             ) : null}
             {recipientPresence !== "undeployed" &&
             recipientRegistration === "unregistered" ? (
               <Alert>
-                <AlertTitle>Recipient has not activated STRK20</AlertTitle>
+                <AlertTitle>Creator has not activated STRK20</AlertTitle>
                 <AlertDescription>
-                  This Ready address has no public key registered in the pool.
-                  Ask its owner to shield once before you pay this request.
+                  Ask them to shield once before you donate.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -292,13 +287,13 @@ export function PayPanel() {
                       ? "Get test USDC, then shield"
                       : "Top up from Base and shield"}
                   </Link>{" "}
-                  before paying.
+                  before donating.
                 </AlertDescription>
               </Alert>
             ) : null}
             {error ? (
               <Alert variant="destructive">
-                <AlertTitle>Could not pay</AlertTitle>
+                <AlertTitle>Could not donate</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             ) : null}
@@ -308,13 +303,13 @@ export function PayPanel() {
               <Button
                 type="button"
                 size="lg"
-                className="min-h-10"
+                className="min-h-12"
                 disabled={
                   paying ||
                   privateRaw === BigInt(0) ||
-                  recipientPresence === "undeployed"
-                  || !amountText.trim()
-                  || recipientRegistration === "unregistered"
+                  recipientPresence === "undeployed" ||
+                  !amountText.trim() ||
+                  recipientRegistration === "unregistered"
                 }
                 aria-busy={paying}
                 onClick={() => {
@@ -322,11 +317,11 @@ export function PayPanel() {
                 }}
               >
                 {paying ? <Spinner data-icon="inline-start" /> : null}
-                {paying ? "Paying" : `Pay ${amountText || "…"} USDC`}
+                {paying ? "Donating" : `Donate ${amountText || "…"} USDC`}
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Connect Ready above to confirm this payment.
+                Connect Ready above to confirm.
               </p>
             )}
           </CardFooter>

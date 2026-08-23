@@ -21,11 +21,37 @@ export type ActivityItem = {
   amountRaw?: string;
   invoice?: string;
   label?: string;
+  /** Other party on older records. Prefer `from` / `to`. */
   counterparty?: string;
+  from?: string;
+  to?: string;
   address?: string;
   txHash?: string;
   at: number;
 };
+
+/** Wallets on a row so the till shows where a donation went. Incoming `from` is often missing: STRK20 hides the sender. */
+export function activityParties(item: ActivityItem): {
+  from?: string;
+  to?: string;
+} {
+  if (item.from || item.to) {
+    return { from: item.from, to: item.to };
+  }
+  if (item.kind === "pay") {
+    return { from: item.address, to: item.counterparty };
+  }
+  if (item.kind === "receive") {
+    const from =
+      item.counterparty &&
+      item.address &&
+      sameAddress(item.counterparty, item.address)
+        ? undefined
+        : item.counterparty;
+    return { from, to: item.address };
+  }
+  return { from: item.address, to: item.address };
+}
 
 export const ACTIVITY_STORAGE_KEY = "morokpay.activity";
 export const ACTIVITY_CHANGE_EVENT = "morokpay-activity";
@@ -252,7 +278,7 @@ export function recordMorokSale(
     amountRaw,
     invoice: invoice.invoice,
     label: invoice.label,
-    counterparty: invoice.to,
+    to: address,
     address,
     txHash,
   });
@@ -299,6 +325,7 @@ export function reconcilePrivateBalance(args: {
       source: "private",
       amount: formatUsdcRaw(classified.amountRaw),
       amountRaw: classified.amountRaw.toString(),
+      to: args.address,
       address: args.address,
     });
   }
@@ -309,6 +336,7 @@ export function reconcilePrivateBalance(args: {
       source: "private",
       amount: formatUsdcRaw(classified.amountRaw),
       amountRaw: classified.amountRaw.toString(),
+      from: args.address,
       address: args.address,
     });
   }

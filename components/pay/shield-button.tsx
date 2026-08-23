@@ -100,6 +100,8 @@ export function ShieldButton() {
           source: "morok",
           amount: formatUsdc(parsed),
           amountRaw: parsed.toString(),
+          from: session.address,
+          to: session.address,
           address: session.address,
           txHash: response.transaction_hash,
         });

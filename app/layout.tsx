@@ -19,9 +19,9 @@ const jetBrainsMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "MorokPay — private USDC",
+  title: "MorokPay — private donations",
   description:
-    "Private invoices, sales, creator donations, and Private Drop rewards on Starknet STRK20.",
+    "Private USDC donations on Starknet. One QR, supporter-chosen amount, transfer inside STRK20.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

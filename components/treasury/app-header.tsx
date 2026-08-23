@@ -15,9 +15,8 @@ import { shortenAddress } from "@/lib/format";
 import type { AppNetwork } from "@/lib/network";
 
 const NAV = [
-  { href: "/pay", label: "Pay" },
-  { href: "/sell", label: "Get paid" },
-  { href: "/claim", label: "Claim" },
+  { href: "/pay", label: "Donate" },
+  { href: "/sell", label: "My QR" },
   { href: "/treasury", label: "Top up" },
 ] as const;
 
@@ -42,8 +41,8 @@ export function AppHeader() {
               <span className="text-sm font-medium tracking-tight">MorokPay</span>
               <span className="text-xs text-muted-foreground">
                 {network === "sepolia"
-                  ? "Private USDC · testnet"
-                  : "Private USDC"}
+                  ? "Private donations · testnet"
+                  : "Private donations"}
               </span>
             </span>
           </Link>

@@ -78,6 +78,41 @@ Once Donate works on Sepolia through Ready:
 - optional perk if `amount >= threshold`, from inventory the creator prepaid
   (needs two open notes in one transaction);
 - `Sweep` into the official Vesu helper instead of liquid USDC (the pot total,
-  not each donation).
+  not each donation);
+- **service fee** — same helper, a basis-point cut to MorokPay.
 
 Neither is a reason to write Cairo before the donation UI and the contest.
+
+### Service fee (%)
+
+A `%` for the service is possible only where the helper already sees `amount`:
+on DonationPot, not on a private `transfer`.
+
+Preferred shape: **fee on Sweep, not on every donate**. The thermometer shows
+what supporters put in. When the creator cashes out, Cairo splits one amount
+into two `OpenNoteDeposit`s — creator and service — in the same
+`privacy_invoke` (one invoke per tx is the protocol cap; two notes are fine).
+
+```
+sweep_amount = jar.balance
+fee          = sweep_amount * bps / 10_000
+creator      = sweep_amount - fee
+→ OpenNoteDeposit { creator_note, USDC, creator }
+→ OpenNoteDeposit { service_note, USDC, fee }
+```
+
+Dust from integer division stays with the creator. `bps` is fixed at pot
+deploy (or a protocol default). Do not read it from calldata on Sweep — the
+caller is the pool, so a payer could pass `0`.
+
+Fee-on-donate is worse: every tip leaks an extra split, the public total no
+longer matches what the creator will receive, and the service has to sweep a
+second bucket. Take the cut once, when money leaves.
+
+Both notes are open: **fee amount is public**, owners stay hidden. Same
+privacy as a normal Sweep. The service later unshields at its own edge.
+
+A private-rail tip cannot pay a protocol `%` without first going through a
+helper, which publishes the amount and ceases to be that rail. If a fee is
+needed on silent QR donations, it is off-chain (subscription, invoice to the
+creator), not Cairo.

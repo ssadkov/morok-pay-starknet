@@ -7,11 +7,11 @@ import {
   RefreshCwIcon,
   WalletIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { ShieldButton } from "@/components/pay/shield-button";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -21,7 +21,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { shortenAddress } from "@/lib/format";
 import {
+  activityParties,
   readActivity,
   subscribeActivity,
   type ActivityItem,
@@ -42,22 +44,16 @@ function useActivity(
 }
 
 function activityCopy(item: ActivityItem) {
-  const morok = item.source !== "private";
   switch (item.kind) {
     case "pay":
       return {
-        title:
-          item.status === "pending"
-            ? "Sending"
-            : morok
-              ? "Purchase"
-              : "Private out",
+        title: item.status === "pending" ? "Sending" : "Sent",
         icon: ArrowUpRightIcon,
         sign: "−" as const,
       };
     case "receive":
       return {
-        title: morok ? "Sale" : "Private in",
+        title: "Received",
         icon: ArrowDownLeftIcon,
         sign: "+" as const,
       };
@@ -74,6 +70,59 @@ function activityCopy(item: ActivityItem) {
         sign: "−" as const,
       };
   }
+}
+
+async function copyAddress(value: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success("Address copied");
+  } catch {
+    toast.error("Could not copy address");
+  }
+}
+
+function WalletLine({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string;
+}) {
+  if (!value) {
+    return (
+      <p className="text-[11px] text-muted-foreground">
+        {label} Hidden
+      </p>
+    );
+  }
+  return (
+    <p className="flex min-w-0 items-baseline gap-1.5 text-[11px] text-muted-foreground">
+      <span>{label}</span>
+      <button
+        type="button"
+        className="min-w-0 truncate font-mono tabular-nums underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
+        title={value}
+        onClick={() => {
+          void copyAddress(value);
+        }}
+      >
+        {shortenAddress(value)}
+      </button>
+    </p>
+  );
+}
+
+function ActivityParties({ item }: { item: ActivityItem }) {
+  const { from, to } = activityParties(item);
+  if (item.kind === "shield" || item.kind === "unshield") {
+    return <WalletLine label="Wallet" value={from ?? to} />;
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <WalletLine label="From" value={from} />
+      <WalletLine label="To" value={to} />
+    </div>
+  );
 }
 
 export function BalanceSidebar() {
@@ -93,7 +142,7 @@ export function BalanceSidebar() {
             <div>
               <CardTitle>Balances</CardTitle>
               <CardDescription>
-                Public Ready wallet and private payment wallet.
+                Public Ready and private donation wallet.
               </CardDescription>
             </div>
             {session ? (
@@ -115,8 +164,7 @@ export function BalanceSidebar() {
         <CardContent className="flex flex-col gap-3">
           {!session ? (
             <p className="text-sm text-muted-foreground">
-              Connect Ready in the header to see how much is in the wallet and
-              the payment wallet.
+              Connect Ready to see public and private USDC.
             </p>
           ) : (
             <>
@@ -129,14 +177,14 @@ export function BalanceSidebar() {
                 action={<ShieldButton />}
               />
               <BalanceRow
-                label="Payment wallet"
-                hint="Private STRK20 pool"
+                label="Private"
+                hint="STRK20 pool"
                 loading={loading}
                 amount={`${formatUsdc(privateUsdc)} USDC`}
                 extra={
                   balances?.privateError
                     ? balances.privateError
-                    : "In-pool only — Ready holds the viewing key"
+                    : "Ready holds the viewing key"
                 }
               />
             </>
@@ -148,19 +196,19 @@ export function BalanceSidebar() {
         <CardHeader>
           <CardTitle>Activity</CardTitle>
           <CardDescription>
-            Private balance changes on this device. Morok payments and invoices
-            are marked.
+            Donations this browser recorded. Incoming sender is hidden by the
+            pool; destination is this Ready.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {!session ? (
             <p className="text-sm text-muted-foreground">
-              Purchases, sales, and top-ups show up here after you connect.
+              Donations and top-ups show up here after you connect.
             </p>
           ) : items.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No private movement yet. Ready keeps the full history; this list
-              is what this browser can see.
+              No movement yet. Ready keeps the full history; this list is what
+              this browser can see.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">
@@ -177,29 +225,21 @@ export function BalanceSidebar() {
                         <Icon className="size-3.5 shrink-0 text-muted-foreground" />
                         <div className="min-w-0">
                           <p className="text-sm font-medium">{copy.title}</p>
-                          {item.label || item.invoice ? (
+                          {item.label ? (
                             <p className="truncate text-xs text-muted-foreground">
-                              {[item.invoice, item.label]
-                                .filter(Boolean)
-                                .join(" · ")}
+                              {item.label}
                             </p>
                           ) : null}
                         </div>
                       </div>
-                      <p className="shrink-0 text-sm tabular-nums">
+                      <p className="shrink-0 font-mono text-sm tabular-nums">
                         {copy.sign}
                         {item.amount} USDC
                       </p>
                     </div>
-                    <div className="mt-1.5 flex items-center justify-between gap-2">
-                      {item.source !== "private" ? (
-                        <Badge>Morok</Badge>
-                      ) : (
-                        <span className="text-[11px] text-muted-foreground">
-                          Private pool
-                        </span>
-                      )}
-                      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                    <div className="mt-1.5 flex items-end justify-between gap-2">
+                      <ActivityParties item={item} />
+                      <span className="shrink-0 text-[11px] text-muted-foreground">
                         {item.txHash ? (
                           <a
                             href={`${starknet.explorer}/tx/${item.txHash}`}
@@ -209,8 +249,9 @@ export function BalanceSidebar() {
                           >
                             Voyager
                           </a>
-                        ) : null}
-                        {new Date(item.at).toLocaleString()}
+                        ) : (
+                          new Date(item.at).toLocaleString()
+                        )}
                       </span>
                     </div>
                   </li>
@@ -248,7 +289,7 @@ function BalanceRow({
       {loading ? (
         <Skeleton className="mt-2 h-7 w-28" />
       ) : (
-        <p className="mt-2 text-xl font-semibold tracking-tight tabular-nums">
+        <p className="mt-2 font-mono text-xl font-semibold tracking-tight tabular-nums">
           {amount}
         </p>
       )}
