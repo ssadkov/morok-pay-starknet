@@ -21,12 +21,22 @@ export function usePoolRegistration(
 
   useEffect(() => {
     if (!address) return;
+    const target = address;
     let cancelled = false;
-    poolRegistration(network, address).then((value) => {
+    async function load() {
+      const value = await poolRegistration(network, target);
       if (!cancelled) setResult({ key, value });
-    });
+      return value;
+    }
+    void load();
+    const id = window.setInterval(() => {
+      void load().then((value) => {
+        if (value === "registered") window.clearInterval(id);
+      });
+    }, 6000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, [network, address, key]);
 

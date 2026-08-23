@@ -4,10 +4,10 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { CopyIcon } from "lucide-react";
 
-import { ConnectPanel } from "@/components/treasury/connect-panel";
+import { ConnectReady } from "@/components/pay/connect-ready";
+import { OnboardingSteps } from "@/components/pay/onboarding-steps";
 import { QrCode } from "@/components/pay/qr-code";
 import { ShieldButton } from "@/components/pay/shield-button";
-import { TestnetHint } from "@/components/pay/testnet-hint";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -35,10 +35,12 @@ import {
   subscribeInvoices,
   type MerchantInvoice,
 } from "@/lib/pay/invoices";
+import { STARKNET_SEPOLIA_STRK_FAUCET_URL } from "@/lib/pay/testnet";
 import { paymentUrl, type PaymentRequest } from "@/lib/pay/request";
-import { formatUsdc } from "@/lib/starknet/status";
+import { formatStrk } from "@/lib/starknet/status";
 
 import { useAccountPresence } from "./use-account-presence";
+import { usePoolFee } from "./use-pool-fee";
 import { usePoolRegistration } from "./use-pool-registration";
 
 const EMPTY: MerchantInvoice[] = [];
@@ -65,7 +67,7 @@ function donationFor(
 
 export function SellPanel() {
   const { network } = useNetwork();
-  const { session, privateRaw, balancesLoading } = useTreasury();
+  const { session, balances } = useTreasury();
   const invoices = useInvoices(network);
   const [label, setLabel] = useState("");
   const [created, setCreated] = useState<PaymentRequest | null>(null);
@@ -73,7 +75,15 @@ export function SellPanel() {
   const [error, setError] = useState<string | null>(null);
   const presence = useAccountPresence(session?.address);
   const registration = usePoolRegistration(session?.address);
-  const canReceive = presence !== "undeployed" && registration !== "unregistered";
+  const poolFee = usePoolFee();
+  const publicStrk = balances?.strkWei ?? BigInt(0);
+  const needStrk = poolFee * BigInt(2);
+  const canReceive =
+    presence !== "undeployed" && registration === "registered";
+  const checking =
+    !!session &&
+    !canReceive &&
+    (presence === "unknown" || registration === "unknown");
 
   const stored = session
     ? donationFor(invoices, session.address)
@@ -126,41 +136,85 @@ export function SellPanel() {
     }
   }
 
+  const activateStatus = !session
+    ? "upcoming"
+    : canReceive
+      ? "done"
+      : "current";
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">My donation QR</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          One durable link. Supporters choose the amount. Incoming USDC shows in
-          Activity with this Ready as the destination.
+          One durable link. Supporters choose the amount. You will see the
+          USDC. You will not see who sent it.
         </p>
       </div>
-      <TestnetHint />
 
-      {!session ? <ConnectPanel /> : null}
+      <OnboardingSteps
+        title="Get ready to receive"
+        description={`Match the header to ${network === "sepolia" ? "Sepolia" : "Mainnet"} in Ready. Shield STRK once — that deploys this account and turns on private notes.`}
+        doneLabel={`Ready · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
+        steps={[
+          {
+            id: "ready",
+            title: "Connect Ready",
+            body: "Ready holds the viewing key. Braavos cannot shield.",
+            status: session ? "done" : "current",
+            children: session ? null : <ConnectReady />,
+          },
+          {
+            id: "activate",
+            title: "Activate with STRK",
+            body: checking
+              ? "Checking this Ready on the pool…"
+              : `Shield more than ${formatStrk(poolFee)} STRK. You do not need USDC to receive donations.`,
+            status: activateStatus,
+            children:
+              activateStatus === "current" && !checking ? (
+                <>
+                  {publicStrk <= poolFee ? (
+                    <p className="text-sm text-muted-foreground">
+                      This Ready has {formatStrk(publicStrk)} STRK. You need
+                      more than {formatStrk(poolFee)} (about {formatStrk(needStrk)}{" "}
+                      is a safe amount).
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    {network === "sepolia" ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="min-h-12"
+                        nativeButton={false}
+                        render={
+                          <a
+                            href={STARKNET_SEPOLIA_STRK_FAUCET_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                          />
+                        }
+                      >
+                        Get test STRK
+                      </Button>
+                    ) : null}
+                  </div>
+                  <ShieldButton token="strk" />
+                </>
+              ) : null,
+          },
+        ]}
+      />
 
-      {presence === "undeployed" || registration === "unregistered" ? (
-        <Alert>
-          <AlertTitle>Activate STRK20 first</AlertTitle>
-          <AlertDescription className="flex flex-col gap-3">
-            <p>
-              Shield once on {network} so the pool can credit private notes to
-              this Ready. Then share the QR.
-            </p>
-            <ShieldButton />
-          </AlertDescription>
-        </Alert>
-      ) : null}
-
-      {session && canReceive && !request ? (
+      {canReceive && !request ? (
         <Card>
           <CardHeader>
             <CardTitle>Create your QR</CardTitle>
             <CardDescription>
-              Private USDC on this Ready:{" "}
-              {balancesLoading && privateRaw === BigInt(0)
-                ? "…"
-                : `${formatUsdc(privateRaw)} USDC`}
+              Amount stays off the link. Incoming USDC shows in Activity as To
+              this Ready, From hidden.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -174,7 +228,7 @@ export function SellPanel() {
                   onChange={(event) => setLabel(event.target.value)}
                 />
                 <FieldDescription>
-                  Shown on the pay screen. Amount stays off the QR.
+                  Shown on the pay screen. Leave blank to use “{DEFAULT_LABEL}”.
                 </FieldDescription>
               </Field>
             </FieldGroup>
@@ -202,7 +256,7 @@ export function SellPanel() {
         </Card>
       ) : null}
 
-      {request && payUrl ? (
+      {canReceive && request && payUrl ? (
         <Card>
           <CardHeader>
             <CardTitle>{request.label || DEFAULT_LABEL}</CardTitle>

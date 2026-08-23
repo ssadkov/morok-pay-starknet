@@ -19,12 +19,17 @@ import { getShieldToken } from "@/lib/starknet/tokens";
 
 import { usePoolFee } from "./use-pool-fee";
 
-export function ShieldButton() {
+export function ShieldButton({
+  token,
+}: {
+  /** Lock the control to one asset. Onboarding uses this so the creator only sees STRK. */
+  token?: "usdc" | "strk";
+} = {}) {
   const { session, balances, refreshBalances } = useTreasury();
   const { network, starknet } = useNetwork();
   const [amount, setAmount] = useState("");
   const [shielding, setShielding] = useState(false);
-  const [shieldStrk, setShieldStrk] = useState(false);
+  const [shieldStrk, setShieldStrk] = useState(token === "strk");
   const usdc = getShieldToken("usdc", network);
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
@@ -33,9 +38,7 @@ export function ShieldButton() {
   // The deposit pays a fee of its own, so shielding the fee itself credits
   // nothing and the wallet rejects it.
   const defaultFeeShield = poolFee * BigInt(2);
-  // The pool bills the fee in whatever token moves, so shielded STRK is
-  // optional. Keep the path for anyone who wants to pay fees in STRK.
-  const needsFeeStrk = shieldStrk;
+  const needsFeeStrk = token ? token === "strk" : shieldStrk;
 
   if (!session) return null;
 
@@ -68,7 +71,19 @@ export function ShieldButton() {
           STRK_ADDRESS,
           parsed,
         );
-        toast.success("STRK shielded for pool fees", {
+        recordActivity({
+          network,
+          kind: "shield",
+          source: "morok",
+          amount: formatStrk(parsed),
+          amountRaw: parsed.toString(),
+          label: "STRK",
+          from: session.address,
+          to: session.address,
+          address: session.address,
+          txHash: response.transaction_hash,
+        });
+        toast.success("STRK shielded — private payments are on", {
           description: response.transaction_hash,
           action: {
             label: "Voyager",
@@ -127,7 +142,9 @@ export function ShieldButton() {
     }
   }
 
-  const available = needsFeeStrk ? publicStrk : publicUsdc;
+  const canShield = needsFeeStrk
+    ? publicStrk > poolFee
+    : publicUsdc > BigInt(0);
   const placeholder = needsFeeStrk
     ? formatStrk(defaultFeeShield)
     : publicUsdc > BigInt(0)
@@ -138,19 +155,21 @@ export function ShieldButton() {
     <div className="flex w-full flex-col gap-2">
       <p className="text-xs text-muted-foreground">
         {needsFeeStrk
-          ? `The deposit pays the pool fee itself, so shield more than ${formatStrk(poolFee)} STRK or it credits nothing.`
-          : `Moves public USDC into the private payment wallet. The pool fee comes out of the amount, worth ${formatStrk(poolFee)} STRK.`}
+          ? `Shield more than ${formatStrk(poolFee)} STRK. The deposit pays that fee itself, then Ready registers this account in the pool.`
+          : `Moves public USDC into the private wallet. The pool fee comes out of the amount, worth ${formatStrk(poolFee)} STRK.`}
       </p>
-      <button
-        type="button"
-        className="self-start text-xs text-muted-foreground underline underline-offset-2"
-        onClick={() => {
-          setShieldStrk(!needsFeeStrk);
-          setAmount("");
-        }}
-      >
-        {needsFeeStrk ? "Shield USDC instead" : "Shield STRK for pool fees"}
-      </button>
+      {token ? null : (
+        <button
+          type="button"
+          className="self-start text-xs text-muted-foreground underline underline-offset-2"
+          onClick={() => {
+            setShieldStrk(!needsFeeStrk);
+            setAmount("");
+          }}
+        >
+          {needsFeeStrk ? "Shield USDC instead" : "Shield STRK for pool fees"}
+        </button>
+      )}
       <div className="flex gap-2">
         <Input
           id="shield-amount"
@@ -158,14 +177,14 @@ export function ShieldButton() {
           aria-label={needsFeeStrk ? "STRK amount to shield" : "USDC amount to shield"}
           placeholder={placeholder}
           value={amount}
-          disabled={shielding || available <= BigInt(0)}
+          disabled={shielding || !canShield}
           onChange={(event) => setAmount(event.target.value)}
         />
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={shielding || available <= BigInt(0)}
+          disabled={shielding || !canShield}
           onClick={fillMax}
         >
           Max
@@ -173,8 +192,9 @@ export function ShieldButton() {
       </div>
       <Button
         type="button"
-        size="sm"
-        disabled={shielding || available <= BigInt(0)}
+        size={token ? "lg" : "sm"}
+        className={token ? "min-h-12" : undefined}
+        disabled={shielding || !canShield}
         aria-busy={shielding}
         onClick={() => {
           void handleShield();

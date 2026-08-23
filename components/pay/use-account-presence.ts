@@ -19,16 +19,26 @@ export function useAccountPresence(address: string | undefined): AccountPresence
 
   useEffect(() => {
     if (!address) return;
+    const target = address;
     let cancelled = false;
-    accountPresence(network, address)
-      .then((value) => {
+    async function load() {
+      try {
+        const value = await accountPresence(network, target);
         if (!cancelled) setResult({ key, value });
-      })
-      .catch(() => {
-        // Leave it unknown; the UI only warns on a definite answer.
+        return value;
+      } catch {
+        return "unknown" as const;
+      }
+    }
+    void load();
+    const id = window.setInterval(() => {
+      void load().then((value) => {
+        if (value === "deployed") window.clearInterval(id);
       });
+    }, 6000);
     return () => {
       cancelled = true;
+      window.clearInterval(id);
     };
   }, [network, address, key]);
 
