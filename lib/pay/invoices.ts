@@ -6,6 +6,10 @@ export type InvoiceStatus = "unpaid" | "paid";
 export type MerchantInvoice = PaymentRequest & {
   createdAt: number;
   status: InvoiceStatus;
+  /** Local confirmation time. Not cryptographic payment proof. */
+  paidAt?: number;
+  /** Local merchant workflow state. */
+  fulfilledAt?: number;
   /** Block height when the invoice was created, so event scans stay short. */
   fromBlock?: number;
   /** Legacy display-only transaction hash; never treated as payment proof. */
@@ -25,7 +29,7 @@ function randomId() {
   return `INV-${token}`;
 }
 
-export function nextInvoiceId(prefix = "INV"): string {
+export function nextInvoiceId(prefix = "SALE"): string {
   return randomId().replace("INV", prefix.replace(/[^A-Z0-9]/gi, "").toUpperCase() || "INV");
 }
 
@@ -74,7 +78,26 @@ export function markInvoicePaid(
   writeAll(
     readAll().map((entry) =>
       entry.network === network && entry.invoice === invoice
-        ? { ...entry, status: "paid", settledTx: settledTx ?? entry.settledTx }
+        ? {
+            ...entry,
+            status: "paid",
+            paidAt: entry.paidAt ?? Date.now(),
+            settledTx: settledTx ?? entry.settledTx,
+          }
+        : entry,
+    ),
+  );
+}
+
+export function setSaleFulfilled(
+  network: AppNetwork,
+  sale: string,
+  fulfilled: boolean,
+) {
+  writeAll(
+    readAll().map((entry) =>
+      entry.network === network && entry.invoice === sale
+        ? { ...entry, fulfilledAt: fulfilled ? Date.now() : undefined }
         : entry,
     ),
   );

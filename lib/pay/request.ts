@@ -1,6 +1,6 @@
 import { parseAppNetwork, type AppNetwork } from "@/lib/network";
 
-export type PaymentKind = "invoice" | "sale" | "donation" | "drop";
+export type PaymentKind = "invoice" | "sale" | "donation";
 
 export type PaymentRequest = {
   network: AppNetwork;
@@ -16,10 +16,12 @@ const PAYMENT_KINDS = new Set<PaymentKind>([
   "invoice",
   "sale",
   "donation",
-  "drop",
 ]);
 
 function paymentKind(value: string): PaymentKind {
+  // Keep previously shared Drop links payable after consolidating the
+  // open-amount flow into Donation.
+  if (value === "drop") return "donation";
   return PAYMENT_KINDS.has(value as PaymentKind)
     ? (value as PaymentKind)
     : "invoice";
@@ -40,7 +42,7 @@ export function parsePaymentRequest(
   const amount = firstParam(params, "amount");
   const kind = paymentKind(firstParam(params, "kind"));
   if (!ADDRESS_RE.test(to)) return null;
-  if (!amount && kind !== "donation" && kind !== "drop") return null;
+  if (!amount && kind !== "donation") return null;
   if (amount && !/^\d+(\.\d+)?$/.test(amount)) return null;
 
   return {

@@ -16,7 +16,8 @@ without paying the intended merchant.
 Consequences:
 
 - the app never marks an invoice paid from `InvoiceSettled`;
-- the merchant refreshes their private balance and marks the local request paid;
+- the merchant refreshes their private balance and confirms the matching local
+  sale as paid;
 - a historical `settledTx` may still be displayed for old local records, but is
   not presented as cryptographic settlement proof;
 - `MorokInvoices` should not be listed as a core contest integration until a
@@ -24,13 +25,10 @@ Consequences:
 
 ## Request types
 
-- **Invoice** — fixed amount, label, and merchant reference.
-- **Sale** — fixed-price point-of-sale QR.
-- **Donation** — fixed amount or a reusable open-amount QR. For an open request,
-  each supporter chooses the amount after scanning; the public QR stays the same.
-- **Private Drop** — open reward request used as a contest entry. Creation is
-  enabled only after the app confirms the Ready address has a registered STRK20
-  public key in the selected pool.
+- **Sale** is the only request created by the current seller interface: product,
+  fixed USDC price, and an automatically generated reference.
+- Previously shared Invoice and Donation links remain parseable for backwards
+  compatibility, but they are not offered as new seller workflows.
 
 ## What is private
 
@@ -42,7 +40,7 @@ private:
 - anyone who sees a QR can read the recipient address, fixed amount, label, and
   reference encoded in that QR;
 - publishing a QR in a video intentionally makes those request fields public;
-- MorokPay activity and invoice status are local browser records, not private
+- MorokPay activity and sale status are local browser records, not private
   history supplied by Ready.
 
 For a creator donation QR, omit the amount and use a generic label. This gives
@@ -62,3 +60,30 @@ directions are:
 
 Until one exists, balance refresh plus explicit merchant confirmation is the
 honest product boundary.
+
+### Candidate: invoice-bound open note
+
+A replacement `MorokInvoices` can be useful if the invoice is bound to a
+merchant-created open note instead of trying to infer the recipient from a
+separate private transfer:
+
+1. The merchant creates an open USDC note owned by their registered Ready and
+   obtains its `note_id`.
+2. The QR commits to `invoice nonce + note_id + token + exact amount`.
+3. The payer withdraws the exact private amount to the helper and invokes it
+   with that committed data.
+4. The helper verifies the commitment and replay status, approves the pool,
+   and returns an `OpenNoteDeposit` for that exact `note_id`, token, and amount.
+5. Only then does it emit a settlement event and mark the commitment paid.
+
+This would bind the receipt to actual funds credited into the merchant-selected
+note and prevent a payer from settling the same invoice into their own note.
+It also makes the open-note token, amount, note ID, timing, and invoice
+commitment public. The recipient remains encrypted at the pool level.
+
+This design is not implemented or proven in Ready yet. Before writing the
+replacement contract, test on Sepolia that Ready can create a standalone open
+note, expose its `note_id` to the app, and later accept a helper deposit into
+that existing note. If the Wallet API only supports same-transaction open-note
+placeholders, this design needs upstream wallet support rather than a Cairo-only
+workaround.

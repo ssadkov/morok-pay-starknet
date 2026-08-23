@@ -20,6 +20,7 @@ function invoice(
     to: seller,
     amount: "12.50",
     label: "Coffee",
+    kind: "sale",
     createdAt: 1,
     status: "unpaid",
     ...overrides,
@@ -67,7 +68,7 @@ describe("readActivity", () => {
 });
 
 describe("findIncomingInvoice", () => {
-  it("returns the oldest unpaid invoice for the amount", () => {
+  it("returns the oldest unpaid sale for the amount", () => {
     const invoices = [
       invoice({ invoice: "INV-OLD", createdAt: 1 }),
       invoice({ invoice: "INV-NEW", createdAt: 2, label: "Tea" }),
@@ -79,7 +80,7 @@ describe("findIncomingInvoice", () => {
     expect(match?.invoice).toBe("INV-OLD");
   });
 
-  it("ignores invoices for another Ready address", () => {
+  it("ignores sales for another Ready address", () => {
     const match = findIncomingInvoice(
       [invoice({ invoice: "INV-OTHER", to: "0xabc" })],
       { merchant: seller, amountRaw: BigInt(12_500_000) },
@@ -91,7 +92,7 @@ describe("findIncomingInvoice", () => {
 describe("classifyPrivateDelta", () => {
   const invoices = [invoice({ invoice: "INV-1" })];
 
-  it("matches a Morok sale when private USDC rises by an open invoice", () => {
+  it("matches a Morok sale when private USDC rises by an open sale", () => {
     expect(
       classifyPrivateDelta({
         delta: BigInt(12_500_000),
@@ -130,7 +131,7 @@ describe("classifyPrivateDelta", () => {
     ).toEqual({ kind: "receive", amountRaw: BigInt(3_000_000) });
   });
 
-  it("skips a drop that this app just paid or unshielded", () => {
+  it("skips an outgoing transfer that this app just recorded", () => {
     expect(
       classifyPrivateDelta({
         delta: -BigInt(12_500_000),
@@ -143,7 +144,7 @@ describe("classifyPrivateDelta", () => {
     ).toEqual({ kind: "none" });
   });
 
-  it("records an unlabeled private pay for other drops", () => {
+  it("records an otherwise unlabeled private payment", () => {
     expect(
       classifyPrivateDelta({
         delta: -BigInt(1_000_000),

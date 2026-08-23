@@ -53,7 +53,7 @@ export function ConnectPanel() {
           ))
         ) : (
           <Button
-            type="button"
+            nativeButton={false}
             size="lg"
             className="min-h-10 min-w-40"
             render={

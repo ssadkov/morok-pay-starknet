@@ -1,10 +1,12 @@
-# MorokPay Private First 10
+# MorokPay First 10 Donation Contest
 
-Status: approved campaign mechanic.
+Status: deferred. The current seller interface creates fixed-price Sale QRs
+only. Keep this mechanic as a future campaign option; it cannot be launched
+without restoring open-amount Donation QR creation.
 
 ## Offer
 
-The first ten valid Private Drop entries all receive private USDC. Nobody in
+The first ten valid Donation QR entries all receive private USDC. Nobody in
 the accepted ten loses. The fixed campaign budget is exactly 30 USDC:
 
 | Recipients | Reward each | Subtotal |
@@ -21,11 +23,12 @@ assigns the reward tiers among the first ten eligible Ready addresses.
 
 1. Open MorokPay on Starknet mainnet.
 2. Connect Ready and activate STRK20 by shielding once.
-3. Open Get paid → Private Drop.
-4. Generate an open-amount Drop QR and submit its absolute link before the
-   campaign closes.
+3. Open the future Donation QR flow (not present in the current Sale-only UI).
+4. Leave Amount empty, generate the Donation QR, and submit its absolute link
+   before the campaign closes.
 5. One registered Ready address counts once. The app verifies pool registration
-   through `get_public_key`; social rules still handle duplicate people and bots.
+   before payment through `get_public_key`; social rules still handle duplicate
+   people and bots.
 
 QR creation and receiving a transfer do not charge the participant. A new user
 does pay the pool fee when they first shield to activate STRK20. Campaign copy
@@ -37,7 +40,7 @@ Freeze the ten links in `entries.txt`, publish the file/list hash before the
 announced randomness block, then run:
 
 ```bash
-node scripts/draw-private-drop.mjs entries.txt 0xFINALIZED_BLOCK_HASH
+node scripts/allocate-contest-rewards.mjs entries.txt 0xFINALIZED_BLOCK_HASH
 ```
 
 The script canonicalizes the address set, ranks every entry with SHA-256, then
@@ -48,6 +51,6 @@ algorithm, and allocation result before sending payments.
 
 The current app pays one QR at a time. Do not budget as if batch payout already
 reduces the pool fee; that must first be demonstrated on Sepolia. For every
-payment, the organizer enters the allocated amount after opening the Drop link.
-The public allocation is auditable, while the normal STRK20 transfer does not
-publish its recipient and amount as a MorokPay receipt.
+payment, the organizer enters the allocated amount after opening the Donation
+link. The public allocation is auditable, while the normal STRK20 transfer does
+not publish its recipient and amount as a MorokPay receipt.

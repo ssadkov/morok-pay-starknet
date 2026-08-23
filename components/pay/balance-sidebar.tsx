@@ -148,8 +148,7 @@ export function BalanceSidebar() {
         <CardHeader>
           <CardTitle>Activity</CardTitle>
           <CardDescription>
-            Private balance changes on this device. Morok payments and invoices
-            are marked.
+            Private balance changes on this device. Morok sales are marked.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -159,8 +158,8 @@ export function BalanceSidebar() {
             </p>
           ) : items.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No private movement yet. Ready keeps the full history; this list
-              is what this browser can see.
+              No private movement yet. This list only contains activity this
+              browser has observed.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">

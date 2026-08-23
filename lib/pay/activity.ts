@@ -175,7 +175,9 @@ export function findIncomingInvoice(
   const unpaid = invoices
     .filter(
       (invoice) =>
-        invoice.status === "unpaid" && sameAddress(invoice.to, args.merchant),
+        invoice.status === "unpaid" &&
+        invoice.kind === "sale" &&
+        sameAddress(invoice.to, args.merchant),
     )
     .sort((left, right) => left.createdAt - right.createdAt);
 
@@ -252,7 +254,6 @@ export function recordMorokSale(
     amountRaw,
     invoice: invoice.invoice,
     label: invoice.label,
-    counterparty: invoice.to,
     address,
     txHash,
   });

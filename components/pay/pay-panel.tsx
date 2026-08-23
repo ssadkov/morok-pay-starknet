@@ -52,7 +52,6 @@ const KIND_COPY: Record<PaymentKind, string> = {
   invoice: "Private USDC invoice",
   sale: "Private USDC purchase",
   donation: "Private USDC donation",
-  drop: "MorokPay Private Drop",
 };
 
 export function PayPanel() {
@@ -165,7 +164,7 @@ export function PayPanel() {
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
             ? "Sepolia: send shielded test USDC to a registered Ready. The reference stays in this payment link; the transfer itself remains inside STRK20."
-            : "Send shielded USDC to a registered Ready. Use the same QR flow for an invoice, a purchase, a donation, or a Private Drop reward."}
+            : "Pay for a product with shielded USDC. Ready sends the payment privately inside STRK20."}
         </p>
       </div>
       <TestnetHint />
@@ -222,12 +221,9 @@ export function PayPanel() {
               Ready creates a normal private transfer inside the pool. The
               label and reference are not written on-chain.
             </p>
-            {!request.amount &&
-            (request.kind === "donation" || request.kind === "drop") ? (
+            {!request.amount && request.kind === "donation" ? (
               <Field>
-                <FieldLabel htmlFor="payment-amount">
-                  {request.kind === "drop" ? "Reward" : "Donation"} (USDC)
-                </FieldLabel>
+                <FieldLabel htmlFor="payment-amount">Donation (USDC)</FieldLabel>
                 <Input
                   id="payment-amount"
                   inputMode="decimal"
@@ -256,7 +252,7 @@ export function PayPanel() {
               <Alert>
                 <AlertTitle>Paying your own Ready</AlertTitle>
                 <AlertDescription>
-                  This invoice is addressed to the connected account, so
+                  This sale is addressed to the connected account, so
                   Payment wallet USDC will only drop by the pool fee. Use a
                   second Ready profile as the merchant to see a real private
                   transfer.

@@ -33,16 +33,6 @@ describe("payment request", () => {
     expect(parsePaymentLink(paymentPath(request), "mainnet")).toEqual(request);
   });
 
-  it("round-trips a private drop request", () => {
-    const drop = {
-      ...request,
-      amount: "",
-      kind: "drop" as const,
-      label: "MorokPay Private Drop",
-    };
-    expect(parsePaymentLink(paymentPath(drop), "mainnet")).toEqual(drop);
-  });
-
   it("round-trips a reusable donation request without a fixed amount", () => {
     const donation = {
       ...request,
@@ -51,6 +41,22 @@ describe("payment request", () => {
       label: "Support my channel",
     };
     expect(parsePaymentLink(paymentPath(donation), "mainnet")).toEqual(donation);
+  });
+
+  it("migrates an old private drop link to a donation", () => {
+    expect(
+      parsePaymentLink(
+        "/pay?n=mainnet&to=0x1234&kind=drop&inv=DROP-OLD",
+        "sepolia",
+      ),
+    ).toEqual({
+      network: "mainnet",
+      to: "0x1234",
+      amount: "",
+      invoice: "DROP-OLD",
+      label: "",
+      kind: "donation",
+    });
   });
 
   it("rejects missing amount or address", () => {
