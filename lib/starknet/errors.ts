@@ -76,7 +76,7 @@ export function formatStrk20Error(
 ): string {
   const message = errorText(error);
   if (/NOT_REGISTERED/i.test(message)) {
-    return "This Ready account is not registered in the STRK20 pool yet. Top up and shield once so Ready can register you, then pay.";
+    return "This Ready account is not registered in the STRK20 pool yet. Open Protected tokens in Ready and confirm the one-time privacy activation first.";
   }
   if (/INSUFFICIENT_PRIVATE_BALANCE/i.test(message)) {
     return action === "pay"
@@ -93,7 +93,7 @@ export function formatStrk20Error(
     return action === "balance"
       ? "Ready could not read private balances. Deploy and activate this account on the selected network first."
       : action === "shield"
-        ? "Ready could not submit this STRK20 action. Make sure the account is deployed on the selected network, then try again."
+        ? "Ready could not submit this STRK20 action. In Ready, open Protected tokens and confirm the one-time privacy activation, then try again."
         : describeError(error) || message;
   }
   if (action === "balance") {

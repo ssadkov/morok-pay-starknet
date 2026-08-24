@@ -15,13 +15,14 @@ import type { WalletAccountV6 } from "starknet";
 
 import { useNetwork } from "@/components/network-provider";
 import { reconcilePrivateBalance } from "@/lib/pay/activity";
+import { poolRegistration } from "@/lib/starknet/account-status";
 import { privateBalanceFromEntries } from "@/lib/starknet/actions";
+import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import {
   getAccountSnapshot,
   type AccountSnapshot,
 } from "@/lib/starknet/status";
-import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import {
   getShieldToken,
   listShieldTokens,
@@ -228,36 +229,45 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
             privateError =
               "Funded, but not deployed. Send one outgoing transaction in Ready first.";
           } else {
-            const entries = await current.account.strk20Balances([
-              ...shieldTokenAddresses(network),
-              STRK_ADDRESS,
-            ]);
-            privateUsdc = privateBalanceFromEntries(
-              entries,
-              getShieldToken("usdc", network).address,
+            const registration = await poolRegistration(
+              network,
+              current.address,
             );
-            privateStrk = privateBalanceFromEntries(entries, STRK_ADDRESS);
-            privateStrkBtc = privateBalanceFromEntries(
-              entries,
-              getShieldToken("strkbtc", network).address,
-            );
-            lastPrivate.current = {
-              usdc: privateUsdc,
-              strk: privateStrk,
-              strkBtc: privateStrkBtc,
-              known: true,
-            };
-            const sameAccount = previousAddress.current === current.address;
-            if (sameAccount && previousPrivateUsdc.current !== null) {
-              reconcilePrivateBalance({
-                network,
-                address: current.address,
-                previousRaw: previousPrivateUsdc.current,
-                nextRaw: privateUsdc,
-              });
+            if (registration === "unregistered") {
+              privateError =
+                "Enable Private in Ready first: open Protected tokens, start Shield, and confirm the one-time activation.";
+            } else {
+              const entries = await current.account.strk20Balances([
+                ...shieldTokenAddresses(network),
+                STRK_ADDRESS,
+              ]);
+              privateUsdc = privateBalanceFromEntries(
+                entries,
+                getShieldToken("usdc", network).address,
+              );
+              privateStrk = privateBalanceFromEntries(entries, STRK_ADDRESS);
+              privateStrkBtc = privateBalanceFromEntries(
+                entries,
+                getShieldToken("strkbtc", network).address,
+              );
+              lastPrivate.current = {
+                usdc: privateUsdc,
+                strk: privateStrk,
+                strkBtc: privateStrkBtc,
+                known: true,
+              };
+              const sameAccount = previousAddress.current === current.address;
+              if (sameAccount && previousPrivateUsdc.current !== null) {
+                reconcilePrivateBalance({
+                  network,
+                  address: current.address,
+                  previousRaw: previousPrivateUsdc.current,
+                  nextRaw: privateUsdc,
+                });
+              }
+              previousAddress.current = current.address;
+              previousPrivateUsdc.current = privateUsdc;
             }
-            previousAddress.current = current.address;
-            previousPrivateUsdc.current = privateUsdc;
           }
         } catch (error) {
           if (!lastPrivate.current.known) {

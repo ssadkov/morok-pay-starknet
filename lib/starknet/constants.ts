@@ -55,3 +55,6 @@ export const STRK_ADDRESS =
 
 export const READY_WALLET_URL =
   "https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb";
+
+export const MOROK_TREASURY_ADDRESS =
+  process.env.NEXT_PUBLIC_MOROK_TREASURY_ADDRESS?.trim() ?? "";

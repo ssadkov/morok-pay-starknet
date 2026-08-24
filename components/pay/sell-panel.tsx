@@ -5,9 +5,9 @@ import { toast } from "sonner";
 import { CopyIcon } from "lucide-react";
 
 import { ConnectReady } from "@/components/pay/connect-ready";
+import { DeployReadyButton } from "@/components/pay/deploy-ready-button";
 import { OnboardingSteps } from "@/components/pay/onboarding-steps";
 import { QrCode } from "@/components/pay/qr-code";
-import { ShieldButton } from "@/components/pay/shield-button";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -40,7 +40,6 @@ import { paymentUrl, type PaymentRequest } from "@/lib/pay/request";
 import { formatStrk } from "@/lib/starknet/status";
 
 import { useAccountPresence } from "./use-account-presence";
-import { usePoolFee } from "./use-pool-fee";
 import { usePoolRegistration } from "./use-pool-registration";
 
 const EMPTY: MerchantInvoice[] = [];
@@ -75,9 +74,7 @@ export function SellPanel() {
   const [error, setError] = useState<string | null>(null);
   const presence = useAccountPresence(session?.address);
   const registration = usePoolRegistration(session?.address);
-  const poolFee = usePoolFee();
   const publicStrk = balances?.strkWei ?? BigInt(0);
-  const needStrk = poolFee * BigInt(2);
   const canReceive =
     presence === "deployed" && registration === "registered";
   const checking =
@@ -170,7 +167,7 @@ export function SellPanel() {
 
       <OnboardingSteps
         title="Get ready to receive"
-        description={`Match the header to ${network === "sepolia" ? "Sepolia" : "Mainnet"} in Ready. Fund the address, deploy Ready with its first outgoing transaction, then shield STRK to turn on private notes.`}
+        description={`Match the header to ${network === "sepolia" ? "Sepolia" : "Mainnet"} in Ready. Fund and deploy the account, then confirm Ready's one-time privacy activation.`}
         doneLabel={`Ready · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
         steps={[
           {
@@ -239,26 +236,30 @@ export function SellPanel() {
                       faucet request is needed.
                     </p>
                   ) : null}
+                  <DeployReadyButton />
                 </>
               ) : null,
           },
           {
             id: "activate",
-            title: "Activate with STRK",
+            title: "Enable Private in Ready",
             body: registration === "unknown" && presence === "deployed"
               ? "Checking this Ready on the pool…"
-              : `Shield more than ${formatStrk(poolFee)} STRK. You do not need USDC to receive donations.`,
+              : "This account has no viewing key in the STRK20 pool yet. Ready must create and register it once before apps can shield or read private balances.",
             status: activateStatus,
             children:
               activateStatus === "current" && !checking ? (
                 <>
-                  {publicStrk <= poolFee ? (
-                    <p className="text-sm text-muted-foreground">
-                      This Ready has {formatStrk(publicStrk)} STRK. You need
-                      more than {formatStrk(poolFee)} (about {formatStrk(needStrk)}{" "}
-                      is a safe amount).
-                    </p>
-                  ) : null}
+                  <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
+                    <li>Open the Protected tokens section in Ready.</li>
+                    <li>Select a token and start Shield.</li>
+                    <li>Confirm the one-time Activate privacy prompt.</li>
+                  </ol>
+                  <p className="text-sm text-muted-foreground">
+                    Return here after confirmation. MorokPay checks the pool
+                    every few seconds and will unlock your donation QR. USDC
+                    is not required to receive donations.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     {session ? (
                       <Button
@@ -293,7 +294,6 @@ export function SellPanel() {
                       </Button>
                     ) : null}
                   </div>
-                  <ShieldButton token="strk" />
                 </>
               ) : null,
           },

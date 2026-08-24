@@ -1,5 +1,10 @@
-import { validateAndParseAddress, type WalletAccountV6 } from "starknet";
+import {
+  validateAndParseAddress,
+  type Call,
+  type WalletAccountV6,
+} from "starknet";
 
+import { STRK_ADDRESS } from "./constants";
 import type { ShieldToken } from "./tokens";
 
 /** Ready's Wallet API rejects padded felts in invoke calldata. */
@@ -35,6 +40,31 @@ export function privateBalanceFromEntries(
     (entry) => BigInt(entry.token) === BigInt(token),
   );
   return match ? BigInt(match.balance) : BigInt(0);
+}
+
+export function publicStrkTransferCall(
+  recipient: string,
+  amount: bigint,
+): Call {
+  if (amount <= BigInt(0)) throw new Error("Amount must be greater than 0");
+  const lowMask = (BigInt(1) << BigInt(128)) - BigInt(1);
+  return {
+    contractAddress: STRK_ADDRESS,
+    entrypoint: "transfer",
+    calldata: [
+      validateAndParseAddress(recipient),
+      toCalldataFelt(amount & lowMask),
+      toCalldataFelt(amount >> BigInt(128)),
+    ],
+  };
+}
+
+export async function transferPublicStrk(
+  account: WalletAccountV6,
+  recipient: string,
+  amount: bigint,
+) {
+  return account.execute(publicStrkTransferCall(recipient, amount));
 }
 
 export async function shieldToken(

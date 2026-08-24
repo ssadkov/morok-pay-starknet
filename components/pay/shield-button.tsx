@@ -18,6 +18,7 @@ import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 
 import { usePoolFee } from "./use-pool-fee";
+import { usePoolRegistration } from "./use-pool-registration";
 
 export function ShieldButton({
   token,
@@ -35,12 +36,23 @@ export function ShieldButton({
   const publicStrk = balances?.strkWei ?? BigInt(0);
   // Sepolia charges 2 STRK, mainnet 6, so ask the pool instead of guessing.
   const poolFee = usePoolFee();
+  const registration = usePoolRegistration(session?.address);
   // The deposit pays a fee of its own, so shielding the fee itself credits
   // nothing and the wallet rejects it.
   const defaultFeeShield = poolFee * BigInt(2);
   const needsFeeStrk = token ? token === "strk" : shieldStrk;
 
   if (!session) return null;
+
+  if (registration !== "registered") {
+    return (
+      <p className="text-xs text-muted-foreground">
+        {registration === "unknown"
+          ? "Checking whether Private is enabled in Ready…"
+          : "Enable Private in Ready first: open Protected tokens, start Shield, and confirm the one-time privacy activation."}
+      </p>
+    );
+  }
 
   function fillMax() {
     setAmount(

@@ -15,13 +15,13 @@ describe("formatStrk20Error", () => {
     ).toMatch(/did not share private balances/i);
   });
 
-  it("turns Ready UNKNOWN_ERROR during shield into a deployment check", () => {
+  it("turns Ready UNKNOWN_ERROR during shield into privacy guidance", () => {
     expect(
       formatStrk20Error(
         new Error("An error occurred (UNKNOWN_ERROR)"),
         "shield",
       ),
-    ).toMatch(/account is deployed on the selected network/i);
+    ).toMatch(/one-time privacy activation/i);
   });
 
   it("turns Ready UNKNOWN_ERROR during balance reads into activation guidance", () => {
