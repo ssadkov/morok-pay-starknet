@@ -212,7 +212,9 @@ export function PayPanel() {
         steps={[
           {
             id: "link",
-            title: "Open a donation link",
+            title: request?.label
+              ? `Open “${request.label}”`
+              : "Open a donation link",
             body: "Scan the creator QR or paste the link they sent you.",
             status: linkStatus,
             children:
