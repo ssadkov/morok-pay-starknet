@@ -10,6 +10,7 @@ import {
 import { toast } from "sonner";
 
 import { ShieldButton } from "@/components/pay/shield-button";
+import { UnshieldButton } from "@/components/pay/unshield-button";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
@@ -186,6 +187,7 @@ export function BalanceSidebar() {
                     ? balances.privateError
                     : "Ready holds the viewing key"
                 }
+                action={<UnshieldButton />}
               />
             </>
           )}
