@@ -1,5 +1,5 @@
-# cairo-test covers the Poseidon commitment helper.
-# snforge/ has pool-caller tests; they need Starknet Foundry (no Windows binary).
+# snforge/ contains the pool-caller escrow tests; they need Starknet Foundry
+# (no Windows binary).
 [package]
 name = "morok_pay"
 version = "0.1.0"

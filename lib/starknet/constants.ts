@@ -11,9 +11,6 @@ const MAINNET = {
     "0x02EBB5777B6dD8B26ea11D68Fdf1D2c85cD2099335328Be845a28c77A8AEf183",
   tokenMessengerMinter:
     "0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a",
-  echoHelper: "",
-  invoices:
-    "0x051587ed22ddfc47496cdc9486697d927a3f29b5edec6903efc21d94aeb441b8",
   escrow: "",
 } as const;
 
@@ -28,10 +25,6 @@ const SEPOLIA = {
     "0x04db7926C64f1f32a840F3Fa95cB551f3801a3600Bae87aF87807A54DCE12Fe8",
   tokenMessengerMinter:
     "0x04bDdE1E09a4B09a2F95d893D94a967b7717eB85A3f6dEcA8c080Ee01fBc3370",
-  echoHelper:
-    "0x012ec63321392b74063bafa1fb27804b84ba35482a1310f01d3510962b093a03",
-  invoices:
-    "0x064502ea9d69e918ed75f84d7bccee4156310bf78b68fd6ec5d880fe35c3d235",
   escrow:
     "0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5",
 } as const;
@@ -62,20 +55,3 @@ export const STRK_ADDRESS =
 
 export const READY_WALLET_URL =
   "https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb";
-
-/** OpenZeppelin Account v1.0.0 — kept for the older derive path. */
-export const OZ_ACCOUNT_CLASS_HASH =
-  "0x05b4b537eaa2399e3aa99c4e2e0208ebd6c71bc1467938cd52c798c601e43564";
-
-export const ACCOUNT_ACTION = "derive-starknet-account-v1";
-export const ACCOUNT_KEY_DOMAIN = "morokpay.starknet.account.v1";
-export const VIEWING_KEY_DOMAIN = "pharaoh.strk20.viewing_key.v1";
-export const STARK_CURVE_ORDER = BigInt(
-  "0x0800000000000011000000000000000000000000000000000000000000000001",
-);
-
-export const STRK20_PROVING_URL =
-  process.env.NEXT_PUBLIC_STRK20_PROVING_URL ?? "/privacy/prover";
-export const STRK20_INDEXER_URL =
-  process.env.NEXT_PUBLIC_STRK20_INDEXER_URL ?? "/privacy/indexer";
-export const NOTE_MATURITY_BLOCKS = 10;

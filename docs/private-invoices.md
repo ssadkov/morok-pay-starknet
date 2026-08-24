@@ -28,9 +28,8 @@ Consequences:
 - **Sale** — fixed-price point-of-sale QR.
 - **Donation** — fixed amount or a reusable open-amount QR. For an open request,
   each supporter chooses the amount after scanning; the public QR stays the same.
-- **Private Drop** — open reward request used as a contest entry. Creation is
-  enabled only after the app confirms the Ready address has a registered STRK20
-  public key in the selected pool.
+- **Private Drop** — legacy open reward request. Old links remain parseable,
+  but the current UI and First 10 campaign use Donation requests.
 
 ## What is private
 

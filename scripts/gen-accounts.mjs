@@ -21,7 +21,7 @@ import { OZ_CLASS_HASH, resolveNetwork } from "./lib/networks.mjs";
 const network = resolveNetwork(process.argv[2]);
 
 const ROLES = [
-  { role: "deployer", purpose: "declare and deploy MorokInvoices" },
+  { role: "deployer", purpose: "declare and deploy MorokEscrow" },
   { role: "payout", purpose: "fresh recipient for unshield / payout tests" },
   { role: "spare", purpose: "second recipient, or a backup deployer" },
 ];

@@ -1,80 +1,45 @@
 # Handoff
 
-MorokPay is a **private donation** product on Starknet for the STRK20 Private
-Sprint. The sprint cut is not a generic wallet and not a merchant checkout.
+MorokPay is a private donation product on Starknet for the STRK20 Private Sprint. The current sprint cut is not a generic wallet or merchant checkout.
 
-## Focus (2026-08-23)
+## Current focus (2026-08-24)
 
-1. **Donation UI** — creator QR and supporter pay screen. Do this next.
-2. **First 10 contest** — ten registered Ready accounts, all paid privately
-   from a 30 USDC pool. [private-first-10.md](private-first-10.md).
-3. **DonationPot, if time** — anonymous jar with a public total; creator sweeps
-   into a shielded note. Design: [donation-pot.md](donation-pot.md). No Cairo
-   until 1 and 2 are done.
+1. Donation UI and onboarding are shipped on `master`.
+2. Dry-run the First 10 campaign with registered Ready accounts and record the required three-minute submission video.
+3. Replace the public unauthenticated mainnet RPC before campaign traffic.
+4. Build DonationPot only if the core submission is complete.
 
-A private donation is `wallet_strk20InvokeTransaction` `{ type: "transfer" }`.
-No helper on that path. Invoice/sale remain parseable so old links still pay;
-do not add them back as first-class creator flows.
+## Product flow
 
-## Product thesis
+- `/` — choose Donate or My QR.
+- `/pay` — open or paste a donation request, choose an amount, and pay privately.
+- `/sell` — activate STRK20 and create one reusable open-amount Donation QR.
+- `/treasury` — Base CCTP top-up, shield, private balances, and payout.
+- `/claim` — compatibility route for previously issued `MorokEscrow` links; it is not linked from the current product UI.
 
-The creator publishes one durable QR with an empty amount. A supporter opens
-it, chooses how much, confirms in Ready. The transfer stays in the pool.
+Donation requests and app activity are stored in the current browser. Old invoice, sale, and Drop links remain parseable so existing URLs can still open, but those flows are not presented as product choices.
 
-The First 10 contest is the same loop run in public: connect Ready, shield
-once, generate a Donation QR, get paid privately. That is wallet activation
-plus a real recipient, not unique humanity. Social rules still handle bots.
+## Technical boundary
 
-## Locked technical boundary
+MorokPay uses Ready Wallet API methods for private balances and transactions. Ready owns the viewing key, note discovery, proving, and submission. Do not restore the removed direct Privacy SDK path or ask users for viewing keys.
 
-Ready holds the viewing key. MorokPay uses Wallet API methods for private
-balances and private transfers. It does not extract keys or call the hosted
-prover directly.
+A donation is a normal `wallet_strk20InvokeTransaction` transfer. No helper contract is involved. Ready exposes balances, not private transfer history, so the creator refreshes the balance and explicitly marks a donation received.
 
-Ready exposes balances, not private transfer history. Therefore:
-
-- labels and references remain in the QR and local browser storage;
-- the creator refreshes private balance and explicitly marks a donation
-  received;
-- the deployed `MorokInvoices` event is not trusted as settlement proof;
-- an empty-note helper cannot prove the hidden recipient, token, or amount of a
-  separate transfer action. See [private-invoices.md](private-invoices.md).
-
-## App map
-
-- `/` — pay or get paid.
-- `/pay` — scan/paste request, optionally choose donation amount, private pay.
-- `/sell` — current UI still offers invoice, sale, donation, and Private Drop.
-  The donation-UI pass should lead with Donation (open amount) and stop
-  presenting the rest as equal doors.
-- `/treasury` — Base CCTP top-up, shield, private balances, payout.
-- invoices and MorokPay activity are stored locally.
-
-Default network is controlled by `NEXT_PUBLIC_STARKNET_NETWORK`; the header can
-switch between Sepolia and mainnet. Pool fee is read from `get_fee_amount` (last
-verified: 2 STRK on Sepolia and 6 STRK on mainnet).
+The deployed `MorokInvoices` event is not settlement proof: an empty-note helper cannot authenticate the hidden recipient, token, or amount of a separate transfer action. See [private-invoices.md](private-invoices.md).
 
 ## Submission state
 
-- Ready wallet with pool activity:
-  [`0x00e5887fc74a11d10ad5dd2f69d3911fb352d9b811528a9281ca8abac8498423`](https://voyager.online/contract/0x00e5887fc74a11d10ad5dd2f69d3911fb352d9b811528a9281ca8abac8498423)
-- `strk20.json` lists three succeeded mainnet pool txs. Deposit events on
-  those txs name the Ready wallet above. The Starknet `sender_address` is the
-  relayer — do not treat it as the user.
+- Ready wallet with pool activity: `0x00e5887fc74a11d10ad5dd2f69d3911fb352d9b811528a9281ca8abac8498423`.
+- `strk20.json` lists three succeeded mainnet pool transactions. Their Starknet sender is the relayer, not the user.
 - Live demo: https://morok-pay-starknet.vercel.app
-- 3-minute video: missing. Required to be scored.
-- Do not list `MorokInvoices` as payment integration.
-- Replace the public unauthenticated RPC with a keyed endpoint before contest
-  traffic.
+- Three-minute video: missing and required for scoring.
+- Mainnet `MorokEscrow`: not deployed. Do not create or advertise mainnet claim links.
+- DonationPot: designed, not implemented.
 
 ## Safety
 
 - Never commit `.secrets/` or funded keys.
-- Sepolia transactions are not hackathon mainnet evidence.
-- Do not describe a payment request, local status, or `InvoiceSettled` event as
-  cryptographic proof of payment.
-- Do not attribute a private transfer to the Starknet transaction sender. That
-  account is the relayer. A **deposit** (shield) is public and names the
-  shielding Ready address as the first indexed key of the pool `Deposit` event.
-- Do not promise that DonationPot hides the fact of a sweep; it hides the
-  destination note owner. Unshield and CCTP are public again.
+- Do not attribute a private transfer to the Starknet transaction sender.
+- Do not describe STRK20 as complete anonymity: deposits, withdrawals, open-note amounts, timing, and app-side actions can be public.
+- Do not treat a request, local received status, or `InvoiceSettled` event as cryptographic payment proof.
+- Existing claim URLs are bearer secrets. Anyone who learns one can claim its funds.

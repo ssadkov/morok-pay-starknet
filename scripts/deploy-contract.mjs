@@ -2,9 +2,8 @@
  * Declares and deploys a compiled MorokPay helper on Starknet.
  *
  * Usage:
- *   node scripts/deploy-contract.mjs echo
- *   node scripts/deploy-contract.mjs invoices
- *   node scripts/deploy-contract.mjs invoices mainnet
+ *   node scripts/deploy-contract.mjs escrow
+ *   node scripts/deploy-contract.mjs escrow mainnet
  *
  * Requires a funded deployer in .secrets/<network>-accounts.json and
  * `scarb build` artifacts under contracts/target/dev. On mainnet the declare
@@ -19,23 +18,10 @@ import { Account, CallData, RpcProvider, json } from "starknet";
 import { resolveNetwork } from "./lib/networks.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-const TARGET = process.argv[2] ?? "echo";
+const TARGET = process.argv[2] ?? "escrow";
 const network = resolveNetwork(process.argv[3]);
 
 const CONTRACTS = {
-  echo: {
-    name: "EchoHelper",
-    sierra: "morok_pay_EchoHelper.contract_class.json",
-    casm: "morok_pay_EchoHelper.compiled_contract_class.json",
-    constructor: [],
-  },
-  invoices: {
-    name: "MorokInvoices",
-    sierra: "morok_pay_MorokInvoices.contract_class.json",
-    casm: "morok_pay_MorokInvoices.compiled_contract_class.json",
-    // Only this pool may call privacy_invoke, so it is network specific.
-    constructor: [network.pool],
-  },
   escrow: {
     name: "MorokEscrow",
     sierra: "morok_pay_MorokEscrow.contract_class.json",
@@ -46,7 +32,7 @@ const CONTRACTS = {
 
 const spec = CONTRACTS[TARGET];
 if (!spec) {
-  throw new Error(`Unknown target "${TARGET}". Use echo, invoices, or escrow.`);
+  throw new Error(`Unknown target "${TARGET}". Use escrow.`);
 }
 
 const store = json.parse(

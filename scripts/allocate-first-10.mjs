@@ -9,7 +9,7 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-export function parseDropEntries(text) {
+export function parseDonationEntries(text) {
   const entries = [];
   const seen = new Set();
 
@@ -29,16 +29,16 @@ export function parseDropEntries(text) {
       throw new Error(`Line ${index + 1}: expected a /pay link`);
     }
     if (url.searchParams.get("n") !== "mainnet") {
-      throw new Error(`Line ${index + 1}: Private Drop must use mainnet`);
+      throw new Error(`Line ${index + 1}: Donation QR must use mainnet`);
     }
-    if (url.searchParams.get("kind") !== "drop") {
-      throw new Error(`Line ${index + 1}: link is not a Private Drop entry`);
+    if (url.searchParams.get("kind") !== "donation") {
+      throw new Error(`Line ${index + 1}: link is not a Donation QR`);
     }
     if (!ADDRESS_RE.test(address)) {
       throw new Error(`Line ${index + 1}: invalid Ready address`);
     }
     if (url.searchParams.has("amount")) {
-      throw new Error(`Line ${index + 1}: reward amount must be organizer-chosen`);
+      throw new Error(`Line ${index + 1}: Donation QR must have an open amount`);
     }
     if (seen.has(address)) {
       throw new Error(`Line ${index + 1}: duplicate Ready address ${address}`);
@@ -48,7 +48,7 @@ export function parseDropEntries(text) {
     entries.push({ address, url: value });
   }
 
-  if (!entries.length) throw new Error("No eligible Private Drop entries");
+  if (!entries.length) throw new Error("No eligible Donation QR entries");
   if (entries.length !== REWARDS_USDC.length) {
     throw new Error(
       `Expected exactly ${REWARDS_USDC.length} first eligible entries, got ${entries.length}`,
@@ -57,7 +57,7 @@ export function parseDropEntries(text) {
   return entries;
 }
 
-export function allocatePrivateDrop(entries, seed) {
+export function allocateFirst10(entries, seed) {
   if (!/^0x[0-9a-fA-F]+$/.test(seed)) {
     throw new Error("Seed must be a Starknet block hash");
   }
@@ -70,7 +70,7 @@ export function allocatePrivateDrop(entries, seed) {
       ...entry,
       score: `0x${sha256(`${seed.toLowerCase()}\n${listHash}\n${entry.address}`)}`,
     }))
-    .sort((a, b) => a.score.localeCompare(b.score));
+    .sort((a, b) => a.score.localeCompare(b));
 
   return {
     algorithm:
@@ -90,11 +90,11 @@ async function main() {
   const [file, seed] = process.argv.slice(2);
   if (!file || !seed) {
     throw new Error(
-      "Usage: node scripts/draw-private-drop.mjs <first-10-entries.txt> <finalized-block-hash>",
+      "Usage: node scripts/allocate-first-10.mjs <first-10-entries.txt> <finalized-block-hash>",
     );
   }
-  const entries = parseDropEntries(await readFile(file, "utf8"));
-  const result = allocatePrivateDrop(entries, seed);
+  const entries = parseDonationEntries(await readFile(file, "utf8"));
+  const result = allocateFirst10(entries, seed);
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
 }
 

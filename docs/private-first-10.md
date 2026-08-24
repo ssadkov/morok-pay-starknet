@@ -1,7 +1,7 @@
 # MorokPay First 10 Donation Contest
 
-Status: planned after the donation UI ships. Do not open the campaign while
-Get paid still presents invoice / sale / Drop as equal doors.
+Status: Donation UI is shipped. Dry-run the full ten-entry allocation and
+payment loop before announcing the campaign.
 
 ## Offer
 
@@ -27,9 +27,8 @@ assigns the reward tiers among the first ten eligible Ready addresses.
 4. One registered Ready address counts once. The app verifies pool registration
    through `get_public_key`; social rules still handle duplicate people and bots.
 
-Until the UI pass lands, the same open-amount QR is still created as
-**Private Drop** (`kind=drop`). The allocator already treats those links as
-the contest entry. After the UI pass, freeze `kind=donation` links.
+The frozen entry set must contain current `kind=donation` links. Legacy
+`kind=drop` links are not eligible.
 
 QR creation and receiving a transfer do not charge the participant. A new user
 does pay the pool fee when they first shield to activate STRK20. Campaign copy
@@ -41,7 +40,7 @@ Freeze the ten links in `entries.txt`, publish the file/list hash before the
 announced randomness block, then run:
 
 ```bash
-node scripts/draw-private-drop.mjs entries.txt 0xFINALIZED_BLOCK_HASH
+node scripts/allocate-first-10.mjs entries.txt 0xFINALIZED_BLOCK_HASH
 ```
 
 The script canonicalizes the address set, ranks every entry with SHA-256, then
