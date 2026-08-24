@@ -27,6 +27,10 @@ export type ActivityItem = {
   to?: string;
   address?: string;
   txHash?: string;
+  /** Private balance immediately before a wallet submission. */
+  balanceBeforeRaw?: string;
+  /** A confirmed row may be inferred from a sufficient private-balance decrease. */
+  confirmation?: "wallet" | "receipt" | "balance";
   at: number;
 };
 
@@ -195,6 +199,66 @@ export function removeActivity(id: string) {
   writeAll(readAll().filter((item) => item.id !== id));
 }
 
+export function findPendingActivity(args: {
+  network: AppNetwork;
+  address: string;
+  kind: "pay" | "unshield";
+  to?: string;
+  amountRaw?: bigint;
+}) {
+  return readAll()
+    .filter(
+      (item) =>
+        item.network === args.network &&
+        item.status === "pending" &&
+        item.kind === args.kind &&
+        !!item.address &&
+        sameAddress(item.address, args.address) &&
+        (!args.to || (!!item.to && sameAddress(item.to, args.to))) &&
+        (args.amountRaw === undefined || itemAmountRaw(item) === args.amountRaw),
+    )
+    .sort((left, right) => right.at - left.at)[0];
+}
+
+/**
+ * A private balance can update before the relayed hash becomes visible to RPC.
+ * Confirm at most the newest pending operation whose full amount has left the balance.
+ */
+export function reconcilePendingActivityFromBalance(args: {
+  network: AppNetwork;
+  address: string;
+  nextRaw: bigint;
+}) {
+  const pending = readAll()
+    .filter(
+      (item) =>
+        item.network === args.network &&
+        item.status === "pending" &&
+        (item.kind === "pay" || item.kind === "unshield") &&
+        !!item.address &&
+        sameAddress(item.address, args.address) &&
+        !!item.balanceBeforeRaw,
+    )
+    .sort((left, right) => right.at - left.at);
+
+  for (const item of pending) {
+    const amount = itemAmountRaw(item);
+    if (amount === null) continue;
+    try {
+      const before = BigInt(item.balanceBeforeRaw!);
+      if (before - args.nextRaw >= amount) {
+        return updateActivity(item.id, {
+          status: "confirmed",
+          confirmation: "balance",
+        });
+      }
+    } catch {
+      // Ignore malformed legacy activity.
+    }
+  }
+  return null;
+}
+
 export function subscribeActivity(onStoreChange: () => void) {
   const handler = () => onStoreChange();
   window.addEventListener("storage", handler);
@@ -346,6 +410,12 @@ export function reconcilePrivateBalance(args: {
   previousRaw: bigint;
   nextRaw: bigint;
 }) {
+  const pending = reconcilePendingActivityFromBalance({
+    network: args.network,
+    address: args.address,
+    nextRaw: args.nextRaw,
+  });
+  if (pending) return pending;
   const delta = args.nextRaw - args.previousRaw;
   const classified = classifyPrivateDelta({
     delta,

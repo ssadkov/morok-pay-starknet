@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
@@ -29,15 +35,23 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
 import {
+  findPendingActivity,
+  readActivity,
   recordActivity,
-  removeActivity,
   sameAddress,
+  subscribeActivity,
   updateActivity,
+  type ActivityItem,
 } from "@/lib/pay/activity";
 import { CIRCLE_FAUCET_URL } from "@/lib/pay/testnet";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
 import { transferPrivate } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
+import {
+  bounded,
+  pollTransactionReceipt,
+  WALLET_SUBMISSION_TIMEOUT_MS,
+} from "@/lib/starknet/transaction-confirmation";
 import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { shortenAddress } from "@/lib/format";
@@ -47,6 +61,7 @@ import { usePoolRegistration } from "./use-pool-registration";
 import { useUsdcMaturity } from "./use-usdc-maturity";
 
 const PRESETS = ["2", "5", "10", "25"];
+const EMPTY_ACTIVITY: ActivityItem[] = [];
 
 function isOpenAmount(kind?: string, amount?: string) {
   return (
@@ -69,6 +84,7 @@ export function PayPanel() {
     () => parsePaymentLink(pasted, network),
   );
   const [paying, setPaying] = useState(false);
+  const payingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [donationAmount, setDonationAmount] = useState("");
 
@@ -77,6 +93,30 @@ export function PayPanel() {
     ? isOpenAmount(request.kind, request.amount)
     : false;
   const amountText = request?.amount || donationAmount;
+  const activity = useSyncExternalStore(
+    subscribeActivity,
+    () =>
+      session ? readActivity(network, session.address) : EMPTY_ACTIVITY,
+    () => EMPTY_ACTIVITY,
+  );
+  const requestedAmountRaw = useMemo(() => {
+    try {
+      return parseUsdc(amountText);
+    } catch {
+      return undefined;
+    }
+  }, [amountText]);
+  const pendingDonation = activity.find(
+    (item) =>
+      item.kind === "pay" &&
+      item.status === "pending" &&
+      !!request?.to &&
+      !!item.to &&
+      sameAddress(item.to, request.to) &&
+      (requestedAmountRaw === undefined ||
+        item.amountRaw === requestedAmountRaw.toString()),
+  );
+  const pendingDonationId = pendingDonation?.id ?? null;
   const recipientPresence = useAccountPresence(request?.to);
   const recipientRegistration = usePoolRegistration(request?.to);
   const notes = useUsdcMaturity(session?.address, privateRaw);
@@ -102,25 +142,107 @@ export function PayPanel() {
     }
   }, [fromQuery, network, setNetwork]);
 
+  async function receiptStatus(txHash: string, timeoutMs = 90_000) {
+    if (!session) return "pending" as const;
+    return pollTransactionReceipt({
+      read: () => session.account.provider.getTransactionReceipt(txHash),
+      timeoutMs,
+    });
+  }
+
+  async function refreshPrivateSafely() {
+    try {
+      await refreshBalances({ private: true });
+    } catch {
+      // Confirmation state must not be downgraded by a later balance-read error.
+    }
+  }
+
+  async function checkPendingDonation() {
+    if (!session || !pendingDonationId) return;
+    const pending = readActivity(network, session.address).find(
+      (item) => item.id === pendingDonationId && item.status === "pending",
+    );
+    if (!pending) {
+      return;
+    }
+
+    if (pending.txHash) {
+      const status = await receiptStatus(pending.txHash, 20_000);
+      if (status === "confirmed") {
+        updateActivity(pending.id, {
+          status: "confirmed",
+          confirmation: "receipt",
+        });
+        toast.success("Donation confirmed", { description: pending.txHash });
+        await refreshPrivateSafely();
+        return;
+      }
+      if (status === "failed") {
+        updateActivity(pending.id, { status: "failed" });
+        setError("The pending donation failed on-chain. You can try again.");
+        return;
+      }
+    }
+
+    await refreshPrivateSafely();
+    const stillPending = findPendingActivity({
+      network,
+      address: session.address,
+      kind: "pay",
+      to: pending.to,
+    });
+    if (!stillPending) {
+      toast.success("Donation confirmed from the private balance change");
+      return;
+    }
+    setError(
+      "The wallet submission is still pending. MorokPay will not send it again; check again after Ready finishes syncing.",
+    );
+  }
+
   async function handlePay() {
     if (!session || !request) return;
+    if (payingRef.current) return;
+    if (pendingDonationId) {
+      payingRef.current = true;
+      setPaying(true);
+      setError(null);
+      try {
+        await checkPendingDonation();
+      } finally {
+        payingRef.current = false;
+        setPaying(false);
+      }
+      return;
+    }
     setError(null);
-    setPaying(true);
     let amount: bigint;
     try {
       amount = parseUsdc(amountText);
     } catch (caught) {
       setError(formatStrk20Error(caught, "pay"));
-      setPaying(false);
       return;
     }
     if (privateRaw < amount) {
       setError(
         formatStrk20Error(new Error("INSUFFICIENT_PRIVATE_BALANCE"), "pay"),
       );
-      setPaying(false);
       return;
     }
+    const existing = findPendingActivity({
+      network,
+      address: session.address,
+      kind: "pay",
+      to: request.to,
+      amountRaw: amount,
+    });
+    if (existing) {
+      setError("This donation is already pending. Check it instead of sending it twice.");
+      return;
+    }
+    payingRef.current = true;
+    setPaying(true);
     const pending = recordActivity({
       network,
       kind: "pay",
@@ -134,9 +256,13 @@ export function PayPanel() {
       to: request.to,
       counterparty: request.to,
       address: session.address,
+      balanceBeforeRaw: privateRaw.toString(),
     });
-    const confirm = async (txHash: string | undefined) => {
-      updateActivity(pending.id, { txHash, status: "confirmed" });
+    const confirm = async (
+      txHash: string | undefined,
+      confirmation: "receipt" | "balance" | "wallet",
+    ) => {
+      updateActivity(pending.id, { txHash, status: "confirmed", confirmation });
       toast.success("Donated privately", {
         description: txHash,
         action: txHash
@@ -151,27 +277,75 @@ export function PayPanel() {
             }
           : undefined,
       });
-      await refreshBalances({ private: false });
+      await refreshPrivateSafely();
     };
 
     const giveUp = (caught: unknown) => {
-      removeActivity(pending.id);
+      const current = readActivity(network, session.address).find(
+        (item) => item.id === pending.id,
+      );
+      if (current?.status === "confirmed") return;
+      updateActivity(pending.id, { status: "failed" });
       setError(formatStrk20Error(caught, "pay"));
     };
 
+    const settleResponse = async (response: unknown) => {
+      const txHash = extractTxHash(response);
+      if (!txHash) {
+        setError(
+          "Ready returned without a transaction hash. MorokPay will check the private balance and will not submit again.",
+        );
+        await refreshPrivateSafely();
+        return;
+      }
+      updateActivity(pending.id, { txHash });
+      const status = await receiptStatus(txHash);
+      if (status === "confirmed") {
+        await confirm(txHash, "receipt");
+      } else if (status === "failed") {
+        giveUp(new Error("The donation transaction failed on-chain"));
+      } else {
+        setError(
+          "The transaction hash is not confirmed by RPC yet. It remains pending and cannot be submitted twice.",
+        );
+        await refreshPrivateSafely();
+      }
+    };
+
     try {
-      const response = await transferPrivate(
+      const submission = transferPrivate(
         session.account,
         usdc,
         amount,
         request.to,
       );
-      await confirm(extractTxHash(response));
+      const result = await bounded(submission, WALLET_SUBMISSION_TIMEOUT_MS);
+      if (result.status === "settled") {
+        await settleResponse(result.value);
+      } else {
+        setError(
+          "Ready has not returned yet. The donation stays pending; use Check pending donation instead of sending it again.",
+        );
+        void submission.then(settleResponse).catch((caught) => {
+          const txHash = extractTxHash(caught);
+          if (txHash) {
+            void settleResponse({ transaction_hash: txHash });
+          } else {
+            giveUp(caught);
+          }
+        });
+      }
     } catch (caught) {
       const txHash = extractTxHash(caught);
-      if (txHash) await confirm(txHash);
+      if (txHash) {
+        updateActivity(pending.id, { txHash });
+        const status = await receiptStatus(txHash);
+        if (status === "confirmed") await confirm(txHash, "receipt");
+        else if (status === "failed") giveUp(caught);
+      }
       else giveUp(caught);
     } finally {
+      payingRef.current = false;
       setPaying(false);
     }
   }
@@ -412,8 +586,8 @@ export function PayPanel() {
                 className="min-h-12"
                 disabled={
                   paying ||
-                  !canDonate ||
-                  !amountText.trim()
+                  (!pendingDonationId &&
+                    (!canDonate || !amountText.trim()))
                 }
                 aria-busy={paying}
                 onClick={() => {
@@ -421,7 +595,13 @@ export function PayPanel() {
                 }}
               >
                 {paying ? <Spinner data-icon="inline-start" /> : null}
-                {paying ? "Donating" : `Donate ${amountText || "…"} USDC`}
+                {paying
+                  ? pendingDonationId
+                    ? "Checking"
+                    : "Donating"
+                  : pendingDonationId
+                    ? "Check pending donation"
+                    : `Donate ${amountText || "…"} USDC`}
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">

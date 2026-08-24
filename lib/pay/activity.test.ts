@@ -6,8 +6,10 @@ import {
   activityParties,
   classifyPrivateDelta,
   findIncomingInvoice,
+  findPendingActivity,
   readPrivateBalanceSnapshot,
   readActivity,
+  reconcilePendingActivityFromBalance,
   reconcilePrivateBalanceAfterReconnect,
   sameAddress,
   writePrivateBalanceSnapshot,
@@ -66,6 +68,71 @@ describe("readActivity", () => {
     };
     try {
       expect(readActivity("sepolia").map((item) => item.id)).toEqual(["kept"]);
+    } finally {
+      globals.window = original;
+    }
+  });
+});
+
+describe("pending wallet activity", () => {
+  it("survives reload and blocks an identical second submission", () => {
+    const store = new Map<string, string>([
+      [
+        ACTIVITY_STORAGE_KEY,
+        JSON.stringify([
+          {
+            id: "pending",
+            network: "sepolia",
+            kind: "pay",
+            status: "pending",
+            amount: "5",
+            amountRaw: "5000000",
+            address: seller,
+            to: "0x123",
+            balanceBeforeRaw: "9000000",
+            at: 1,
+          },
+        ]),
+      ],
+    ]);
+    const globals = globalThis as { window?: unknown };
+    const original = globals.window;
+    globals.window = {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+      },
+      dispatchEvent: () => true,
+    };
+    try {
+      expect(
+        findPendingActivity({
+          network: "sepolia",
+          address: seller,
+          kind: "pay",
+          to: "0x0123",
+          amountRaw: BigInt(5_000_000),
+        })?.id,
+      ).toBe("pending");
+
+      expect(
+        reconcilePendingActivityFromBalance({
+          network: "sepolia",
+          address: seller,
+          nextRaw: BigInt(3_500_000),
+        }),
+      ).toMatchObject({
+        id: "pending",
+        status: "confirmed",
+        confirmation: "balance",
+      });
+      expect(
+        findPendingActivity({
+          network: "sepolia",
+          address: seller,
+          kind: "pay",
+        }),
+      ).toBeUndefined();
     } finally {
       globals.window = original;
     }
