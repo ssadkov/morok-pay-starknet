@@ -235,7 +235,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
             );
             if (registration === "unregistered") {
               privateError =
-                "Enable Private in Ready first: open Protected tokens, start Shield, and confirm the one-time activation.";
+                "Enable Private in Ready first. Turn off Smart Account mode, use Standard Account, then open Protected tokens and confirm the one-time activation.";
             } else {
               const entries = await current.account.strk20Balances([
                 ...shieldTokenAddresses(network),

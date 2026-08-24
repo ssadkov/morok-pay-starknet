@@ -3,6 +3,15 @@ import { describe, expect, it } from "vitest";
 import { extractTxHash, formatStrk20Error, isUserRefused } from "./errors";
 
 describe("formatStrk20Error", () => {
+  it("explains the Ready Smart Account privacy backend error", () => {
+    expect(
+      formatStrk20Error(
+        new Error("Account not found on the privacy backend"),
+        "shield",
+      ),
+    ).toMatch(/turn off Smart Account.*Standard Account/i);
+  });
+
   it("explains NOT_REGISTERED", () => {
     expect(
       formatStrk20Error(new Error("An error occurred (NOT_REGISTERED)"), "shield"),

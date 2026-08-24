@@ -10,15 +10,14 @@ import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { transferPublicStrk } from "@/lib/starknet/actions";
-import { MOROK_TREASURY_ADDRESS } from "@/lib/starknet/constants";
 import { describeError } from "@/lib/starknet/errors";
 
 const ACTIVATION_TIP = BigInt(10) ** BigInt(16); // 0.01 STRK
 
-function treasuryAddress() {
-  if (!MOROK_TREASURY_ADDRESS) return null;
+function treasuryAddress(value: string) {
+  if (!value) return null;
   try {
-    return validateAndParseAddress(MOROK_TREASURY_ADDRESS);
+    return validateAndParseAddress(value);
   } catch {
     return null;
   }
@@ -28,7 +27,7 @@ export function DeployReadyButton() {
   const { session, balances, refreshBalances } = useTreasury();
   const { starknet } = useNetwork();
   const [submitting, setSubmitting] = useState(false);
-  const treasury = treasuryAddress();
+  const treasury = treasuryAddress(starknet.treasury);
 
   if (!session || !treasury) return null;
   const publicStrk = balances?.strkWei ?? BigInt(0);

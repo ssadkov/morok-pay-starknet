@@ -12,6 +12,8 @@ const MAINNET = {
   tokenMessengerMinter:
     "0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a",
   escrow: "",
+  treasury:
+    process.env.NEXT_PUBLIC_MOROK_TREASURY_MAINNET_ADDRESS?.trim() ?? "",
 } as const;
 
 const SEPOLIA = {
@@ -27,6 +29,9 @@ const SEPOLIA = {
     "0x04bDdE1E09a4B09a2F95d893D94a967b7717eB85A3f6dEcA8c080Ee01fBc3370",
   escrow:
     "0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5",
+  treasury:
+    process.env.NEXT_PUBLIC_MOROK_TREASURY_SEPOLIA_ADDRESS?.trim() ??
+    "0x00E5887fC74A11d10Ad5dd2f69D3911Fb352d9b811528a9281Ca8aBAc8498423",
 } as const;
 
 const STARKNET = {
@@ -55,6 +60,3 @@ export const STRK_ADDRESS =
 
 export const READY_WALLET_URL =
   "https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb";
-
-export const MOROK_TREASURY_ADDRESS =
-  process.env.NEXT_PUBLIC_MOROK_TREASURY_ADDRESS?.trim() ?? "";

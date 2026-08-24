@@ -49,7 +49,7 @@ export function ShieldButton({
       <p className="text-xs text-muted-foreground">
         {registration === "unknown"
           ? "Checking whether Private is enabled in Ready…"
-          : "Enable Private in Ready first: open Protected tokens, start Shield, and confirm the one-time privacy activation."}
+          : "Enable Private in Ready first. Use Standard Account mode (turn off Smart Account), then open Protected tokens, start Shield, and confirm the one-time activation."}
       </p>
     );
   }
