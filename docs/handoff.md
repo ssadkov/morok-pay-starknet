@@ -2,12 +2,13 @@
 
 MorokPay is a private donation product on Starknet for the STRK20 Private Sprint. The current sprint cut is not a generic wallet or merchant checkout.
 
-## Current focus (2026-08-24)
+## Current focus (2026-08-25)
 
 1. Donation UI and onboarding are shipped on `master`.
 2. Dry-run the First 10 campaign with registered Ready accounts and record the required three-minute submission video.
 3. Replace the public unauthenticated mainnet RPC before campaign traffic.
-4. Build DonationPot only if the core submission is complete.
+4. Add a downloadable branded QR image that includes the donation label and MorokPay logo while preserving a reliably scannable payment link.
+5. Build DonationPot only if the core submission is complete.
 
 ## Product flow
 
