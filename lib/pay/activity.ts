@@ -55,8 +55,64 @@ export function activityParties(item: ActivityItem): {
 
 export const ACTIVITY_STORAGE_KEY = "morokpay.activity";
 export const ACTIVITY_CHANGE_EVENT = "morokpay-activity";
+export const PRIVATE_BALANCE_SNAPSHOT_KEY = "morokpay.private-balance-snapshots";
 /** Ignore Ready note-scan jitter below 0.10 USDC (6 decimals). */
 export const PRIVATE_DELTA_DUST_RAW = BigInt(100_000);
+
+export type PrivateBalanceSnapshot = {
+  balanceRaw: string;
+  at: number;
+};
+
+function privateSnapshotId(network: AppNetwork, address: string) {
+  try {
+    return `${network}:0x${BigInt(address).toString(16)}`;
+  } catch {
+    return `${network}:${address.toLowerCase()}`;
+  }
+}
+
+function readPrivateSnapshots(): Record<string, PrivateBalanceSnapshot> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(PRIVATE_BALANCE_SNAPSHOT_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, PrivateBalanceSnapshot>;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function readPrivateBalanceSnapshot(
+  network: AppNetwork,
+  address: string,
+): bigint | null {
+  const snapshot = readPrivateSnapshots()[privateSnapshotId(network, address)];
+  if (!snapshot || !/^\d+$/.test(snapshot.balanceRaw)) return null;
+  try {
+    return BigInt(snapshot.balanceRaw);
+  } catch {
+    return null;
+  }
+}
+
+export function writePrivateBalanceSnapshot(
+  network: AppNetwork,
+  address: string,
+  balanceRaw: bigint,
+) {
+  if (typeof window === "undefined" || balanceRaw < BigInt(0)) return;
+  const snapshots = readPrivateSnapshots();
+  snapshots[privateSnapshotId(network, address)] = {
+    balanceRaw: balanceRaw.toString(),
+    at: Date.now(),
+  };
+  window.localStorage.setItem(
+    PRIVATE_BALANCE_SNAPSHOT_KEY,
+    JSON.stringify(snapshots),
+  );
+}
 
 function newId() {
   const bytes = new Uint8Array(6);
@@ -341,4 +397,35 @@ export function reconcilePrivateBalance(args: {
     });
   }
   return null;
+}
+
+/**
+ * Restore only a positive net change after the app was closed. It is an
+ * inferred balance increase, not a wallet-provided transaction history.
+ */
+export function reconcilePrivateBalanceAfterReconnect(args: {
+  network: AppNetwork;
+  address: string;
+  previousRaw: bigint;
+  nextRaw: bigint;
+}) {
+  const delta = args.nextRaw - args.previousRaw;
+  if (delta < PRIVATE_DELTA_DUST_RAW) return null;
+
+  const invoice = findIncomingInvoice(readInvoices(args.network), {
+    merchant: args.address,
+    amountRaw: delta,
+  });
+  if (invoice) return recordMorokSale(invoice, args.address);
+
+  return recordActivity({
+    network: args.network,
+    kind: "receive",
+    source: "private",
+    amount: formatUsdcRaw(delta),
+    amountRaw: delta.toString(),
+    label: "Detected after reconnect",
+    to: args.address,
+    address: args.address,
+  });
 }

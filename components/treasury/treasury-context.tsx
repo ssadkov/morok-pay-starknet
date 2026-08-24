@@ -14,7 +14,12 @@ import type { WalletWithStarknetFeatures } from "@starknet-io/get-starknet-walle
 import type { WalletAccountV6 } from "starknet";
 
 import { useNetwork } from "@/components/network-provider";
-import { reconcilePrivateBalance } from "@/lib/pay/activity";
+import {
+  readPrivateBalanceSnapshot,
+  reconcilePrivateBalance,
+  reconcilePrivateBalanceAfterReconnect,
+  writePrivateBalanceSnapshot,
+} from "@/lib/pay/activity";
 import { poolRegistration } from "@/lib/starknet/account-status";
 import { privateBalanceFromEntries } from "@/lib/starknet/actions";
 import { STRK_ADDRESS } from "@/lib/starknet/constants";
@@ -264,7 +269,25 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
                   previousRaw: previousPrivateUsdc.current,
                   nextRaw: privateUsdc,
                 });
+              } else {
+                const stored = readPrivateBalanceSnapshot(
+                  network,
+                  current.address,
+                );
+                if (stored !== null) {
+                  reconcilePrivateBalanceAfterReconnect({
+                    network,
+                    address: current.address,
+                    previousRaw: stored,
+                    nextRaw: privateUsdc,
+                  });
+                }
               }
+              writePrivateBalanceSnapshot(
+                network,
+                current.address,
+                privateUsdc,
+              );
               previousAddress.current = current.address;
               previousPrivateUsdc.current = privateUsdc;
             }

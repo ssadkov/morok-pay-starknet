@@ -2,11 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   ACTIVITY_STORAGE_KEY,
+  PRIVATE_BALANCE_SNAPSHOT_KEY,
   activityParties,
   classifyPrivateDelta,
   findIncomingInvoice,
+  readPrivateBalanceSnapshot,
   readActivity,
+  reconcilePrivateBalanceAfterReconnect,
   sameAddress,
+  writePrivateBalanceSnapshot,
   type ActivityItem,
 } from "./activity";
 import type { MerchantInvoice } from "./invoices";
@@ -62,6 +66,68 @@ describe("readActivity", () => {
     };
     try {
       expect(readActivity("sepolia").map((item) => item.id)).toEqual(["kept"]);
+    } finally {
+      globals.window = original;
+    }
+  });
+});
+
+describe("private balance snapshots", () => {
+  it("persists a balance per normalized address and network", () => {
+    const store = new Map<string, string>();
+    const globals = globalThis as { window?: unknown };
+    const original = globals.window;
+    globals.window = {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+      },
+      dispatchEvent: () => true,
+    };
+    try {
+      writePrivateBalanceSnapshot("sepolia", "0x01", BigInt(2_000_000));
+      expect(readPrivateBalanceSnapshot("sepolia", "0x1")).toBe(
+        BigInt(2_000_000),
+      );
+      expect(readPrivateBalanceSnapshot("mainnet", "0x1")).toBeNull();
+      expect(store.has(PRIVATE_BALANCE_SNAPSHOT_KEY)).toBe(true);
+    } finally {
+      globals.window = original;
+    }
+  });
+
+  it("records only a positive reconnect delta", () => {
+    const store = new Map<string, string>();
+    const globals = globalThis as { window?: unknown };
+    const original = globals.window;
+    globals.window = {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+      },
+      dispatchEvent: () => true,
+    };
+    try {
+      expect(
+        reconcilePrivateBalanceAfterReconnect({
+          network: "sepolia",
+          address: seller,
+          previousRaw: BigInt(1_000_000),
+          nextRaw: BigInt(3_000_000),
+        }),
+      ).toMatchObject({
+        kind: "receive",
+        amount: "2",
+        label: "Detected after reconnect",
+      });
+      expect(
+        reconcilePrivateBalanceAfterReconnect({
+          network: "sepolia",
+          address: seller,
+          previousRaw: BigInt(3_000_000),
+          nextRaw: BigInt(1_000_000),
+        }),
+      ).toBeNull();
     } finally {
       globals.window = original;
     }
