@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { STRK_ADDRESS } from "./constants";
-import { publicStrkTransferCall, toCalldataFelt } from "./actions";
+import {
+  privateTransferActions,
+  publicStrkTransferCall,
+  toCalldataFelt,
+} from "./actions";
+import { getShieldToken } from "./tokens";
 
 const WALLET_FELT_RE = /^0x(0|[a-fA-F1-9]{1}[a-fA-F0-9]{0,62})$/;
 
@@ -38,5 +43,34 @@ describe("publicStrkTransferCall", () => {
         "0x0",
       ],
     });
+  });
+});
+
+describe("privateTransferActions", () => {
+  it("batches the donation and treasury fee as private transfers", () => {
+    const token = getShieldToken("usdc", "sepolia");
+    const actions = privateTransferActions(token, BigInt(2_000_000), "0x123", {
+      additionalTransfers: [
+        { amount: BigInt(10_000), recipient: "0x456" },
+      ],
+    });
+
+    expect(actions).toHaveLength(2);
+    expect(actions[0]).toMatchObject({
+      type: "transfer",
+      token: token.address,
+      amount: "0x1e8480",
+    });
+    expect(actions[1]).toMatchObject({
+      type: "transfer",
+      token: token.address,
+      amount: "0x2710",
+    });
+    expect(BigInt((actions[0] as { recipient: string }).recipient)).toBe(
+      BigInt("0x123"),
+    );
+    expect(BigInt((actions[1] as { recipient: string }).recipient)).toBe(
+      BigInt("0x456"),
+    );
   });
 });

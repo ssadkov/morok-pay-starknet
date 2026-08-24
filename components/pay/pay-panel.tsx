@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
+import { donationDebit, morokDonationFee } from "@/lib/pay/fees";
 import {
   recordActivity,
   removeActivity,
@@ -79,6 +80,8 @@ export function PayPanel() {
   const amountText = request?.amount || donationAmount;
   const recipientPresence = useAccountPresence(request?.to);
   const recipientRegistration = usePoolRegistration(request?.to);
+  const fee = morokDonationFee(network, starknet.treasury);
+  const feeRegistration = usePoolRegistration(fee?.recipient);
   const notes = useUsdcMaturity(session?.address, privateRaw);
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const creatorReady =
@@ -89,10 +92,14 @@ export function PayPanel() {
     !!request &&
     (recipientPresence === "undeployed" ||
       recipientRegistration === "unregistered");
+  const feeReady = !fee || feeRegistration === "registered";
+  const feePending = Boolean(fee && feeRegistration === "unknown");
+  const feeBlocked = Boolean(fee && feeRegistration === "unregistered");
   const canDonate =
     !!session &&
     !!request &&
     creatorReady &&
+    feeReady &&
     notes.ready &&
     privateRaw > BigInt(0);
 
@@ -114,9 +121,15 @@ export function PayPanel() {
       setPaying(false);
       return;
     }
-    if (privateRaw < amount) {
+    const debit = donationDebit(amount, fee);
+    if (privateRaw < debit) {
       setError(
-        formatStrk20Error(new Error("INSUFFICIENT_PRIVATE_BALANCE"), "pay"),
+        formatStrk20Error(
+          new Error(
+            `Not enough private USDC: ${formatUsdc(debit)} required including the MorokPay fee`,
+          ),
+          "pay",
+        ),
       );
       setPaying(false);
       return;
@@ -165,6 +178,13 @@ export function PayPanel() {
         usdc,
         amount,
         request.to,
+        fee
+          ? {
+              additionalTransfers: [
+                { amount: fee.amountRaw, recipient: fee.recipient },
+              ],
+            }
+          : undefined,
       );
       await confirm(extractTxHash(response));
     } catch (caught) {
@@ -308,7 +328,9 @@ export function PayPanel() {
         ]}
       />
 
-      {request && session && (canDonate || creatorBlocked) ? (
+      {request &&
+      session &&
+      (canDonate || creatorBlocked || feePending || feeBlocked) ? (
         <Card>
           <CardHeader>
             <CardTitle>{request.label || "Private donation"}</CardTitle>
@@ -359,12 +381,39 @@ export function PayPanel() {
               </p>
             )}
             {session ? (
-              <p className="text-sm tabular-nums">
-                Your private USDC:{" "}
-                {balancesLoading && privateRaw === BigInt(0)
-                  ? "…"
-                  : formatUsdc(privateRaw)}
-              </p>
+              <div className="flex flex-col gap-1 text-sm tabular-nums">
+                <p>
+                  Your private USDC:{" "}
+                  {balancesLoading && privateRaw === BigInt(0)
+                    ? "…"
+                    : formatUsdc(privateRaw)}
+                </p>
+                {fee ? (
+                  <div className="rounded-lg bg-muted/50 px-3 py-2 text-xs text-muted-foreground ring-1 ring-foreground/10">
+                    <p>
+                      MorokPay test fee: {formatUsdc(fee.amountRaw)} USDC.
+                      Added on top, so the creator receives the full donation.
+                    </p>
+                    {amountText.trim() ? (
+                      <p className="mt-1 font-medium text-foreground">
+                        Total private USDC: {(() => {
+                          try {
+                            return formatUsdc(
+                              donationDebit(parseUsdc(amountText), fee),
+                            );
+                          } catch {
+                            return "…";
+                          }
+                        })()}
+                      </p>
+                    ) : null}
+                    <p className="mt-1">
+                      Sepolia test: Ready may charge the STRK20 pool fee for
+                      both private transfer actions.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             {session && request && sameAddress(request.to, session.address) ? (
               <Alert>
@@ -394,6 +443,20 @@ export function PayPanel() {
                   Ask them to shield STRK once on My QR before you donate.
                 </AlertDescription>
               </Alert>
+            ) : null}
+            {feeBlocked ? (
+              <Alert>
+                <AlertTitle>MorokPay test treasury is not private-ready</AlertTitle>
+                <AlertDescription>
+                  Register the configured Sepolia treasury in STRK20 before
+                  testing the batched donation and fee.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {feePending ? (
+              <p className="text-sm text-muted-foreground">
+                Checking the MorokPay test treasury…
+              </p>
             ) : null}
             {error ? (
               <Alert variant="destructive">

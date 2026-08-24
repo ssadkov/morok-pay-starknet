@@ -1,6 +1,7 @@
 import {
   validateAndParseAddress,
   type Call,
+  type STRK20_ACTION,
   type WalletAccountV6,
 } from "starknet";
 
@@ -105,14 +106,18 @@ export async function payoutToken(
   ]);
 }
 
-export async function transferPrivate(
-  account: WalletAccountV6,
+export type PrivateTransferOptions = {
+  additionalTransfers?: { amount: bigint; recipient: string }[];
+  invoke?: { contract: string; calldata?: string[] };
+};
+
+export function privateTransferActions(
   token: ShieldToken,
   amount: bigint,
   recipient: string,
-  invoke?: { contract: string; calldata?: string[] },
-) {
-  const actions: Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0] = [
+  options?: PrivateTransferOptions,
+): STRK20_ACTION[] {
+  const actions: STRK20_ACTION[] = [
     {
       type: "transfer",
       token: token.address,
@@ -120,13 +125,32 @@ export async function transferPrivate(
       recipient: validateAndParseAddress(recipient),
     },
   ];
-  if (invoke?.contract) {
+  for (const transfer of options?.additionalTransfers ?? []) {
     actions.push({
-      type: "invoke",
-      contract: validateAndParseAddress(invoke.contract),
-      calldata: invokeCalldata(invoke.calldata ?? []),
+      type: "transfer",
+      token: token.address,
+      amount: toFelt(transfer.amount),
+      recipient: validateAndParseAddress(transfer.recipient),
     });
   }
+  if (options?.invoke?.contract) {
+    actions.push({
+      type: "invoke",
+      contract: validateAndParseAddress(options.invoke.contract),
+      calldata: invokeCalldata(options.invoke.calldata ?? []),
+    });
+  }
+  return actions;
+}
+
+export async function transferPrivate(
+  account: WalletAccountV6,
+  token: ShieldToken,
+  amount: bigint,
+  recipient: string,
+  options?: PrivateTransferOptions,
+) {
+  const actions = privateTransferActions(token, amount, recipient, options);
   return account.strk20InvokeTransaction(actions);
 }
 
