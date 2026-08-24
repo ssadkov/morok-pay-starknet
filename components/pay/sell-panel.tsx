@@ -79,7 +79,7 @@ export function SellPanel() {
   const publicStrk = balances?.strkWei ?? BigInt(0);
   const needStrk = poolFee * BigInt(2);
   const canReceive =
-    presence !== "undeployed" && registration === "registered";
+    presence === "deployed" && registration === "registered";
   const checking =
     !!session &&
     !canReceive &&
@@ -136,11 +136,27 @@ export function SellPanel() {
     }
   }
 
-  const activateStatus = !session
+  async function copyReadyAddress() {
+    if (!session) return;
+    try {
+      await navigator.clipboard.writeText(session.address);
+      toast.success("Ready address copied");
+    } catch {
+      toast.error("Could not copy address");
+    }
+  }
+
+  const deployStatus = !session
     ? "upcoming"
-    : canReceive
+    : presence === "deployed"
       ? "done"
       : "current";
+  const activateStatus =
+    presence !== "deployed"
+      ? "upcoming"
+      : registration === "registered"
+        ? "done"
+        : "current";
 
   return (
     <div className="flex flex-col gap-8">
@@ -154,7 +170,7 @@ export function SellPanel() {
 
       <OnboardingSteps
         title="Get ready to receive"
-        description={`Match the header to ${network === "sepolia" ? "Sepolia" : "Mainnet"} in Ready. Shield STRK once — that deploys this account and turns on private notes.`}
+        description={`Match the header to ${network === "sepolia" ? "Sepolia" : "Mainnet"} in Ready. Fund the address, deploy Ready with its first outgoing transaction, then shield STRK to turn on private notes.`}
         doneLabel={`Ready · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
         steps={[
           {
@@ -165,9 +181,71 @@ export function SellPanel() {
             children: session ? null : <ConnectReady />,
           },
           {
+            id: "deploy",
+            title: `Deploy Ready on ${network === "sepolia" ? "Sepolia" : "Mainnet"}`,
+            body:
+              presence === "unknown"
+                ? "Checking whether this Ready account is deployed…"
+                : "Funding and deployment are separate. In Ready, send one small outgoing transaction to another account on this network. Ready deploys itself with that first transaction.",
+            status: deployStatus,
+            children:
+              deployStatus === "current" &&
+              presence === "undeployed" &&
+              session ? (
+                <>
+                  <div className="rounded-xl bg-muted/40 p-3 ring-1 ring-foreground/10">
+                    <p className="text-xs text-muted-foreground">
+                      Ready address
+                    </p>
+                    <p className="mt-1 break-all font-mono text-xs tabular-nums">
+                      {session.address}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="lg"
+                      className="min-h-12"
+                      onClick={() => {
+                        void copyReadyAddress();
+                      }}
+                    >
+                      <CopyIcon data-icon="inline-start" />
+                      Copy address
+                    </Button>
+                    {network === "sepolia" && publicStrk <= BigInt(0) ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="min-h-12"
+                        nativeButton={false}
+                        render={
+                          <a
+                            href={STARKNET_SEPOLIA_STRK_FAUCET_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                          />
+                        }
+                      >
+                        Get test STRK
+                      </Button>
+                    ) : null}
+                  </div>
+                  {publicStrk > BigInt(0) ? (
+                    <p className="text-sm text-muted-foreground">
+                      Funded with {formatStrk(publicStrk)} STRK. No additional
+                      faucet request is needed.
+                    </p>
+                  ) : null}
+                </>
+              ) : null,
+          },
+          {
             id: "activate",
             title: "Activate with STRK",
-            body: checking
+            body: registration === "unknown" && presence === "deployed"
               ? "Checking this Ready on the pool…"
               : `Shield more than ${formatStrk(poolFee)} STRK. You do not need USDC to receive donations.`,
             status: activateStatus,
@@ -182,6 +260,20 @@ export function SellPanel() {
                     </p>
                   ) : null}
                   <div className="flex flex-wrap gap-2">
+                    {session ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        className="min-h-12"
+                        onClick={() => {
+                          void copyReadyAddress();
+                        }}
+                      >
+                        <CopyIcon data-icon="inline-start" />
+                        Copy address
+                      </Button>
+                    ) : null}
                     {network === "sepolia" ? (
                       <Button
                         type="button"

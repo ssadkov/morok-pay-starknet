@@ -14,6 +14,24 @@ describe("formatStrk20Error", () => {
       formatStrk20Error(new Error("USER_REFUSED_OP"), "balance"),
     ).toMatch(/did not share private balances/i);
   });
+
+  it("turns Ready UNKNOWN_ERROR during shield into a deployment check", () => {
+    expect(
+      formatStrk20Error(
+        new Error("An error occurred (UNKNOWN_ERROR)"),
+        "shield",
+      ),
+    ).toMatch(/account is deployed on the selected network/i);
+  });
+
+  it("turns Ready UNKNOWN_ERROR during balance reads into activation guidance", () => {
+    expect(
+      formatStrk20Error(
+        new Error("An error occurred (UNKNOWN_ERROR)"),
+        "balance",
+      ),
+    ).toMatch(/deploy and activate/i);
+  });
 });
 
 describe("extractTxHash", () => {

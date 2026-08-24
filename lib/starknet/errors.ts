@@ -89,6 +89,13 @@ export function formatStrk20Error(
   if (/USER_REFUSED/i.test(message) && action === "balance") {
     return "Ready did not share private balances. Click refresh and approve once.";
   }
+  if (/UNKNOWN_ERROR/i.test(message)) {
+    return action === "balance"
+      ? "Ready could not read private balances. Deploy and activate this account on the selected network first."
+      : action === "shield"
+        ? "Ready could not submit this STRK20 action. Make sure the account is deployed on the selected network, then try again."
+        : describeError(error) || message;
+  }
   if (action === "balance") {
     return message || "Ready could not read the private balance";
   }

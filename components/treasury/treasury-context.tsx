@@ -224,36 +224,41 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         let privateStrkBtc = lastPrivate.current.strkBtc;
         let privateError: string | null = null;
         try {
-          const entries = await current.account.strk20Balances([
-            ...shieldTokenAddresses(network),
-            STRK_ADDRESS,
-          ]);
-          privateUsdc = privateBalanceFromEntries(
-            entries,
-            getShieldToken("usdc", network).address,
-          );
-          privateStrk = privateBalanceFromEntries(entries, STRK_ADDRESS);
-          privateStrkBtc = privateBalanceFromEntries(
-            entries,
-            getShieldToken("strkbtc", network).address,
-          );
-          lastPrivate.current = {
-            usdc: privateUsdc,
-            strk: privateStrk,
-            strkBtc: privateStrkBtc,
-            known: true,
-          };
-          const sameAccount = previousAddress.current === current.address;
-          if (sameAccount && previousPrivateUsdc.current !== null) {
-            reconcilePrivateBalance({
-              network,
-              address: current.address,
-              previousRaw: previousPrivateUsdc.current,
-              nextRaw: privateUsdc,
-            });
+          if (snapshot.status === "undeployed") {
+            privateError =
+              "Funded, but not deployed. Send one outgoing transaction in Ready first.";
+          } else {
+            const entries = await current.account.strk20Balances([
+              ...shieldTokenAddresses(network),
+              STRK_ADDRESS,
+            ]);
+            privateUsdc = privateBalanceFromEntries(
+              entries,
+              getShieldToken("usdc", network).address,
+            );
+            privateStrk = privateBalanceFromEntries(entries, STRK_ADDRESS);
+            privateStrkBtc = privateBalanceFromEntries(
+              entries,
+              getShieldToken("strkbtc", network).address,
+            );
+            lastPrivate.current = {
+              usdc: privateUsdc,
+              strk: privateStrk,
+              strkBtc: privateStrkBtc,
+              known: true,
+            };
+            const sameAccount = previousAddress.current === current.address;
+            if (sameAccount && previousPrivateUsdc.current !== null) {
+              reconcilePrivateBalance({
+                network,
+                address: current.address,
+                previousRaw: previousPrivateUsdc.current,
+                nextRaw: privateUsdc,
+              });
+            }
+            previousAddress.current = current.address;
+            previousPrivateUsdc.current = privateUsdc;
           }
-          previousAddress.current = current.address;
-          previousPrivateUsdc.current = privateUsdc;
         } catch (error) {
           if (!lastPrivate.current.known) {
             privateError = formatStrk20Error(error, "balance");

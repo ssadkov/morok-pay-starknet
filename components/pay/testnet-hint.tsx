@@ -36,8 +36,9 @@ export function TestnetHint() {
           is 2 STRK. Sprint evidence still has to be mainnet.
         </p>
         <p>
-          Fast path: Get test STRK, then Circle USDC into the public Wallet.
-          Shield at least 2 STRK for the pool fee and your USDC from Balances.
+          Fast path: get test STRK, make one outgoing Ready transaction to
+          deploy the account, then shield more than 2 STRK for the pool fee.
+          Circle USDC is only needed when testing fixed-amount payments.
         </p>
         <div className="flex flex-wrap gap-2">
           {session ? (
