@@ -2,12 +2,15 @@
 
 MorokPay is a private donation product on Starknet for the STRK20 Private Sprint. The current sprint cut is not a generic wallet or merchant checkout.
 
-## Current focus (2026-08-24)
+## Current focus (2026-08-25)
 
 1. Donation UI and onboarding are shipped on `master`.
 2. Dry-run the First 10 campaign with registered Ready accounts and record the required three-minute submission video.
 3. Replace the public unauthenticated mainnet RPC before campaign traffic.
-4. Build DonationPot only if the core submission is complete.
+4. Add a downloadable branded QR image with the donation label and MorokPay logo while preserving a reliably scannable payment link.
+5. Test MetaMask as the entry wallet and document the exact account, funding, and Ready/private activation boundary.
+6. Return to the unshield-fee design after that test; do not charge a MorokPay fee on every private donation. See [fees.md](fees.md).
+7. Build DonationPot only if the core submission is complete.
 
 ## Product flow
 
@@ -24,6 +27,8 @@ Donation requests and app activity are stored in the current browser. Old invoic
 MorokPay uses Ready Wallet API methods for private balances and transactions. Ready owns the viewing key, note discovery, proving, and submission. Do not restore the removed direct Privacy SDK path or ask users for viewing keys.
 
 A donation is a normal `wallet_strk20InvokeTransaction` transfer. No helper contract is involved. Ready exposes balances, not private transfer history, so the creator refreshes the balance and explicitly marks a donation received.
+
+MorokPay's planned service fee belongs at the app's `Unshield` step, not inside each private donation. The current direct-wallet architecture cannot enforce that fee if a user unshields in Ready instead of MorokPay. See [fees.md](fees.md).
 
 The deployed `MorokInvoices` event is not settlement proof: an empty-note helper cannot authenticate the hidden recipient, token, or amount of a separate transfer action. See [private-invoices.md](private-invoices.md).
 
