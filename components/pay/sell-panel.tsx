@@ -252,9 +252,8 @@ export function SellPanel() {
                 <>
                   <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                     <li>
-                      In Ready Settings, turn off Smart Account and use
-                      Standard Account. Privacy does not support Smart Account
-                      mode yet.
+                      In Ready Settings, enable Smart Account. The current
+                      Ready privacy backend requires it for a new account.
                     </li>
                     <li>Open the Protected tokens section in Ready.</li>
                     <li>Select a token and start Shield.</li>

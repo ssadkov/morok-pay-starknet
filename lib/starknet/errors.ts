@@ -76,7 +76,7 @@ export function formatStrk20Error(
 ): string {
   const message = errorText(error);
   if (/Account not found on the privacy backend/i.test(message)) {
-    return "Ready privacy does not support Smart Account mode yet. In Ready Settings, turn off Smart Account, switch to Standard Account, and retry Shield.";
+    return "Ready privacy could not find this account. In the current Ready X, enable Smart Account in Settings and retry Shield.";
   }
   if (/NOT_REGISTERED/i.test(message)) {
     return "This Ready account is not registered in the STRK20 pool yet. Open Protected tokens in Ready and confirm the one-time privacy activation first.";

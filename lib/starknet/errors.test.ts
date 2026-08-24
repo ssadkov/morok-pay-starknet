@@ -9,7 +9,7 @@ describe("formatStrk20Error", () => {
         new Error("Account not found on the privacy backend"),
         "shield",
       ),
-    ).toMatch(/turn off Smart Account.*Standard Account/i);
+    ).toMatch(/enable Smart Account/i);
   });
 
   it("explains NOT_REGISTERED", () => {
