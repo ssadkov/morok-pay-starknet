@@ -1,7 +1,8 @@
 # MetaMask + Privacy SDK Sepolia test
 
-Status: public account control and STRK20 registration confirmed on 2026-08-25.
-Shield, private balance, private transfer, and unshield are the next test stages.
+Status: public account control, STRK20 registration, 1 STRK shield, and private
+balance discovery confirmed on 2026-08-25. Private transfer and unshield are
+the next test stages.
 
 ## What this path is
 
@@ -36,11 +37,20 @@ the generated account, its owner, signing key, or private-transfer sender.
 | Public 0.01 STRK transfer | `0x026c60b28c9c677cc20e0355e73d34509a126688d9e67bde819b3c2bf2ada4d` | `SUCCEEDED`; generated account paid `1.303148503138092678 STRK` gas. |
 | Account self-upgrade | `0x03f6bff4901d225efea1238543862ffb231bf7e75c60dfcfadb20b164c8a6997` | `SUCCEEDED`; generated account paid `1.261148222351904366 STRK` gas. Address and EVM owner were preserved. |
 | STRK20 registration | `0x07deccfc10ccd7fb878d6482f892c08c46a2059cd22da299566e996cb26a3df` | `SUCCEEDED`, block `14021124`; `2 STRK` pool fee plus `4.331302638639205626 STRK` gas. |
+| Shield 1 STRK | `0x03c898fd7a6a24431ed87f4054f317ac56fbac6b1b79274051138d212d6986e` | `SUCCEEDED`, block `14022244`; `1 STRK` shield, `2 STRK` pool fee, and `4.982030916506692056 STRK` gas. Private balance discovery changed from `0` to `1 STRK`. |
 
 Registration was prepared at proving block `14021087` with a real 225,040-byte
 proof and nine proof facts. The final InvokeV3 batched the public STRK approval
 and the pool `apply_actions` registration call. No shield or private transfer
 occurred in that transaction.
+
+The first shield required `autoSetup` because registration alone had not opened
+the account's self-channel or STRK token subchannel. The successful transaction
+batched those setup actions with the deposit in one pool `apply_actions` call,
+so the pool fee was charged once. The public ERC-20 approval was limited to
+exactly `3 STRK`: `1 STRK` deposit plus `2 STRK` pool fee. After discovery
+indexed the resulting note, the same in-memory viewing key read a `1 STRK`
+private balance.
 
 ## Compatibility findings
 
@@ -78,12 +88,13 @@ construct the Starknet and STRK20 operations.
 
 ## Next bounded test
 
-1. Re-derive the viewing key in the current tab and confirm discovery reports
-   the account as registered.
-2. Prepare a 1 STRK shield with a real `PROOF1`, show pool fee and funded gas
-   bounds, and require a separate MetaMask confirmation to broadcast it.
-3. Record the shield hash, receipt, public token movement, actual gas, and
-   resulting private balance.
-4. Only then test a private transfer and unshield. Do not add a relayer until
-   the account can complete the STRK20 lifecycle and withdraw funds.
-
+1. Discover the confirmed 1 STRK note with the in-memory viewing key.
+2. Prepare an unshield back to the same public account with a real `PROOF1`,
+   show the selected note, amount, pool fee, and funded gas bounds, and require
+   a separate MetaMask confirmation to broadcast it.
+3. Record the unshield hash, receipt, public token movement, actual gas, and
+   resulting private/public balances.
+4. Re-shield and test a private transfer to a separately controlled registered
+   recipient, then discovery and unshield by that recipient.
+5. Repeat the lifecycle with Sepolia USDC only after STRK succeeds. Do not add a
+   relayer until the account can complete the lifecycle and withdraw funds.
