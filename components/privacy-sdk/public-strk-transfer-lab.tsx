@@ -5,9 +5,7 @@ import { ExternalLinkIcon, SendIcon } from "lucide-react";
 import { parseUnits, recoverTypedDataAddress } from "viem";
 import {
   Account,
-  ETransactionVersion3,
   RpcProvider,
-  TransactionType,
   type Call,
   type ResourceBoundsBN,
 } from "starknet";
@@ -27,7 +25,7 @@ import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
 import {
   Eth712TransactionSigner,
-  eth712ValidationSimulationBounds,
+  eth712FundedResourceBounds,
   safeEth712TransactionError,
 } from "@/lib/privacy/eth712-transaction";
 import { publicStrkTransferCall } from "@/lib/starknet/actions";
@@ -168,26 +166,12 @@ export function PublicStrkTransferLab({
         skipValidate: true,
         tip: BigInt(0),
       });
-      const provisionalBounds = eth712ValidationSimulationBounds({
+      const fundedBounds = eth712FundedResourceBounds({
         estimated: baseEstimate.resourceBounds,
         publicBalance: snapshot.strkWei,
         transferAmount: TEST_AMOUNT,
       });
-      const simulation = await account.simulateTransaction(
-        [{ type: TransactionType.INVOKE, payload: [call] }],
-        {
-          nonce,
-          resourceBounds: provisionalBounds,
-          skipValidate: false,
-          tip: BigInt(0),
-          version: ETransactionVersion3.F3,
-        },
-      );
-      const estimate = simulation.simulated_transactions[0];
-      if (!estimate) {
-        throw new Error("Sepolia returned no Eth712 simulation result");
-      }
-      const maximumFee = maxFee(estimate.resourceBounds);
+      const maximumFee = maxFee(fundedBounds);
       if (snapshot.strkWei < TEST_AMOUNT + maximumFee) {
         throw new Error(
           `Not enough public STRK. Need at least ${formatStrk(TEST_AMOUNT + maximumFee)} STRK for the transfer and maximum fee.`,
@@ -196,7 +180,7 @@ export function PublicStrkTransferLab({
       setPrepared({
         balance: snapshot.strkWei,
         nonce,
-        resourceBounds: estimate.resourceBounds,
+        resourceBounds: fundedBounds,
         maxFee: maximumFee,
         evmAddress: address,
         evmChainId: chainId,
@@ -354,9 +338,9 @@ export function PublicStrkTransferLab({
         <CardTitle>5. Send public STRK with MetaMask</CardTitle>
         <CardDescription>
           This is an ordinary Starknet InvokeV3 paid by the generated account.
-          Ready and STRK20 are not involved. MetaMask first signs a
-          non-submittable query so Sepolia can measure account validation,
-          then signs the transaction itself.
+          Ready and STRK20 are not involved. Preparation reads current gas
+          prices without a wallet signature. MetaMask signs only the
+          transaction itself.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -387,11 +371,12 @@ export function PublicStrkTransferLab({
               <span>Public balance: {formatStrk(prepared.balance)} STRK</span>
               <span>Nonce: {prepared.nonce.toString()}</span>
               <span>
-                Validation-inclusive maximum fee bound: {formatStrk(prepared.maxFee)}
+                Balance-bounded maximum fee cap: {formatStrk(prepared.maxFee)}
                 {" STRK"}
               </span>
               <span>
-                MetaMask will sign these calls and exact transaction metadata.
+                The cap reserves room for Eth712 validation; Starknet charges
+                actual resource use, not the full cap.
               </span>
             </AlertDescription>
           </Alert>
@@ -441,8 +426,8 @@ export function PublicStrkTransferLab({
         >
           {preparing ? <Spinner data-icon="inline-start" /> : null}
           {preparing
-            ? "Waiting for estimate signature"
-            : "Estimate full fee with MetaMask"}
+            ? "Reading Sepolia gas prices"
+            : "Prepare max-gas transfer"}
         </Button>
         <Button
           type="button"

@@ -5,7 +5,7 @@ import { EDataAvailabilityMode, type InvocationsSignerDetails } from "starknet";
 import {
   eth712TransactionHash,
   eth712TransactionTypedData,
-  eth712ValidationSimulationBounds,
+  eth712FundedResourceBounds,
   ethSignatureToAccountFelts,
   safeEth712TransactionError,
 } from "./eth712-transaction";
@@ -116,7 +116,7 @@ describe("Eth712Account transaction signer", () => {
     );
   });
 
-  it("builds a validation simulation budget bounded by the public balance", () => {
+  it("builds validation resource bounds capped by the public balance", () => {
     const publicBalance = BigInt(14) * BigInt(10) ** BigInt(18);
     const transferAmount = BigInt(10) ** BigInt(16);
     const estimated = {
@@ -131,7 +131,7 @@ describe("Eth712Account transaction signer", () => {
       },
     };
 
-    const provisional = eth712ValidationSimulationBounds({
+    const provisional = eth712FundedResourceBounds({
       estimated,
       publicBalance,
       transferAmount,

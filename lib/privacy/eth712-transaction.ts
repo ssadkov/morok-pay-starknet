@@ -139,7 +139,7 @@ function resourceCost(bounds: ResourceBoundsBN) {
   );
 }
 
-export function eth712ValidationSimulationBounds(args: {
+export function eth712FundedResourceBounds(args: {
   estimated: ResourceBoundsBN;
   publicBalance: bigint;
   transferAmount: bigint;
@@ -151,7 +151,7 @@ export function eth712ValidationSimulationBounds(args: {
       args.estimated.l1_data_gas.max_price_per_unit;
   const available = args.publicBalance - args.transferAmount - nonL2Fee;
   if (available <= BigInt(0)) {
-    throw new Error("Insufficient public STRK for validation simulation");
+    throw new Error("Insufficient public STRK for Eth712 validation");
   }
 
   const l2Price = args.estimated.l2_gas.max_price_per_unit;
@@ -173,7 +173,7 @@ export function eth712ValidationSimulationBounds(args: {
     },
   };
   if (resourceCost(provisional) + args.transferAmount > args.publicBalance) {
-    throw new Error("Validation simulation exceeds the public STRK balance");
+    throw new Error("Validation resource cap exceeds the public STRK balance");
   }
   return provisional;
 }
@@ -189,6 +189,7 @@ function errorText(error: unknown, depth = 0): string {
     value.details,
     value.reason,
     value.data,
+    value.baseError,
     value.cause,
     value.error,
   ]
