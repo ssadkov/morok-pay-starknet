@@ -42,6 +42,7 @@ import { useTreasury } from "@/components/treasury/treasury-context";
 import { PublicStrkTransferLab } from "@/components/privacy-sdk/public-strk-transfer-lab";
 import { Strk20RegistrationLab } from "@/components/privacy-sdk/strk20-registration-lab";
 import { Strk20ShieldLab } from "@/components/privacy-sdk/strk20-shield-lab";
+import { Strk20UsdcLab } from "@/components/privacy-sdk/strk20-usdc-lab";
 import { shortenAddress } from "@/lib/format";
 import {
   deployEth712AccountCall,
@@ -825,6 +826,11 @@ export function Eip712SignatureLab() {
 
         <Strk20ShieldLab
           key={`strk20-shield:${currentInspection?.starknetAddress ?? "none"}:${address ?? "none"}:${chainId ?? "none"}`}
+          inspection={currentInspection}
+        />
+
+        <Strk20UsdcLab
+          key={`strk20-usdc:${currentInspection?.starknetAddress ?? "none"}:${address ?? "none"}:${chainId ?? "none"}`}
           inspection={currentInspection}
         />
 

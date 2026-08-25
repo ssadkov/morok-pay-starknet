@@ -2,7 +2,9 @@
 
 Status: public account control, STRK20 registration, 1 STRK shield, private
 balance discovery, and 1 STRK unshield confirmed on 2026-08-25. A private
-transfer to a separately controlled recipient is the next test stage.
+transfer to a separately controlled recipient is the next test stage. Numeric
+Sepolia USDC shield/private-transfer/unshield controls are implemented in the
+lab but remain unverified on-chain.
 
 ## What this path is
 
@@ -96,12 +98,14 @@ construct the Starknet and STRK20 operations.
 
 ## Next bounded test
 
-1. Refresh discovery until the spent 1 STRK sender note disappears.
+1. Refresh public/private USDC balances, fund the public account with Sepolia
+   USDC, and test a numeric USDC shield. USDC approval must equal only the entered
+   amount; the separate STRK approval must equal only the pool fee.
 2. Connect a second MetaMask EVM account, resolve its deterministic Starknet
    account, deploy/upgrade/register it, and record its ownership boundary.
-3. Re-shield STRK on the sender and prepare a private transfer to that separately
-   controlled registered recipient.
-4. Discover the received private note with the recipient viewing key, then
-   unshield it from the recipient account.
-5. Repeat the lifecycle with Sepolia USDC only after STRK succeeds. Do not add a
-   relayer until both sides can complete the lifecycle and withdraw funds.
+3. Prepare a numeric private USDC transfer to that separately controlled
+   registered recipient.
+4. Discover the received USDC note with the recipient viewing key and perform a
+   numeric USDC unshield.
+5. Do not add a relayer until both sides can complete the USDC lifecycle and
+   withdraw funds.
