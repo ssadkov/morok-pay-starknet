@@ -1,9 +1,9 @@
 # MetaMask + Privacy SDK Sepolia test
 
 Status: public account control, STRK20 registration, the 1 STRK shield/unshield
-cycle, and a 1 USDC unshield are confirmed on Sepolia as of 2026-08-25. The
-USDC shield transaction still needs to be added to this record, and a private
-transfer to a separately controlled recipient remains the next test stage.
+cycle, a 1 USDC shield/unshield cycle, and a USDC private-transfer transaction
+are confirmed on Sepolia as of 2026-08-25. Recipient-side private balance
+discovery is the next test stage.
 
 ## What this path is
 
@@ -41,6 +41,8 @@ the generated account, its owner, signing key, or private-transfer sender.
 | Shield 1 STRK | `0x03c898fd7a6a24431ed87f4054f317ac56fbac6b1b79274051138d212d6986e` | `SUCCEEDED`, block `14022244`; `1 STRK` shield, `2 STRK` pool fee, and `4.982030916506692056 STRK` gas. Private balance discovery changed from `0` to `1 STRK`. |
 | Unshield 1 STRK | `0x07c034e212df5af9c0f81dc62454077373b96bfb68e8066ab8926e76a78af106` | `SUCCEEDED`, block `14025732`; `1 STRK` returned publicly, `2 STRK` pool fee, and `4.375067402903257608 STRK` gas. Public balance changed by `-5.375067402903257608 STRK` net. |
 | Unshield 1 USDC | `0x060fd18fcc21ce8c7fa43208de35a0c0711e86f7ef4c54a32615c2ec04c9b44e` | `SUCCEEDED`, block `14035640`; exactly `1 USDC` moved from the pool to the generated public account, with a separate `2 STRK` pool fee and `4.432431986365654548 STRK` gas. |
+| Shield 1 USDC | `0x0a1fe154197a3912a98dce41ecdfee98c117d450184caa205c6e3e3fe9fbfd9` | `SUCCEEDED`, block `14035805`; exactly `1 USDC` moved publicly from the generated account to the pool, with a separate `2 STRK` pool fee and `4.864508837315534848 STRK` gas. |
+| Private USDC transfer | `0x0274ff470ea72bcb00cd8101b05a64e2cd765189186afb1f78ee38e5273d433b` | `SUCCEEDED`, block `14035837`; `2 STRK` pool fee plus `5.118527681170220634 STRK` gas. The public receipt does not reveal the private amount or recipient. |
 
 Registration was prepared at proving block `14021087` with a real 225,040-byte
 proof and nine proof facts. The final InvokeV3 batched the public STRK approval
@@ -69,6 +71,14 @@ and transfer events show a separate `2 STRK` pool fee, while the receipt charged
 `6.432431986365654548 STRK` in total and did not deduct the fee from the USDC
 amount. Discovery still needs to confirm that the spent private USDC note is no
 longer included in the browser's private balance.
+
+The subsequent USDC shield deposited exactly `1,000,000` base units and cost
+`6.864508837315534848 STRK` in pool fee plus gas. The following private-transfer
+receipt contains no public USDC transfer event and exposes neither the private
+amount nor the recipient. It does expose the generated account's public call to
+the pool, a `2 STRK` pool fee, and `5.118527681170220634 STRK` gas. The intended
+amount and recipient must therefore be checked through the sender input and
+recipient-side note discovery; the transaction hash alone is not payment proof.
 
 ## Compatibility findings
 
@@ -106,14 +116,13 @@ construct the Starknet and STRK20 operations.
 
 ## Next bounded test
 
-1. Refresh public/private USDC balances and confirm that discovery removes the
-   spent 1 USDC note. Add the preceding USDC shield transaction hash and measured
-   cost to this record.
-2. Connect a second MetaMask EVM account, resolve its deterministic Starknet
-   account, deploy/upgrade/register it, and record its ownership boundary.
-3. Prepare a numeric private USDC transfer to that separately controlled
-   registered recipient.
-4. Discover the received USDC note with the recipient viewing key and perform a
-   numeric USDC unshield.
-5. Do not add a relayer until both sides can complete the USDC lifecycle and
+1. Refresh sender and recipient USDC balances after discovery. Record the
+   entered transfer amount and confirm the same private-balance delta on both
+   sides without treating the public transaction sender as the private recipient.
+2. Perform a numeric USDC unshield from the recipient wallet and record its
+   public destination, amount, pool fee, and actual gas.
+3. If the recipient is a Ready account, repeat with a separately controlled
+   MetaMask-derived account so signing and viewing-key custody are proven on
+   both sides.
+4. Do not add a relayer until both sides can complete the USDC lifecycle and
    withdraw funds.
