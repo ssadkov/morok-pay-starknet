@@ -31,9 +31,9 @@ STRK20 hides the transfer amount and sender-to-recipient relationship on-chain. 
 - The First 10 activation campaign is planned; see [docs/private-first-10.md](docs/private-first-10.md).
 - MorokPay's fee is planned for the in-app unshield step, not for each private donation; see [docs/fees.md](docs/fees.md).
 - The isolated MetaMask + Privacy SDK lab has confirmed deterministic Starknet
-  account control, a public STRK transfer, STRK20 registration, a 1 STRK shield,
-  private balance discovery, and a 1 STRK unshield on Sepolia; a private transfer
-  to a separately controlled recipient remains to be tested. See
+  account control, STRK20 registration, STRK and USDC shield/unshield, and a
+  private USDC transfer on Sepolia. Faucet funding and server-relayed factory
+  deployment are implemented but still require a fresh-account browser test. See
   [docs/metamask-privacy-sdk-sepolia.md](docs/metamask-privacy-sdk-sepolia.md).
 - DonationPot is a design-only follow-up; see [docs/donation-pot.md](docs/donation-pot.md).
 - The required three-minute submission video is still missing.
@@ -43,13 +43,17 @@ Legacy claim links remain redeemable at `/claim` on networks where `MorokEscrow`
 ## Run locally
 
 Requirements: Node.js 22+ and the [Ready X extension](https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb).
+The isolated `/privacy-sdk-lab` additionally supports MetaMask or another
+compatible injected EVM wallet.
 
 ```bash
 npm install
 npm run dev
 ```
 
-The app has working RPC defaults. Copy `.env.example` to `.env.local` only when you need to override the network or RPC endpoints.
+The app has working RPC defaults. Copy `.env.example` to `.env.local` when you
+need to override RPC endpoints or configure the server-only Sepolia deployment
+relayer. Never expose its private key through a `NEXT_PUBLIC_` variable.
 
 ```bash
 npm test

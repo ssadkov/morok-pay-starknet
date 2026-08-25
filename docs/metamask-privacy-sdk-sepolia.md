@@ -114,6 +114,33 @@ construct the Starknet and STRK20 operations.
 - Only transfers performed inside the STRK20 pool are intended to hide the
   amount and sender-to-recipient relationship. Registration itself is public.
 
+## Faucet-funded onboarding
+
+The lab now contains a no-Ready onboarding path for a fresh EVM account:
+
+1. MetaMask signs the factory's fixed ownership message.
+2. A server route verifies that signature, resolves the deterministic Starknet
+   address from the live factory, requests a public Starknet Faucet challenge,
+   solves its bounded SHA-256 proof of work, and returns only the faucet request
+   status and public transaction hash.
+3. The faucet funds the deterministic address. A manual transfer from the test
+   treasury can be used if the faucet quota or cooldown is active.
+4. A separate server-only Sepolia relayer verifies the same ownership proof and
+   submits the public factory call. It refuses deployment until the generated
+   address holds the configured minimum public STRK balance.
+
+The relayer key is never exposed to the browser and must belong to a dedicated,
+balance-limited Sepolia account rather than the 3,000 STRK test treasury. The
+default deployment threshold is 10 STRK. Factory deployment previously cost
+only `0.037221845127255808 STRK`; all later upgrade, registration, pool fees,
+and transactions remain paid by the generated account. Faucet PoW, quota, and
+cooldown are onboarding gates, not authentication or mainnet funding.
+
+This implementation is not yet a confirmed onboarding result. A fresh MetaMask
+EVM account, configured server relayer, faucet amount, faucet transaction hash,
+deployment hash, cooldown response, and resulting account class must be recorded
+before presenting the path as complete.
+
 ## Next bounded test
 
 1. Refresh sender and recipient USDC balances after discovery. Record the
@@ -124,5 +151,7 @@ construct the Starknet and STRK20 operations.
 3. If the recipient is a Ready account, repeat with a separately controlled
    MetaMask-derived account so signing and viewing-key custody are proven on
    both sides.
-4. Do not add a relayer until both sides can complete the USDC lifecycle and
-   withdraw funds.
+4. Configure the dedicated Sepolia relayer and run the new faucet-funded path
+   with a fresh MetaMask account. Record both public hashes and actual balances.
+5. Keep the treasury key out of the app and Vercel; only the limited relayer key
+   may be stored as a server-only environment variable.

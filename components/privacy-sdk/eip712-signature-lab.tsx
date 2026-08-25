@@ -16,6 +16,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
+import { RpcProvider } from "starknet";
 import {
   useAccount,
   useConnect,
@@ -38,14 +39,12 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { useNetwork } from "@/components/network-provider";
-import { useTreasury } from "@/components/treasury/treasury-context";
 import { PublicStrkTransferLab } from "@/components/privacy-sdk/public-strk-transfer-lab";
 import { Strk20RegistrationLab } from "@/components/privacy-sdk/strk20-registration-lab";
 import { Strk20ShieldLab } from "@/components/privacy-sdk/strk20-shield-lab";
 import { Strk20UsdcLab } from "@/components/privacy-sdk/strk20-usdc-lab";
 import { shortenAddress } from "@/lib/format";
 import {
-  deployEth712AccountCall,
   inspectEth712Account,
   OWNERSHIP_MESSAGE,
   type Eth712AccountInspection,
@@ -81,16 +80,25 @@ type DeploymentResult = {
   message: string;
 };
 
+type FundingResult = {
+  status: "unknown" | "pending" | "confirmed" | "failed";
+  txHash?: string;
+  message: string;
+};
+
+async function responseMessage(response: Response) {
+  const value = (await response.json().catch(() => null)) as
+    | { error?: string }
+    | null;
+  return value?.error ?? `Request failed with status ${response.status}`;
+}
+
+function wait(milliseconds: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
 export function Eip712SignatureLab() {
   const { network, setNetwork, starknet } = useNetwork();
-  const {
-    wallets: starknetWallets,
-    session: relayer,
-    connecting: connectingRelayer,
-    connectError: relayerConnectError,
-    connectWallet: connectRelayer,
-    disconnect: disconnectRelayer,
-  } = useTreasury();
   const { address, chainId, connector, isConnected, status } = useAccount();
   const { connectors, connect, isPending: connecting, error: connectError } =
     useConnect();
@@ -101,12 +109,14 @@ export function Eip712SignatureLab() {
   const [signing, setSigning] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [signingOwnership, setSigningOwnership] = useState(false);
+  const [funding, setFunding] = useState(false);
   const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
   const [inspection, setInspection] =
     useState<Eth712AccountInspection | null>(null);
   const [ownership, setOwnership] = useState<OwnershipResult | null>(null);
+  const [faucet, setFaucet] = useState<FundingResult | null>(null);
   const [deployment, setDeployment] = useState<DeploymentResult | null>(null);
 
   function clearAccountState() {
@@ -114,6 +124,7 @@ export function Eip712SignatureLab() {
     setOwnership(null);
     setInspection(null);
     setResult(null);
+    setFaucet(null);
     setDeployment(null);
     setError(null);
   }
@@ -249,9 +260,96 @@ export function Eip712SignatureLab() {
     }
   }
 
+  async function fundAccount() {
+    const signature = ownershipSignature.current;
+    if (!address || !currentInspection || !signature) return;
+    if (network !== "sepolia") {
+      setFaucet({
+        status: "failed",
+        message: "Switch the MorokPay Starknet network to Sepolia first.",
+      });
+      return;
+    }
+
+    setFunding(true);
+    setFaucet({
+      status: "pending",
+      message: "Solving the Starknet faucet proof of work. This can take up to a minute.",
+    });
+    try {
+      const response = await fetch("/api/privacy-sdk/faucet", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ evmAddress: address, signature }),
+      });
+      if (!response.ok) throw new Error(await responseMessage(response));
+      const started = (await response.json()) as {
+        status: "already_funded" | "pending";
+        requestId?: string;
+        pollAfterSeconds?: number;
+        balance?: string;
+      };
+      if (started.status === "already_funded") {
+        setFaucet({
+          status: "confirmed",
+          message: "The deterministic account already has public STRK and is ready for deployment.",
+        });
+        return;
+      }
+      if (!started.requestId) throw new Error("Faucet returned no request id");
+      setFaucet({
+        status: "pending",
+        message: "The faucet accepted the proof. Waiting for its Sepolia transaction.",
+      });
+      let delaySeconds = started.pollAfterSeconds ?? 3;
+      const pollingDeadline = Date.now() + 5 * 60_000;
+      while (Date.now() < pollingDeadline) {
+        await wait(Math.max(1, Math.min(30, delaySeconds)) * 1_000);
+        const statusResponse = await fetch(
+          `/api/privacy-sdk/faucet?requestId=${encodeURIComponent(started.requestId)}`,
+          { cache: "no-store" },
+        );
+        if (!statusResponse.ok) {
+          throw new Error(await responseMessage(statusResponse));
+        }
+        const status = (await statusResponse.json()) as {
+          jobStatus: string;
+          txHash?: string;
+          pollAfterSeconds?: number;
+        };
+        if (status.jobStatus === "confirmed") {
+          setFaucet({
+            status: "confirmed",
+            txHash: status.txHash,
+            message: "The Starknet faucet funded the deterministic account. It can now be deployed by MorokPay.",
+          });
+          return;
+        }
+        if (status.jobStatus === "failed") {
+          throw new Error("The Starknet faucet funding transaction failed");
+        }
+        delaySeconds = status.pollAfterSeconds ?? delaySeconds;
+      }
+      setFaucet({
+        status: "unknown",
+        message: "The faucet request is still pending. Do not request again; check the public balance first.",
+      });
+    } catch (caught) {
+      setFaucet({
+        status: "failed",
+        message:
+          caught instanceof Error
+            ? caught.message
+            : "The Starknet faucet request failed",
+      });
+    } finally {
+      setFunding(false);
+    }
+  }
+
   async function deployAccount() {
     const signature = ownershipSignature.current;
-    if (!address || !currentInspection || !signature || !relayer) return;
+    if (!address || !currentInspection || !signature) return;
     if (network !== "sepolia") {
       setDeployment({
         status: "failed",
@@ -265,26 +363,36 @@ export function Eip712SignatureLab() {
     setDeployment(null);
     try {
       const submission = await bounded(
-        relayer.account.execute(
-          deployEth712AccountCall({
-            factoryAddress: currentInspection.factoryAddress,
-            evmAddress: address,
-            signature,
-          }),
-        ),
+        fetch("/api/privacy-sdk/deploy", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ evmAddress: address, signature }),
+        }),
         WALLET_SUBMISSION_TIMEOUT_MS,
       );
       if (submission.status === "timed_out") {
         setDeployment({
           status: "unknown",
           message:
-            "Ready did not return a hash within 90 seconds. Do not submit again; check deployment first because the original request may still complete.",
+            "MorokPay did not return a hash within 90 seconds. Do not submit again; check deployment first because the original request may still complete.",
         });
         return;
       }
-
-      const txHash = String(submission.value.transaction_hash);
-      ownershipSignature.current = null;
+      if (!submission.value.ok) {
+        throw new Error(await responseMessage(submission.value));
+      }
+      const submitted = (await submission.value.json()) as {
+        status: "pending" | "already_deployed";
+        transactionHash?: string;
+      };
+      if (submitted.status === "already_deployed") {
+        await refreshDeployedAccount();
+        return;
+      }
+      if (!submitted.transactionHash) {
+        throw new Error("MorokPay relayer returned no transaction hash");
+      }
+      const txHash = submitted.transactionHash;
       setDeployment({
         status: "pending",
         txHash,
@@ -293,7 +401,10 @@ export function Eip712SignatureLab() {
       });
 
       const receipt = await pollTransactionReceipt({
-        read: () => relayer.account.provider.getTransactionReceipt(txHash),
+        read: () =>
+          new RpcProvider({ nodeUrl: starknet.rpc }).getTransactionReceipt(
+            txHash,
+          ),
       });
       const refreshed = await refreshDeployedAccount();
       if (refreshed?.deployed) return;
@@ -317,7 +428,7 @@ export function Eip712SignatureLab() {
         message:
           caught instanceof Error
             ? caught.message
-            : "Ready rejected or failed to submit the deployment",
+            : "MorokPay failed to submit the deployment",
       });
     } finally {
       setDeploying(false);
@@ -327,10 +438,10 @@ export function Eip712SignatureLab() {
   const busy =
     signing ||
     signingOwnership ||
+    funding ||
     deploying ||
     inspecting ||
     connecting ||
-    connectingRelayer ||
     status === "connecting";
   const currentInspection =
     inspection &&
@@ -360,7 +471,7 @@ export function Eip712SignatureLab() {
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="outline">Sepolia experiment</Badge>
-            <Badge variant="outline">No transaction</Badge>
+            <Badge variant="outline">MetaMask onboarding</Badge>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">
             Test deterministic EIP-712 signatures
@@ -591,11 +702,11 @@ export function Eip712SignatureLab() {
 
         <Card>
           <CardHeader>
-            <CardTitle>4. Deploy through a Starknet relayer</CardTitle>
+            <CardTitle>4. Fund and deploy the Starknet account</CardTitle>
             <CardDescription>
-              Ready submits one public call to AccountFactory and pays its gas.
-              The relayer is not the generated account and does not become its
-              owner.
+              The public Sepolia faucet funds the deterministic address. Then a
+              dedicated MorokPay relayer submits the AccountFactory call and
+              pays only deployment gas.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -609,15 +720,16 @@ export function Eip712SignatureLab() {
               <div>
                 <p className="text-muted-foreground">Public gas payer</p>
                 <p className="break-all font-mono font-medium">
-                  {relayer?.address ?? "Connect Ready below"}
+                  Dedicated MorokPay Sepolia relayer
                 </p>
               </div>
             </div>
             <Alert>
-              <AlertTitle>Do not fund the generated address yet</AlertTitle>
+              <AlertTitle>The relayer never becomes the owner</AlertTitle>
               <AlertDescription>
-                First deploy it, then verify its class and EVM owner on-chain.
-                The deployment transaction and relayer address are public.
+                Faucet funding can arrive before deployment. The ownership
+                signature fixes the EVM owner, while the deployment transaction
+                and relayer address remain public.
               </AlertDescription>
             </Alert>
             {network !== "sepolia" ? (
@@ -628,10 +740,23 @@ export function Eip712SignatureLab() {
                 </AlertDescription>
               </Alert>
             ) : null}
-            {relayerConnectError ? (
-              <Alert variant="destructive">
-                <AlertTitle>Could not connect Starknet relayer</AlertTitle>
-                <AlertDescription>{relayerConnectError}</AlertDescription>
+            {faucet ? (
+              <Alert variant={faucet.status === "failed" ? "destructive" : "default"}>
+                <AlertTitle>Faucet funding {faucet.status}</AlertTitle>
+                <AlertDescription className="flex flex-col gap-2">
+                  <span>{faucet.message}</span>
+                  {faucet.txHash ? (
+                    <a
+                      href={`${starknet.explorer}/tx/${faucet.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-mono underline underline-offset-4"
+                    >
+                      {faucet.txHash}
+                      <ExternalLinkIcon className="size-3" aria-hidden="true" />
+                    </a>
+                  ) : null}
+                </AlertDescription>
               </Alert>
             ) : null}
             {deployment ? (
@@ -669,41 +794,31 @@ export function Eip712SignatureLab() {
                 Use Sepolia
               </Button>
             ) : null}
-            {!relayer
-              ? starknetWallets.map((wallet) => (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    key={wallet.name}
-                    disabled={busy || network !== "sepolia"}
-                    onClick={() => void connectRelayer(wallet)}
-                  >
-                    {connectingRelayer ? (
-                      <Spinner data-icon="inline-start" />
-                    ) : (
-                      <WalletIcon data-icon="inline-start" />
-                    )}
-                    Connect {wallet.name} as relayer
-                  </Button>
-                ))
-              : null}
-            {relayer ? (
-              <Button
-                type="button"
-                variant="ghost"
-                disabled={deploying}
-                onClick={disconnectRelayer}
-              >
-                Disconnect relayer
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={
+                busy ||
+                network !== "sepolia" ||
+                !currentInspection ||
+                currentInspection.deployed ||
+                !ownership?.signerMatches ||
+                !ownershipSignature.current ||
+                faucet?.status === "pending" ||
+                faucet?.status === "unknown"
+              }
+              aria-busy={funding}
+              onClick={() => void fundAccount()}
+            >
+              {funding ? <Spinner data-icon="inline-start" /> : null}
+              {funding ? "Solving faucet proof" : "Get Sepolia STRK"}
+            </Button>
             <Button
               type="button"
               size="lg"
               disabled={
                 busy ||
                 network !== "sepolia" ||
-                !relayer ||
                 !currentInspection ||
                 currentInspection.deployed ||
                 !ownership?.signerMatches ||
@@ -719,7 +834,7 @@ export function Eip712SignatureLab() {
               ) : (
                 <RocketIcon data-icon="inline-start" />
               )}
-              {deploying ? "Waiting for Ready" : "Deploy with Ready"}
+              {deploying ? "Submitting deployment" : "Deploy with MorokPay"}
             </Button>
             {deployment?.status === "unknown" ||
             deployment?.status === "pending" ? (
@@ -835,11 +950,10 @@ export function Eip712SignatureLab() {
         />
 
         <p className="text-xs text-muted-foreground">
-          Raw signatures are not rendered, logged, sent to a server, or written
-          to browser storage. They necessarily exist briefly in this page&apos;s
-          memory so their fingerprints and recovered signer can be checked.
-          The ownership signature is also kept only in memory until it is
-          either submitted by a relayer or discarded.
+          Raw privacy-key signatures are not rendered, logged, sent to a server,
+          or written to browser storage. The separate ownership signature is
+          sent to the MorokPay onboarding routes and AccountFactory, but is not
+          persisted by this page or intentionally logged by the server.
         </p>
       </main>
     </div>
