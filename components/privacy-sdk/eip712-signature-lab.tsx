@@ -4,8 +4,10 @@ import { useRef, useState } from "react";
 import Link from "next/link";
 import {
   CheckCircle2Icon,
+  ExternalLinkIcon,
   FlaskConicalIcon,
   LogOutIcon,
+  RocketIcon,
   WalletIcon,
 } from "lucide-react";
 import {
@@ -35,8 +37,11 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
+import { useNetwork } from "@/components/network-provider";
+import { useTreasury } from "@/components/treasury/treasury-context";
 import { shortenAddress } from "@/lib/format";
 import {
+  deployEth712AccountCall,
   inspectEth712Account,
   OWNERSHIP_MESSAGE,
   type Eth712AccountInspection,
@@ -45,6 +50,11 @@ import {
   privacyKeyTypedData,
   signatureFingerprint,
 } from "@/lib/privacy/eip712-test";
+import {
+  bounded,
+  pollTransactionReceipt,
+  WALLET_SUBMISSION_TIMEOUT_MS,
+} from "@/lib/starknet/transaction-confirmation";
 import { cn } from "@/lib/utils";
 
 type TestResult = {
@@ -61,7 +71,22 @@ type OwnershipResult = {
   signerMatches: boolean;
 };
 
+type DeploymentResult = {
+  status: "unknown" | "pending" | "confirmed" | "failed";
+  txHash?: string;
+  message: string;
+};
+
 export function Eip712SignatureLab() {
+  const { network, setNetwork, starknet } = useNetwork();
+  const {
+    wallets: starknetWallets,
+    session: relayer,
+    connecting: connectingRelayer,
+    connectError: relayerConnectError,
+    connectWallet: connectRelayer,
+    disconnect: disconnectRelayer,
+  } = useTreasury();
   const { address, chainId, connector, isConnected, status } = useAccount();
   const { connectors, connect, isPending: connecting, error: connectError } =
     useConnect();
@@ -72,17 +97,20 @@ export function Eip712SignatureLab() {
   const [signing, setSigning] = useState(false);
   const [inspecting, setInspecting] = useState(false);
   const [signingOwnership, setSigningOwnership] = useState(false);
+  const [deploying, setDeploying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
   const [inspection, setInspection] =
     useState<Eth712AccountInspection | null>(null);
   const [ownership, setOwnership] = useState<OwnershipResult | null>(null);
+  const [deployment, setDeployment] = useState<DeploymentResult | null>(null);
 
   function clearAccountState() {
     ownershipSignature.current = null;
     setOwnership(null);
     setInspection(null);
     setResult(null);
+    setDeployment(null);
     setError(null);
   }
 
@@ -176,11 +204,129 @@ export function Eip712SignatureLab() {
     }
   }
 
+  async function refreshDeployedAccount() {
+    if (!address) return null;
+    const next = await inspectEth712Account(address);
+    setInspection(next);
+    if (next.deployed) {
+      ownershipSignature.current = null;
+      const expectedClass = BigInt(next.configuredAccountClassHash);
+      const deployedClass = next.deployedClassHash
+        ? BigInt(next.deployedClassHash)
+        : null;
+      setDeployment((current) => ({
+        status:
+          deployedClass === expectedClass ? "confirmed" : "failed",
+        txHash: current?.txHash,
+        message:
+          deployedClass === expectedClass
+            ? "The account is deployed with the expected class. A successful factory initialization proves that the stored EVM owner authorized this deployment."
+            : "The account is deployed with an unexpected class. Do not fund or use it.",
+      }));
+    }
+    return next;
+  }
+
+  async function checkDeployment() {
+    setInspecting(true);
+    try {
+      await refreshDeployedAccount();
+    } catch (caught) {
+      setDeployment((current) => ({
+        status: "failed",
+        txHash: current?.txHash,
+        message:
+          caught instanceof Error
+            ? caught.message
+            : "Could not read the account from Sepolia",
+      }));
+    } finally {
+      setInspecting(false);
+    }
+  }
+
+  async function deployAccount() {
+    const signature = ownershipSignature.current;
+    if (!address || !currentInspection || !signature || !relayer) return;
+    if (network !== "sepolia") {
+      setDeployment({
+        status: "failed",
+        message: "Switch the MorokPay Starknet network to Sepolia first.",
+      });
+      return;
+    }
+
+    setDeploying(true);
+    setError(null);
+    setDeployment(null);
+    try {
+      const submission = await bounded(
+        relayer.account.execute(
+          deployEth712AccountCall({
+            factoryAddress: currentInspection.factoryAddress,
+            evmAddress: address,
+            signature,
+          }),
+        ),
+        WALLET_SUBMISSION_TIMEOUT_MS,
+      );
+      if (submission.status === "timed_out") {
+        setDeployment({
+          status: "unknown",
+          message:
+            "Ready did not return a hash within 90 seconds. Do not submit again; check deployment first because the original request may still complete.",
+        });
+        return;
+      }
+
+      const txHash = String(submission.value.transaction_hash);
+      ownershipSignature.current = null;
+      setDeployment({
+        status: "pending",
+        txHash,
+        message:
+          "The public factory transaction was submitted. Waiting for Sepolia confirmation.",
+      });
+
+      const receipt = await pollTransactionReceipt({
+        read: () => relayer.account.provider.getTransactionReceipt(txHash),
+      });
+      const refreshed = await refreshDeployedAccount();
+      if (refreshed?.deployed) return;
+      if (receipt === "failed") {
+        setDeployment({
+          status: "failed",
+          txHash,
+          message: "The public deployment transaction failed on Starknet.",
+        });
+        return;
+      }
+      setDeployment({
+        status: "pending",
+        txHash,
+        message:
+          "The hash is known, but the account is not visible through this RPC yet. Check again before doing anything else.",
+      });
+    } catch (caught) {
+      setDeployment({
+        status: "failed",
+        message:
+          caught instanceof Error
+            ? caught.message
+            : "Ready rejected or failed to submit the deployment",
+      });
+    } finally {
+      setDeploying(false);
+    }
+  }
+
   const busy =
     signing ||
     signingOwnership ||
+    deploying ||
     inspecting ||
     connecting ||
+    connectingRelayer ||
     status === "connecting";
   const currentInspection =
     inspection &&
@@ -441,7 +587,153 @@ export function Eip712SignatureLab() {
 
         <Card>
           <CardHeader>
-            <CardTitle>4. Sign the same request twice</CardTitle>
+            <CardTitle>4. Deploy through a Starknet relayer</CardTitle>
+            <CardDescription>
+              Ready submits one public call to AccountFactory and pays its gas.
+              The relayer is not the generated account and does not become its
+              owner.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="grid gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <p className="text-muted-foreground">Generated account</p>
+                <p className="break-all font-mono font-medium">
+                  {currentInspection?.starknetAddress ?? "Resolve step 2 first"}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Public gas payer</p>
+                <p className="break-all font-mono font-medium">
+                  {relayer?.address ?? "Connect Ready below"}
+                </p>
+              </div>
+            </div>
+            <Alert>
+              <AlertTitle>Do not fund the generated address yet</AlertTitle>
+              <AlertDescription>
+                First deploy it, then verify its class and EVM owner on-chain.
+                The deployment transaction and relayer address are public.
+              </AlertDescription>
+            </Alert>
+            {network !== "sepolia" ? (
+              <Alert variant="destructive">
+                <AlertTitle>MorokPay is not set to Sepolia</AlertTitle>
+                <AlertDescription>
+                  This lab never deploys the account on mainnet.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {relayerConnectError ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not connect Starknet relayer</AlertTitle>
+                <AlertDescription>{relayerConnectError}</AlertDescription>
+              </Alert>
+            ) : null}
+            {deployment ? (
+              <Alert
+                variant={
+                  deployment.status === "failed" ? "destructive" : "default"
+                }
+              >
+                <AlertTitle>Deployment {deployment.status}</AlertTitle>
+                <AlertDescription className="flex flex-col gap-2">
+                  <span>{deployment.message}</span>
+                  {deployment.txHash ? (
+                    <a
+                      href={`${starknet.explorer}/tx/${deployment.txHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 font-mono underline underline-offset-4"
+                    >
+                      {deployment.txHash}
+                      <ExternalLinkIcon className="size-3" aria-hidden="true" />
+                    </a>
+                  ) : null}
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </CardContent>
+          <CardFooter className="flex flex-wrap gap-2">
+            {network !== "sepolia" ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy}
+                onClick={() => setNetwork("sepolia")}
+              >
+                Use Sepolia
+              </Button>
+            ) : null}
+            {!relayer
+              ? starknetWallets.map((wallet) => (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    key={wallet.name}
+                    disabled={busy || network !== "sepolia"}
+                    onClick={() => void connectRelayer(wallet)}
+                  >
+                    {connectingRelayer ? (
+                      <Spinner data-icon="inline-start" />
+                    ) : (
+                      <WalletIcon data-icon="inline-start" />
+                    )}
+                    Connect {wallet.name} as relayer
+                  </Button>
+                ))
+              : null}
+            {relayer ? (
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={deploying}
+                onClick={disconnectRelayer}
+              >
+                Disconnect relayer
+              </Button>
+            ) : null}
+            <Button
+              type="button"
+              size="lg"
+              disabled={
+                busy ||
+                network !== "sepolia" ||
+                !relayer ||
+                !currentInspection ||
+                currentInspection.deployed ||
+                !ownership?.signerMatches ||
+                !ownershipSignature.current ||
+                deployment?.status === "unknown" ||
+                deployment?.status === "pending"
+              }
+              aria-busy={deploying}
+              onClick={() => void deployAccount()}
+            >
+              {deploying ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <RocketIcon data-icon="inline-start" />
+              )}
+              {deploying ? "Waiting for Ready" : "Deploy with Ready"}
+            </Button>
+            {deployment?.status === "unknown" ||
+            deployment?.status === "pending" ? (
+              <Button
+                type="button"
+                variant="outline"
+                disabled={busy || !address}
+                onClick={() => void checkDeployment()}
+              >
+                {inspecting ? "Checking Sepolia" : "Check deployment"}
+              </Button>
+            ) : null}
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>5. Sign the same request twice</CardTitle>
             <CardDescription>
               You will see two wallet confirmations. MorokPay compares the raw
               signatures in memory, then keeps only short SHA-256 fingerprints.

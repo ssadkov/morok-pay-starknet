@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { hashMessage } from "viem";
 
 import {
+  deployEth712AccountCall,
   EXPECTED_OWNERSHIP_MESSAGE_HASH,
   inspectEth712Account,
   OWNERSHIP_MESSAGE,
@@ -12,6 +13,29 @@ describe("Eth712Account factory", () => {
     expect(hashMessage(OWNERSHIP_MESSAGE)).toBe(
       EXPECTED_OWNERSHIP_MESSAGE_HASH,
     );
+  });
+
+  it("serializes the EVM signature exactly as the factory ABI expects", () => {
+    expect(
+      deployEth712AccountCall({
+        factoryAddress: "0x123",
+        evmAddress: "0x456",
+        signature:
+          "0x00000000000000000000000000000000112233445566778899aabbccddeeff0000000000000000000000000000000000ffeeddccbbaa998877665544332211001c",
+      }),
+    ).toEqual({
+      contractAddress:
+        "0x0000000000000000000000000000000000000000000000000000000000000123",
+      entrypoint: "deploy_account",
+      calldata: [
+        "0x456",
+        "0x112233445566778899aabbccddeeff00",
+        "0x0",
+        "0xffeeddccbbaa99887766554433221100",
+        "0x0",
+        "0x1",
+      ],
+    });
   });
 
   it("resolves an undeployed deterministic account without guessing class state", async () => {
