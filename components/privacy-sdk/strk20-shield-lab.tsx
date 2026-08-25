@@ -17,6 +17,7 @@ import {
   createPrivateTransfers,
   SetupRequirement,
   type CallAndProof,
+  type Note,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { deriveViewingKey } from "@starkware-libs/starknet-privacy-client";
 import {
@@ -91,6 +92,26 @@ type ShieldPayload = {
   proofFacts: string[];
 };
 
+type PreparedUnshield = {
+  accountAddress: string;
+  evmAddress: string;
+  evmChainId: number;
+  nonce: bigint;
+  provingBlock: number;
+  amount: bigint;
+  poolFee: bigint;
+  publicBalance: bigint;
+  provingBalance: bigint;
+  privateBalanceBefore: bigint;
+  selectedNoteCount: number;
+  selectedTotal: bigint;
+  resourceBounds: ResourceBoundsBN;
+  maximumFee: bigint;
+  proofBytes: number;
+  proofFacts: number;
+  sourceClassHash: string;
+};
+
 type ShieldState = {
   status: "unknown" | "pending" | "confirmed" | "failed";
   message: string;
@@ -130,6 +151,10 @@ function markerKey(accountAddress: string) {
   return `morokpay:eth712-strk20-shield:sepolia:${accountAddress.toLowerCase()}`;
 }
 
+function unshieldMarkerKey(accountAddress: string) {
+  return `morokpay:eth712-strk20-unshield:sepolia:${accountAddress.toLowerCase()}`;
+}
+
 function restoredShield(accountAddress: string | null): ShieldState | null {
   if (!accountAddress) return null;
   const stored = window.localStorage.getItem(markerKey(accountAddress));
@@ -153,6 +178,33 @@ function restoredShield(accountAddress: string | null): ShieldState | null {
     };
   } catch {
     window.localStorage.removeItem(markerKey(accountAddress));
+    return null;
+  }
+}
+
+function restoredUnshield(accountAddress: string | null): ShieldState | null {
+  if (!accountAddress) return null;
+  const stored = window.localStorage.getItem(unshieldMarkerKey(accountAddress));
+  if (!stored) return null;
+  try {
+    const marker = JSON.parse(stored) as { status?: string; txHash?: string };
+    if (marker.status === "confirmed" && marker.txHash) {
+      return {
+        status: "confirmed",
+        txHash: marker.txHash,
+        message:
+          "This browser recorded a confirmed 1 STRK unshield. Refresh balances instead of submitting it again.",
+      };
+    }
+    return {
+      status: marker.txHash ? "pending" : "unknown",
+      txHash: marker.txHash,
+      message: marker.txHash
+        ? "An unshield was already submitted. Check its hash instead of sending another one."
+        : "A previous unshield did not return a hash. Check nonce and balances before retrying.",
+    };
+  } catch {
+    window.localStorage.removeItem(unshieldMarkerKey(accountAddress));
     return null;
   }
 }
@@ -214,6 +266,19 @@ async function readStrkBalance(
   return BigInt(low) + (BigInt(high) << 128n);
 }
 
+function selectNotesForAmount(notes: Note[], amount: bigint) {
+  const selected: Note[] = [];
+  let total = 0n;
+  for (const note of [...notes].sort((left, right) =>
+    left.amount < right.amount ? -1 : left.amount > right.amount ? 1 : 0,
+  )) {
+    selected.push(note);
+    total += note.amount;
+    if (total >= amount) break;
+  }
+  return { selected, total };
+}
+
 export function Strk20ShieldLab({
   inspection,
 }: {
@@ -227,17 +292,26 @@ export function Strk20ShieldLab({
     ? eth712Strk20ClassMode(inspection.deployedClassHash) === "compatible"
     : false;
   const payload = useRef<ShieldPayload | null>(null);
+  const unshieldPayload = useRef<ShieldPayload | null>(null);
   const viewingKey = useRef<{ accountAddress: string; value: bigint } | null>(null);
   const [preparing, setPreparing] = useState(false);
   const [sending, setSending] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [preparingUnshield, setPreparingUnshield] = useState(false);
+  const [sendingUnshield, setSendingUnshield] = useState(false);
   const [prepared, setPrepared] = useState<PreparedShield | null>(null);
+  const [preparedUnshield, setPreparedUnshield] =
+    useState<PreparedUnshield | null>(null);
   const [shield, setShield] = useState<ShieldState | null>(() =>
     restoredShield(accountAddress),
+  );
+  const [unshield, setUnshield] = useState<ShieldState | null>(() =>
+    restoredUnshield(accountAddress),
   );
   const [privateBalance, setPrivateBalance] = useState<bigint | null>(null);
   const [viewingKeyReady, setViewingKeyReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unshieldError, setUnshieldError] = useState<string | null>(null);
 
   function callSetSigner(starknetAddress: string, evmAddress: string, evmChainId: number) {
     return new Eip712TypedDataSigner({
@@ -331,10 +405,28 @@ export function Strk20ShieldLab({
     evmChainId: number,
     key: bigint,
   ) {
-    const transfers = transfersFor(starknetAddress, evmAddress, evmChainId, key);
-    const discovered = await transfers.discoverNotes({ tokens: [BigInt(STRK_ADDRESS)] });
-    const notes = discovered.notes.get(BigInt(STRK_ADDRESS)) ?? [];
+    const notes = await discoverStrkNotes(
+      starknetAddress,
+      evmAddress,
+      evmChainId,
+      key,
+    );
     return notes.reduce((sum, note) => sum + note.amount, 0n);
+  }
+
+  async function discoverStrkNotes(
+    starknetAddress: string,
+    evmAddress: string,
+    evmChainId: number,
+    key: bigint,
+    blockIdentifier?: number,
+  ) {
+    const transfers = transfersFor(starknetAddress, evmAddress, evmChainId, key);
+    const discovered = await transfers.discoverNotes({
+      tokens: [BigInt(STRK_ADDRESS)],
+      ...(blockIdentifier === undefined ? {} : { blockIdentifier }),
+    });
+    return discovered.notes.get(BigInt(STRK_ADDRESS)) ?? [];
   }
 
   async function refreshPrivateBalance() {
@@ -569,9 +661,251 @@ export function Strk20ShieldLab({
     }
   }
 
+  async function prepareUnshield() {
+    if (!accountAddress || !address || !chainId) return;
+    setPreparingUnshield(true);
+    setPreparedUnshield(null);
+    setUnshield(null);
+    setUnshieldError(null);
+    unshieldPayload.current = null;
+
+    try {
+      const provider = privacyProvider();
+      const latestBlock = await provider.getBlockNumber();
+      const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
+      const [latestClassHash, provingClassHash, publicBalance, provingBalance] =
+        await Promise.all([
+          provider.getClassHashAt(accountAddress),
+          provider.getClassHashAt(accountAddress, provingBlock),
+          readStrkBalance(provider, accountAddress),
+          readStrkBalance(provider, accountAddress, provingBlock),
+        ]);
+      if (
+        eth712Strk20ClassMode(latestClassHash) !== "compatible" ||
+        eth712Strk20ClassMode(provingClassHash) !== "compatible"
+      ) {
+        throw new Error("The proving block does not see the STRK20-compatible account class.");
+      }
+
+      const key = await getViewingKey(accountAddress, address, chainId);
+      const transfers = transfersFor(accountAddress, address, chainId, key);
+      const [poolFee, notes] = await Promise.all([
+        readPoolFee("sepolia"),
+        discoverStrkNotes(accountAddress, address, chainId, key, provingBlock),
+      ]);
+      const privateBalanceBefore = notes.reduce(
+        (sum, note) => sum + note.amount,
+        0n,
+      );
+      const { selected, total: selectedTotal } = selectNotesForAmount(
+        notes,
+        SHIELD_AMOUNT,
+      );
+      if (selectedTotal < SHIELD_AMOUNT) {
+        throw new Error(
+          `The proving block ${provingBlock} sees only ${formatStrk(privateBalanceBefore)} private STRK. Wait until the shield note is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
+        );
+      }
+      if (provingBalance < poolFee) {
+        throw new Error(
+          `The proving block ${provingBlock} does not see enough public STRK for the ${formatStrk(poolFee)} STRK pool fee.`,
+        );
+      }
+
+      const builder = transfers
+        .build()
+        .with(STRK_ADDRESS, (token) =>
+          token
+            .inputs(...selected)
+            .withdraw({ recipient: accountAddress, amount: SHIELD_AMOUNT }),
+        )
+        .surplusTo(accountAddress);
+      const invocation = await builder.createProofInvocation({ provingBlockId: provingBlock });
+      const result = await transfers.executeWithInvocation(invocation, provingBlock);
+      const callAndProof: CallAndProof = result.callAndProof;
+      if (!callAndProof.proof.proofFacts.length) {
+        throw new Error("The prover returned no proof facts for the unshield.");
+      }
+      if (BigInt(callAndProof.proof.proofFacts[0]) !== BigInt(PROOF1_VERSION)) {
+        throw new Error(
+          `The prover returned unsupported proof version ${callAndProof.proof.proofFacts[0]}.`,
+        );
+      }
+      const calls = [approvalCall(poolFee), callAndProof.call];
+      const proofDetails = {
+        proof: callAndProof.proof.data,
+        proofFacts: callAndProof.proof.proofFacts,
+      };
+      const account = outerAccount(provider, accountAddress, address, chainId);
+      const nonce = BigInt(await account.getNonce());
+      const estimate = await account.estimateInvokeFee(calls, {
+        nonce,
+        skipValidate: true,
+        tip: 0n,
+        ...proofDetails,
+      });
+      const resourceBounds = eth712FundedResourceBounds({
+        estimated: estimate.resourceBounds,
+        publicBalance,
+        transferAmount: poolFee,
+      });
+
+      unshieldPayload.current = { calls, ...proofDetails };
+      setPrivateBalance(privateBalanceBefore);
+      setPreparedUnshield({
+        accountAddress,
+        evmAddress: address,
+        evmChainId: chainId,
+        nonce,
+        provingBlock,
+        amount: SHIELD_AMOUNT,
+        poolFee,
+        publicBalance,
+        provingBalance,
+        privateBalanceBefore,
+        selectedNoteCount: selected.length,
+        selectedTotal,
+        resourceBounds,
+        maximumFee: maximumFee(resourceBounds),
+        proofBytes: proofByteLength(callAndProof.proof.data),
+        proofFacts: callAndProof.proof.proofFacts.length,
+        sourceClassHash: latestClassHash,
+      });
+    } catch (caught) {
+      unshieldPayload.current = null;
+      setUnshieldError(safePreparationError(caught));
+    } finally {
+      setPreparingUnshield(false);
+    }
+  }
+
+  async function submitUnshield() {
+    const transaction = unshieldPayload.current;
+    if (
+      !preparedUnshield ||
+      !transaction ||
+      !accountAddress ||
+      !address ||
+      !chainId
+    ) {
+      return;
+    }
+    if (
+      preparedUnshield.accountAddress !== accountAddress ||
+      preparedUnshield.evmAddress.toLowerCase() !== address.toLowerCase() ||
+      preparedUnshield.evmChainId !== chainId
+    ) {
+      unshieldPayload.current = null;
+      setPreparedUnshield(null);
+      setUnshieldError("The connected wallet changed. Prepare the unshield again.");
+      return;
+    }
+
+    setSendingUnshield(true);
+    setUnshieldError(null);
+    const key = unshieldMarkerKey(accountAddress);
+    window.localStorage.setItem(
+      key,
+      JSON.stringify({
+        status: "submitting",
+        nonce: preparedUnshield.nonce.toString(),
+      }),
+    );
+    try {
+      const provider = privacyProvider();
+      const account = outerAccount(provider, accountAddress, address, chainId);
+      const [currentClassHash, currentNonce] = await Promise.all([
+        provider.getClassHashAt(accountAddress),
+        account.getNonce(),
+      ]);
+      if (BigInt(currentClassHash) !== BigInt(preparedUnshield.sourceClassHash)) {
+        window.localStorage.removeItem(key);
+        throw new Error("The account class changed. Prepare the unshield again.");
+      }
+      if (BigInt(currentNonce) !== preparedUnshield.nonce) {
+        window.localStorage.removeItem(key);
+        throw new Error("The Starknet nonce changed. Prepare the unshield again.");
+      }
+
+      const submission = await bounded(
+        account.execute(transaction.calls, {
+          nonce: preparedUnshield.nonce,
+          resourceBounds: preparedUnshield.resourceBounds,
+          tip: 0n,
+          proof: transaction.proof,
+          proofFacts: transaction.proofFacts,
+        }),
+        WALLET_SUBMISSION_TIMEOUT_MS,
+      );
+      if (submission.status === "timed_out") {
+        setUnshield({
+          status: "unknown",
+          message:
+            "MetaMask did not return a hash within 90 seconds. Do not submit again; check nonce and balances first.",
+        });
+        return;
+      }
+
+      const txHash = String(submission.value.transaction_hash);
+      window.localStorage.setItem(key, JSON.stringify({ status: "pending", txHash }));
+      setUnshield({
+        status: "pending",
+        txHash,
+        message: "The 1 STRK unshield was submitted to Sepolia.",
+      });
+      const receipt = await pollTransactionReceipt({
+        read: () => provider.getTransactionReceipt(txHash),
+      });
+      if (receipt === "failed") {
+        window.localStorage.removeItem(key);
+        setUnshield({
+          status: "failed",
+          txHash,
+          message: "The unshield failed on Starknet.",
+        });
+        return;
+      }
+      if (receipt === "confirmed") {
+        window.localStorage.setItem(key, JSON.stringify({ status: "confirmed", txHash }));
+        unshieldPayload.current = null;
+        setPreparedUnshield(null);
+        setUnshield({
+          status: "confirmed",
+          txHash,
+          message:
+            "The public unshield is confirmed. Discovery may need additional blocks before the spent note disappears.",
+        });
+        return;
+      }
+      setUnshield({
+        status: "pending",
+        txHash,
+        message:
+          "The hash is known, but the receipt is still pending. Do not submit another unshield.",
+      });
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : String(caught);
+      const definitelyNotSubmitted =
+        /user rejected|rejected the request|error code 4001/i.test(message) ||
+        /account class changed|nonce changed/i.test(message);
+      if (definitelyNotSubmitted) window.localStorage.removeItem(key);
+      setUnshield({
+        status: definitelyNotSubmitted ? "failed" : "unknown",
+        message: definitelyNotSubmitted
+          ? /account class changed|nonce changed/i.test(message)
+            ? message
+            : safeEth712TransactionError(caught)
+          : "The unshield failed without a reliable transaction hash. Do not submit again until nonce and balances are checked.",
+      });
+    } finally {
+      setSendingUnshield(false);
+    }
+  }
+
   if (!compatible) return null;
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>8. Shield 1 STRK with MetaMask</CardTitle>
@@ -705,5 +1039,140 @@ export function Strk20ShieldLab({
         </Button>
       </CardFooter>
     </Card>
+    <Card>
+      <CardHeader>
+        <CardTitle>9. Unshield 1 STRK with MetaMask</CardTitle>
+        <CardDescription>
+          Spend the discovered private note and withdraw 1 STRK back to the same public
+          Starknet account. Preparation creates a real proof; broadcast remains separate.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <div className="grid gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <p className="text-muted-foreground">Private STRK available</p>
+            <p className="font-medium">
+              {privateBalance === null ? "Refresh first" : `${formatStrk(privateBalance)} STRK`}
+            </p>
+          </div>
+          <div>
+            <p className="text-muted-foreground">Public recipient</p>
+            <p className="break-all font-mono font-medium">{accountAddress}</p>
+          </div>
+        </div>
+
+        <Alert>
+          <AlertTitle>Unshield is public</AlertTitle>
+          <AlertDescription>
+            The recipient, token, amount, pool fee, and timing will be visible on-chain. The
+            selected private note is proven as spent; discovery should later remove it.
+          </AlertDescription>
+        </Alert>
+
+        {preparedUnshield ? (
+          <Alert>
+            <AlertTitle>Real unshield proof ready — review before broadcast</AlertTitle>
+            <AlertDescription className="grid gap-1">
+              <span>Public balance: {formatStrk(preparedUnshield.publicBalance)} STRK</span>
+              <span>
+                Proving-block public balance: {formatStrk(preparedUnshield.provingBalance)} STRK
+              </span>
+              <span>
+                Private balance before: {formatStrk(preparedUnshield.privateBalanceBefore)} STRK
+              </span>
+              <span>Unshield amount: {formatStrk(preparedUnshield.amount)} STRK</span>
+              <span>
+                Expected private change: {formatStrk(preparedUnshield.selectedTotal - preparedUnshield.amount)} STRK
+              </span>
+              <span>
+                Selected notes: {preparedUnshield.selectedNoteCount} · {formatStrk(preparedUnshield.selectedTotal)} STRK
+              </span>
+              <span>Pool fee: {formatStrk(preparedUnshield.poolFee)} STRK</span>
+              <span>
+                Balance-bounded maximum gas cap: {formatStrk(preparedUnshield.maximumFee)} STRK
+              </span>
+              <span>Nonce: {preparedUnshield.nonce.toString()}</span>
+              <span>Proving block: {preparedUnshield.provingBlock}</span>
+              <span>
+                Proof: {preparedUnshield.proofBytes.toLocaleString()} bytes · {preparedUnshield.proofFacts} fact(s)
+              </span>
+              <span>
+                One InvokeV3 approves only the pool fee, then applies the proof-backed
+                withdrawal. Gas is paid separately by this public account.
+              </span>
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {unshield ? (
+          <Alert variant={unshield.status === "failed" ? "destructive" : "default"}>
+            <AlertTitle>STRK unshield {unshield.status}</AlertTitle>
+            <AlertDescription className="flex flex-col gap-2">
+              <span>{unshield.message}</span>
+              {unshield.txHash ? (
+                <a
+                  href={`${sepolia.explorer}/tx/${unshield.txHash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 break-all font-mono underline underline-offset-4"
+                >
+                  {unshield.txHash}
+                  <ExternalLinkIcon className="size-3 shrink-0" aria-hidden="true" />
+                </a>
+              ) : null}
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
+        {unshieldError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Unshield preparation stopped</AlertTitle>
+            <AlertDescription>{unshieldError}</AlertDescription>
+          </Alert>
+        ) : null}
+      </CardContent>
+      <CardFooter className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          disabled={
+            !accountAddress ||
+            !address ||
+            !chainId ||
+            privateBalance === null ||
+            privateBalance < SHIELD_AMOUNT ||
+            preparingUnshield ||
+            sendingUnshield ||
+            (!!unshield && unshield.status !== "failed")
+          }
+          onClick={() => void prepareUnshield()}
+        >
+          {preparingUnshield ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <KeyRoundIcon data-icon="inline-start" />
+          )}
+          {preparingUnshield ? "Signing and proving" : "Prepare 1 STRK unshield"}
+        </Button>
+        <Button
+          type="button"
+          disabled={
+            !preparedUnshield ||
+            preparingUnshield ||
+            sendingUnshield ||
+            !!unshield
+          }
+          onClick={() => void submitUnshield()}
+        >
+          {sendingUnshield ? (
+            <Spinner data-icon="inline-start" />
+          ) : (
+            <SendIcon data-icon="inline-start" />
+          )}
+          {sendingUnshield ? "Waiting for MetaMask" : "Sign and unshield on Sepolia"}
+        </Button>
+      </CardFooter>
+    </Card>
+    </>
   );
 }
