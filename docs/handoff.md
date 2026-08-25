@@ -8,9 +8,9 @@ MorokPay is a private donation product on Starknet for the STRK20 Private Sprint
 2. Dry-run the First 10 campaign with registered Ready accounts and record the required three-minute submission video.
 3. Replace the public unauthenticated mainnet RPC before campaign traffic.
 4. Add a downloadable branded QR image with the donation label and MorokPay logo while preserving a reliably scannable payment link.
-5. Continue the MetaMask Privacy SDK lab from confirmed STRK shield/unshield to
-   a second MetaMask recipient, private transfer/receipt, recipient unshield,
-   and the Sepolia USDC lifecycle. The measured results are recorded in
+5. Continue the MetaMask Privacy SDK lab from confirmed STRK shield/unshield
+   and 1 USDC unshield to a second MetaMask recipient, private transfer/receipt,
+   and recipient-side discovery/unshield. The measured results are recorded in
    [metamask-privacy-sdk-sepolia.md](metamask-privacy-sdk-sepolia.md).
 6. Return to the unshield-fee design after that test; do not charge a MorokPay fee on every private donation. See [fees.md](fees.md).
 7. Build DonationPot only if the core submission is complete.

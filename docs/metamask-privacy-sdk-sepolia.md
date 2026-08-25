@@ -1,10 +1,9 @@
 # MetaMask + Privacy SDK Sepolia test
 
-Status: public account control, STRK20 registration, 1 STRK shield, private
-balance discovery, and 1 STRK unshield confirmed on 2026-08-25. A private
-transfer to a separately controlled recipient is the next test stage. Numeric
-Sepolia USDC shield/private-transfer/unshield controls are implemented in the
-lab but remain unverified on-chain.
+Status: public account control, STRK20 registration, the 1 STRK shield/unshield
+cycle, and a 1 USDC unshield are confirmed on Sepolia as of 2026-08-25. The
+USDC shield transaction still needs to be added to this record, and a private
+transfer to a separately controlled recipient remains the next test stage.
 
 ## What this path is
 
@@ -41,6 +40,7 @@ the generated account, its owner, signing key, or private-transfer sender.
 | STRK20 registration | `0x07deccfc10ccd7fb878d6482f892c08c46a2059cd22da299566e996cb26a3df` | `SUCCEEDED`, block `14021124`; `2 STRK` pool fee plus `4.331302638639205626 STRK` gas. |
 | Shield 1 STRK | `0x03c898fd7a6a24431ed87f4054f317ac56fbac6b1b79274051138d212d6986e` | `SUCCEEDED`, block `14022244`; `1 STRK` shield, `2 STRK` pool fee, and `4.982030916506692056 STRK` gas. Private balance discovery changed from `0` to `1 STRK`. |
 | Unshield 1 STRK | `0x07c034e212df5af9c0f81dc62454077373b96bfb68e8066ab8926e76a78af106` | `SUCCEEDED`, block `14025732`; `1 STRK` returned publicly, `2 STRK` pool fee, and `4.375067402903257608 STRK` gas. Public balance changed by `-5.375067402903257608 STRK` net. |
+| Unshield 1 USDC | `0x060fd18fcc21ce8c7fa43208de35a0c0711e86f7ef4c54a32615c2ec04c9b44e` | `SUCCEEDED`, block `14035640`; exactly `1 USDC` moved from the pool to the generated public account, with a separate `2 STRK` pool fee and `4.432431986365654548 STRK` gas. |
 
 Registration was prepared at proving block `14021087` with a real 225,040-byte
 proof and nine proof facts. The final InvokeV3 batched the public STRK approval
@@ -61,6 +61,14 @@ the withdrawn 1 STRK moved from the pool to the account. The signed maximum gas
 bound was 12 STRK, but Starknet charged only the receipt's actual 4.3750674 STRK.
 The lab now caps Eth712 gas independently of account balance so a large testnet
 top-up cannot silently turn into a proportionally large signed resource bound.
+
+The confirmed USDC unshield likewise withdrew exactly `1,000,000` base units
+(`1 USDC`) from the pool to the same generated public account. Its STRK approval
+and transfer events show a separate `2 STRK` pool fee, while the receipt charged
+`4.432431986365654548 STRK` in actual gas. The transaction therefore cost
+`6.432431986365654548 STRK` in total and did not deduct the fee from the USDC
+amount. Discovery still needs to confirm that the spent private USDC note is no
+longer included in the browser's private balance.
 
 ## Compatibility findings
 
@@ -98,9 +106,9 @@ construct the Starknet and STRK20 operations.
 
 ## Next bounded test
 
-1. Refresh public/private USDC balances, fund the public account with Sepolia
-   USDC, and test a numeric USDC shield. USDC approval must equal only the entered
-   amount; the separate STRK approval must equal only the pool fee.
+1. Refresh public/private USDC balances and confirm that discovery removes the
+   spent 1 USDC note. Add the preceding USDC shield transaction hash and measured
+   cost to this record.
 2. Connect a second MetaMask EVM account, resolve its deterministic Starknet
    account, deploy/upgrade/register it, and record its ownership boundary.
 3. Prepare a numeric private USDC transfer to that separately controlled
