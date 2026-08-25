@@ -6,6 +6,7 @@ import {
   eth712TransactionHash,
   eth712TransactionTypedData,
   eth712FundedResourceBounds,
+  ETH712_TEST_MAXIMUM_GAS_FEE,
   ethSignatureToAccountFelts,
   safeEth712TransactionError,
 } from "./eth712-transaction";
@@ -148,6 +149,34 @@ describe("Eth712Account transaction signer", () => {
       estimated.l2_gas.max_amount,
     );
     expect(maximumFee + transferAmount).toBeLessThanOrEqual(publicBalance);
+  });
+
+  it("does not scale the gas cap with a large funded balance", () => {
+    const estimated = {
+      l1_gas: { max_amount: 0n, max_price_per_unit: 1n },
+      l2_gas: {
+        max_amount: 1_763_866n,
+        max_price_per_unit: 323_236_488_232n,
+      },
+      l1_data_gas: {
+        max_amount: 288n,
+        max_price_per_unit: 1_140_198_809_799n,
+      },
+    };
+    const bounded = eth712FundedResourceBounds({
+      estimated,
+      publicBalance: 107n * 10n ** 18n,
+      transferAmount: 2n * 10n ** 18n,
+      maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
+    });
+    const maximumFee =
+      bounded.l1_gas.max_amount * bounded.l1_gas.max_price_per_unit +
+      bounded.l2_gas.max_amount * bounded.l2_gas.max_price_per_unit +
+      bounded.l1_data_gas.max_amount *
+        bounded.l1_data_gas.max_price_per_unit;
+
+    expect(maximumFee).toBeLessThanOrEqual(ETH712_TEST_MAXIMUM_GAS_FEE);
+    expect(maximumFee).toBeGreaterThan(0n);
   });
 
   it("classifies nested RPC causes without exposing them", () => {

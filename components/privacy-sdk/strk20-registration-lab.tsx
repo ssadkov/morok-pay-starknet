@@ -43,6 +43,7 @@ import {
 } from "@/lib/privacy/eth712-account";
 import {
   Eth712TransactionSigner,
+  ETH712_TEST_MAXIMUM_GAS_FEE,
   eth712FundedResourceBounds,
   safeEth712TransactionError,
 } from "@/lib/privacy/eth712-transaction";
@@ -368,6 +369,7 @@ export function Strk20RegistrationLab({
         estimated: estimate.resourceBounds,
         publicBalance: snapshot.strkWei,
         transferAmount: BigInt(0),
+        maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
       });
       setPreparedUpgrade({
         accountAddress,
@@ -603,6 +605,7 @@ export function Strk20RegistrationLab({
         estimated: estimate.resourceBounds,
         publicBalance: snapshot.strkWei,
         transferAmount: poolFee,
+        maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
       });
 
       payload.current = { calls, ...proofDetails };

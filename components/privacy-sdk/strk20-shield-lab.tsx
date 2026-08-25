@@ -40,6 +40,7 @@ import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
 import { eth712Strk20ClassMode } from "@/lib/privacy/eth712-account";
 import {
   Eth712TransactionSigner,
+  ETH712_TEST_MAXIMUM_GAS_FEE,
   eth712FundedResourceBounds,
   safeEth712TransactionError,
 } from "@/lib/privacy/eth712-transaction";
@@ -523,6 +524,7 @@ export function Strk20ShieldLab({
         estimated: estimate.resourceBounds,
         publicBalance,
         transferAmount: publicSpend,
+        maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
       });
 
       payload.current = { calls, ...proofDetails };
@@ -748,6 +750,7 @@ export function Strk20ShieldLab({
         estimated: estimate.resourceBounds,
         publicBalance,
         transferAmount: poolFee,
+        maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
       });
 
       unshieldPayload.current = { calls, ...proofDetails };

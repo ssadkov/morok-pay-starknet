@@ -25,6 +25,7 @@ import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
 import {
   Eth712TransactionSigner,
+  ETH712_TEST_MAXIMUM_GAS_FEE,
   eth712FundedResourceBounds,
   safeEth712TransactionError,
 } from "@/lib/privacy/eth712-transaction";
@@ -170,6 +171,7 @@ export function PublicStrkTransferLab({
         estimated: baseEstimate.resourceBounds,
         publicBalance: snapshot.strkWei,
         transferAmount: TEST_AMOUNT,
+        maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
       });
       const maximumFee = maxFee(fundedBounds);
       if (snapshot.strkWei < TEST_AMOUNT + maximumFee) {

@@ -20,6 +20,8 @@ import {
 
 const MASK_128 = (BigInt(1) << BigInt(128)) - BigInt(1);
 
+export const ETH712_TEST_MAXIMUM_GAS_FEE = BigInt(12) * BigInt(10) ** BigInt(18);
+
 export const ETH712_TRANSACTION_TYPES = {
   EIP712Domain: [
     { name: "name", type: "string" },
@@ -143,6 +145,7 @@ export function eth712FundedResourceBounds(args: {
   estimated: ResourceBoundsBN;
   publicBalance: bigint;
   transferAmount: bigint;
+  maximumFeeCap?: bigint;
 }): ResourceBoundsBN {
   const nonL2Fee =
     args.estimated.l1_gas.max_amount *
@@ -159,7 +162,16 @@ export function eth712FundedResourceBounds(args: {
     throw new Error("Sepolia returned an invalid L2 gas price");
   }
 
-  const l2Budget = (available * BigInt(9)) / BigInt(10);
+  const balanceL2Budget = (available * BigInt(9)) / BigInt(10);
+  const cappedL2Budget =
+    args.maximumFeeCap === undefined
+      ? balanceL2Budget
+      : args.maximumFeeCap - nonL2Fee;
+  if (cappedL2Budget <= BigInt(0)) {
+    throw new Error("Configured Eth712 gas cap is below the non-L2 fee estimate");
+  }
+  const l2Budget =
+    balanceL2Budget < cappedL2Budget ? balanceL2Budget : cappedL2Budget;
   const maxAmount = l2Budget / l2Price;
   if (maxAmount <= args.estimated.l2_gas.max_amount) {
     throw new Error("Insufficient public STRK for Eth712 account validation");
@@ -174,6 +186,12 @@ export function eth712FundedResourceBounds(args: {
   };
   if (resourceCost(provisional) + args.transferAmount > args.publicBalance) {
     throw new Error("Validation resource cap exceeds the public STRK balance");
+  }
+  if (
+    args.maximumFeeCap !== undefined &&
+    resourceCost(provisional) > args.maximumFeeCap
+  ) {
+    throw new Error("Validation resource cap exceeds the configured gas limit");
   }
   return provisional;
 }
