@@ -18,7 +18,10 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
-import { Eth712TransactionSigner } from "@/lib/privacy/eth712-transaction";
+import {
+  Eth712TransactionSigner,
+  safeEth712TransactionError,
+} from "@/lib/privacy/eth712-transaction";
 import { publicStrkTransferCall } from "@/lib/starknet/actions";
 import { starknetOf } from "@/lib/starknet/constants";
 import { getAccountSnapshot, formatStrk } from "@/lib/starknet/status";
@@ -154,7 +157,7 @@ export function PublicStrkTransferLab({
       const nonce = BigInt(nonceHex);
       const estimate = await account.estimateInvokeFee(call, {
         nonce,
-        skipValidate: true,
+        skipValidate: false,
         tip: BigInt(0),
       });
       const maximumFee = maxFee(estimate.resourceBounds);
@@ -173,11 +176,7 @@ export function PublicStrkTransferLab({
         starknetAddress: accountAddress,
       });
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Could not prepare the public STRK transfer",
-      );
+      setError(safeEth712TransactionError(caught));
     } finally {
       setPreparing(false);
     }
@@ -277,10 +276,7 @@ export function PublicStrkTransferLab({
       window.localStorage.removeItem(key);
       setTransfer({
         status: "failed",
-        message:
-          caught instanceof Error
-            ? caught.message
-            : "MetaMask rejected or failed to submit the transaction",
+        message: safeEth712TransactionError(caught),
       });
     } finally {
       setSending(false);
@@ -331,7 +327,9 @@ export function PublicStrkTransferLab({
         <CardTitle>5. Send public STRK with MetaMask</CardTitle>
         <CardDescription>
           This is an ordinary Starknet InvokeV3 paid by the generated account.
-          Ready and STRK20 are not involved.
+          Ready and STRK20 are not involved. MetaMask first signs a
+          non-submittable query so Sepolia can measure account validation,
+          then signs the transaction itself.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -361,7 +359,10 @@ export function PublicStrkTransferLab({
             <AlertDescription className="grid gap-1">
               <span>Public balance: {formatStrk(prepared.balance)} STRK</span>
               <span>Nonce: {prepared.nonce.toString()}</span>
-              <span>Maximum fee bound: {formatStrk(prepared.maxFee)} STRK</span>
+              <span>
+                Validation-inclusive maximum fee bound: {formatStrk(prepared.maxFee)}
+                {" STRK"}
+              </span>
               <span>
                 MetaMask will sign these calls and exact transaction metadata.
               </span>
@@ -412,7 +413,9 @@ export function PublicStrkTransferLab({
           onClick={() => void prepareTransfer()}
         >
           {preparing ? <Spinner data-icon="inline-start" /> : null}
-          {preparing ? "Estimating on Sepolia" : "Prepare 0.01 STRK transfer"}
+          {preparing
+            ? "Waiting for estimate signature"
+            : "Estimate full fee with MetaMask"}
         </Button>
         <Button
           type="button"

@@ -6,6 +6,7 @@ import {
   eth712TransactionHash,
   eth712TransactionTypedData,
   ethSignatureToAccountFelts,
+  safeEth712TransactionError,
 } from "./eth712-transaction";
 
 const details: InvocationsSignerDetails = {
@@ -90,5 +91,27 @@ describe("Eth712Account transaction signer", () => {
       "0x1c",
       "0xaa36a7",
     ]);
+  });
+
+  it("does not expose a rejected transaction signature in UI errors", () => {
+    const rawRpcError = new Error(
+      'RPC params: {"signature":["0xsecret"]} validation failed: Out of gas',
+    );
+
+    const safeMessage = safeEth712TransactionError(rawRpcError);
+
+    expect(safeMessage).toContain("ran out of L2 gas");
+    expect(safeMessage).not.toContain("0xsecret");
+    expect(safeMessage).not.toContain("signature");
+  });
+
+  it("uses a generic sanitized message for unknown RPC failures", () => {
+    expect(
+      safeEth712TransactionError(
+        new Error('RPC params: {"signature":["0xsecret"]} unexpected error'),
+      ),
+    ).toBe(
+      "MetaMask or Starknet rejected the request. Raw RPC transaction details are hidden.",
+    );
   });
 });

@@ -130,6 +130,23 @@ type SignTypedData = (
   typedData: ReturnType<typeof eth712TransactionTypedData>,
 ) => Promise<Hex>;
 
+export function safeEth712TransactionError(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/user rejected|rejected the request|error code 4001/i.test(message)) {
+    return "MetaMask signature request was rejected. Nothing was submitted.";
+  }
+  if (/out of gas/i.test(message)) {
+    return "Starknet rejected the transaction because account validation ran out of L2 gas. Nothing was submitted.";
+  }
+  if (/insufficient account balance|insufficient resources/i.test(message)) {
+    return "The generated Starknet account does not have enough public STRK for the transaction fee.";
+  }
+  if (/validation failed/i.test(message)) {
+    return "Starknet rejected the account signature during validation. Nothing was submitted.";
+  }
+  return "MetaMask or Starknet rejected the request. Raw RPC transaction details are hidden.";
+}
+
 export class Eth712TransactionSigner extends SignerInterface {
   constructor(
     private readonly options: {
