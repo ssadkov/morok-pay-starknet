@@ -1,10 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2Icon, FlaskConicalIcon, LogOutIcon, WalletIcon } from "lucide-react";
-import { recoverTypedDataAddress, type Address } from "viem";
-import { useAccount, useConnect, useDisconnect, useSignTypedData } from "wagmi";
+import {
+  CheckCircle2Icon,
+  FlaskConicalIcon,
+  LogOutIcon,
+  WalletIcon,
+} from "lucide-react";
+import {
+  recoverMessageAddress,
+  recoverTypedDataAddress,
+  type Address,
+  type Hex,
+} from "viem";
+import {
+  useAccount,
+  useConnect,
+  useDisconnect,
+  useSignMessage,
+  useSignTypedData,
+} from "wagmi";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +37,11 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { shortenAddress } from "@/lib/format";
 import {
+  inspectEth712Account,
+  OWNERSHIP_MESSAGE,
+  type Eth712AccountInspection,
+} from "@/lib/privacy/eth712-account";
+import {
   privacyKeyTypedData,
   signatureFingerprint,
 } from "@/lib/privacy/eip712-test";
@@ -34,15 +55,56 @@ type TestResult = {
   signerMatches: boolean;
 };
 
+type OwnershipResult = {
+  fingerprint: string;
+  recoveredAddress: Address;
+  signerMatches: boolean;
+};
+
 export function Eip712SignatureLab() {
   const { address, chainId, connector, isConnected, status } = useAccount();
   const { connectors, connect, isPending: connecting, error: connectError } =
     useConnect();
   const { disconnect } = useDisconnect();
   const { signTypedDataAsync } = useSignTypedData();
+  const { signMessageAsync } = useSignMessage();
+  const ownershipSignature = useRef<Hex | null>(null);
   const [signing, setSigning] = useState(false);
+  const [inspecting, setInspecting] = useState(false);
+  const [signingOwnership, setSigningOwnership] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TestResult | null>(null);
+  const [inspection, setInspection] =
+    useState<Eth712AccountInspection | null>(null);
+  const [ownership, setOwnership] = useState<OwnershipResult | null>(null);
+
+  function clearAccountState() {
+    ownershipSignature.current = null;
+    setOwnership(null);
+    setInspection(null);
+    setResult(null);
+    setError(null);
+  }
+
+  async function inspectAccount() {
+    if (!address) return;
+    setInspecting(true);
+    setError(null);
+    setInspection(null);
+    setOwnership(null);
+    ownershipSignature.current = null;
+    try {
+      setInspection(await inspectEth712Account(address));
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Could not inspect the Sepolia account factory",
+      );
+    } finally {
+      setInspecting(false);
+    }
+  }
 
   async function testSignatures() {
     if (!address || !chainId) return;
@@ -83,7 +145,49 @@ export function Eip712SignatureLab() {
     }
   }
 
-  const busy = signing || connecting || status === "connecting";
+  async function signOwnership() {
+    if (!address) return;
+    setSigningOwnership(true);
+    setError(null);
+    setOwnership(null);
+    ownershipSignature.current = null;
+    try {
+      const signature = await signMessageAsync({ message: OWNERSHIP_MESSAGE });
+      const recoveredAddress = await recoverMessageAddress({
+        message: OWNERSHIP_MESSAGE,
+        signature,
+      });
+      const signerMatches =
+        recoveredAddress.toLowerCase() === address.toLowerCase();
+      if (signerMatches) ownershipSignature.current = signature;
+      setOwnership({
+        fingerprint: signatureFingerprint(signature),
+        recoveredAddress,
+        signerMatches,
+      });
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "The ownership signature failed",
+      );
+    } finally {
+      setSigningOwnership(false);
+    }
+  }
+
+  const busy =
+    signing ||
+    signingOwnership ||
+    inspecting ||
+    connecting ||
+    status === "connecting";
+  const currentInspection =
+    inspection &&
+    address &&
+    inspection.evmAddress.toLowerCase() === address.toLowerCase()
+      ? inspection
+      : null;
 
   return (
     <div className="min-h-full bg-background">
@@ -144,7 +248,7 @@ export function Eip712SignatureLab() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Public account</p>
-                  <p className="font-mono font-medium">{shortenAddress(address)}</p>
+                  <p className="break-all font-mono font-medium">{address}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">EVM chain ID</p>
@@ -172,7 +276,10 @@ export function Eip712SignatureLab() {
                     key={available.uid}
                     variant="outline"
                     disabled={busy}
-                    onClick={() => connect({ connector: available })}
+                    onClick={() => {
+                      clearAccountState();
+                      connect({ connector: available });
+                    }}
                   >
                     {busy ? (
                       <Spinner data-icon="inline-start" />
@@ -184,7 +291,14 @@ export function Eip712SignatureLab() {
                 ))
               : null}
             {isConnected ? (
-              <Button type="button" variant="ghost" onClick={() => disconnect()}>
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  clearAccountState();
+                  disconnect();
+                }}
+              >
                 <LogOutIcon data-icon="inline-start" />
                 Disconnect
               </Button>
@@ -194,7 +308,140 @@ export function Eip712SignatureLab() {
 
         <Card>
           <CardHeader>
-            <CardTitle>2. Sign the same request twice</CardTitle>
+            <CardTitle>2. Resolve the deterministic Starknet account</CardTitle>
+            <CardDescription>
+              This is a read-only call to the live Sepolia AccountFactory. The
+              result is derived from the connected public EVM address.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {inspecting ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner data-icon="inline-start" />
+                Reading Sepolia factory
+              </p>
+            ) : currentInspection ? (
+              <div className="flex flex-col gap-3 text-sm">
+                <div>
+                  <p className="text-muted-foreground">
+                    Deterministic Starknet address
+                  </p>
+                  <p className="break-all font-mono font-medium">
+                    {currentInspection.starknetAddress}
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-muted-foreground">Deployment state</p>
+                    <p className="font-medium">
+                      {currentInspection.deployed
+                        ? "Already deployed"
+                        : "Not deployed"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Account class</p>
+                    <p className="break-all font-mono font-medium">
+                      {currentInspection.configuredAccountClassHash}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Factory: {currentInspection.factoryAddress} · class {" "}
+                  {currentInspection.factoryClassHash}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Connect an EVM wallet to calculate its Starknet account.
+              </p>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!address || busy}
+              aria-busy={inspecting}
+              onClick={() => void inspectAccount()}
+            >
+              {inspecting ? <Spinner data-icon="inline-start" /> : null}
+              {inspecting
+                ? "Reading Sepolia factory"
+                : "Resolve Starknet account"}
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>3. Prove EVM ownership for one-time deployment</CardTitle>
+            <CardDescription>
+              MetaMask signs the exact fixed message expected by
+              StarknetEth712Account. This is not a transaction and costs no
+              gas.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <div className="rounded-xl border bg-muted/40 p-3 font-mono text-sm">
+              {OWNERSHIP_MESSAGE}
+            </div>
+            {ownership ? (
+              <div className="flex flex-col gap-2 text-sm">
+                <p>
+                  Ownership fingerprint: {" "}
+                  <span className="font-mono">{ownership.fingerprint}</span>
+                </p>
+                <p>
+                  Recovered signer: {" "}
+                  <span className="font-mono">
+                    {shortenAddress(ownership.recoveredAddress)}
+                  </span>
+                </p>
+                <Alert
+                  variant={ownership.signerMatches ? "default" : "destructive"}
+                >
+                  <AlertTitle>
+                    {ownership.signerMatches
+                      ? "Ownership signature is ready in memory"
+                      : "Recovered signer does not match"}
+                  </AlertTitle>
+                  <AlertDescription>
+                    {ownership.signerMatches
+                      ? "It has not been submitted. Reloading or disconnecting discards it."
+                      : "Do not deploy an account with this signature."}
+                  </AlertDescription>
+                </Alert>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No ownership signature has been requested.
+              </p>
+            )}
+          </CardContent>
+          <CardFooter>
+            <Button
+              type="button"
+              size="lg"
+              disabled={
+                !currentInspection || currentInspection.deployed || busy
+              }
+              aria-busy={signingOwnership}
+              onClick={() => void signOwnership()}
+            >
+              {signingOwnership ? <Spinner data-icon="inline-start" /> : null}
+              {currentInspection?.deployed
+                ? "Account already deployed"
+                : signingOwnership
+                  ? "Waiting for MetaMask"
+                  : "Request ownership signature"}
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>4. Sign the same request twice</CardTitle>
             <CardDescription>
               You will see two wallet confirmations. MorokPay compares the raw
               signatures in memory, then keeps only short SHA-256 fingerprints.
@@ -272,6 +519,8 @@ export function Eip712SignatureLab() {
           Raw signatures are not rendered, logged, sent to a server, or written
           to browser storage. They necessarily exist briefly in this page&apos;s
           memory so their fingerprints and recovered signer can be checked.
+          The ownership signature is also kept only in memory until it is
+          either submitted by a relayer or discarded.
         </p>
       </main>
     </div>
