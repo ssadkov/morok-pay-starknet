@@ -5,6 +5,7 @@ import { ExternalLinkIcon, SendIcon } from "lucide-react";
 import { parseUnits, recoverTypedDataAddress } from "viem";
 import {
   Account,
+  ETransactionVersion3,
   RpcProvider,
   TransactionType,
   type Call,
@@ -179,6 +180,7 @@ export function PublicStrkTransferLab({
           resourceBounds: provisionalBounds,
           skipValidate: false,
           tip: BigInt(0),
+          version: ETransactionVersion3.F3,
         },
       );
       const estimate = simulation.simulated_transactions[0];
