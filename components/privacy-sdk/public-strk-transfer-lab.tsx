@@ -3,7 +3,13 @@
 import { useMemo, useState } from "react";
 import { ExternalLinkIcon, SendIcon } from "lucide-react";
 import { parseUnits, recoverTypedDataAddress } from "viem";
-import { Account, RpcProvider, type Call, type ResourceBoundsBN } from "starknet";
+import {
+  Account,
+  RpcProvider,
+  TransactionType,
+  type Call,
+  type ResourceBoundsBN,
+} from "starknet";
 import { useAccount, useSignTypedData } from "wagmi";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -20,6 +26,7 @@ import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
 import {
   Eth712TransactionSigner,
+  eth712ValidationSimulationBounds,
   safeEth712TransactionError,
 } from "@/lib/privacy/eth712-transaction";
 import { publicStrkTransferCall } from "@/lib/starknet/actions";
@@ -155,11 +162,29 @@ export function PublicStrkTransferLab({
         account.getNonce(),
       ]);
       const nonce = BigInt(nonceHex);
-      const estimate = await account.estimateInvokeFee(call, {
+      const baseEstimate = await account.estimateInvokeFee(call, {
         nonce,
-        skipValidate: false,
+        skipValidate: true,
         tip: BigInt(0),
       });
+      const provisionalBounds = eth712ValidationSimulationBounds({
+        estimated: baseEstimate.resourceBounds,
+        publicBalance: snapshot.strkWei,
+        transferAmount: TEST_AMOUNT,
+      });
+      const simulation = await account.simulateTransaction(
+        [{ type: TransactionType.INVOKE, payload: [call] }],
+        {
+          nonce,
+          resourceBounds: provisionalBounds,
+          skipValidate: false,
+          tip: BigInt(0),
+        },
+      );
+      const estimate = simulation.simulated_transactions[0];
+      if (!estimate) {
+        throw new Error("Sepolia returned no Eth712 simulation result");
+      }
       const maximumFee = maxFee(estimate.resourceBounds);
       if (snapshot.strkWei < TEST_AMOUNT + maximumFee) {
         throw new Error(

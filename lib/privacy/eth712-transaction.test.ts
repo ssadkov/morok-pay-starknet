@@ -5,6 +5,7 @@ import { EDataAvailabilityMode, type InvocationsSignerDetails } from "starknet";
 import {
   eth712TransactionHash,
   eth712TransactionTypedData,
+  eth712ValidationSimulationBounds,
   ethSignatureToAccountFelts,
   safeEth712TransactionError,
 } from "./eth712-transaction";
@@ -113,5 +114,49 @@ describe("Eth712Account transaction signer", () => {
     ).toBe(
       "MetaMask or Starknet rejected the request. Raw RPC transaction details are hidden.",
     );
+  });
+
+  it("builds a validation simulation budget bounded by the public balance", () => {
+    const publicBalance = BigInt(14) * BigInt(10) ** BigInt(18);
+    const transferAmount = BigInt(10) ** BigInt(16);
+    const estimated = {
+      l1_gas: { max_amount: BigInt(0), max_price_per_unit: BigInt(1) },
+      l2_gas: {
+        max_amount: BigInt(1_763_866),
+        max_price_per_unit: BigInt(323_236_488_232),
+      },
+      l1_data_gas: {
+        max_amount: BigInt(288),
+        max_price_per_unit: BigInt(1_140_198_809_799),
+      },
+    };
+
+    const provisional = eth712ValidationSimulationBounds({
+      estimated,
+      publicBalance,
+      transferAmount,
+    });
+    const maximumFee =
+      provisional.l1_gas.max_amount *
+        provisional.l1_gas.max_price_per_unit +
+      provisional.l2_gas.max_amount *
+        provisional.l2_gas.max_price_per_unit +
+      provisional.l1_data_gas.max_amount *
+        provisional.l1_data_gas.max_price_per_unit;
+
+    expect(provisional.l2_gas.max_amount).toBeGreaterThan(
+      estimated.l2_gas.max_amount,
+    );
+    expect(maximumFee + transferAmount).toBeLessThanOrEqual(publicBalance);
+  });
+
+  it("classifies nested RPC causes without exposing them", () => {
+    const safeMessage = safeEth712TransactionError({
+      message: "Transaction execution error",
+      cause: { data: { reason: "Out of gas" } },
+    });
+
+    expect(safeMessage).toContain("ran out of L2 gas");
+    expect(safeMessage).not.toContain("reason");
   });
 });
