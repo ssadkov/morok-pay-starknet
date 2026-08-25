@@ -39,6 +39,7 @@ import { Separator } from "@/components/ui/separator";
 import { Spinner } from "@/components/ui/spinner";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
+import { PublicStrkTransferLab } from "@/components/privacy-sdk/public-strk-transfer-lab";
 import { shortenAddress } from "@/lib/format";
 import {
   deployEth712AccountCall,
@@ -731,9 +732,14 @@ export function Eip712SignatureLab() {
           </CardFooter>
         </Card>
 
+        <PublicStrkTransferLab
+          key={`${currentInspection?.starknetAddress ?? "none"}:${address ?? "none"}:${chainId ?? "none"}`}
+          inspection={currentInspection}
+        />
+
         <Card>
           <CardHeader>
-            <CardTitle>5. Sign the same request twice</CardTitle>
+            <CardTitle>6. Sign the same request twice</CardTitle>
             <CardDescription>
               You will see two wallet confirmations. MorokPay compares the raw
               signatures in memory, then keeps only short SHA-256 fingerprints.
