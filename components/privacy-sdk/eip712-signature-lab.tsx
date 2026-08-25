@@ -40,6 +40,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { PublicStrkTransferLab } from "@/components/privacy-sdk/public-strk-transfer-lab";
+import { Strk20RegistrationLab } from "@/components/privacy-sdk/strk20-registration-lab";
 import { shortenAddress } from "@/lib/format";
 import {
   deployEth712AccountCall,
@@ -812,6 +813,14 @@ export function Eip712SignatureLab() {
             </Button>
           </CardFooter>
         </Card>
+
+        <Strk20RegistrationLab
+          key={`strk20:${currentInspection?.starknetAddress ?? "none"}:${address ?? "none"}:${chainId ?? "none"}`}
+          inspection={currentInspection}
+          signatureTestPassed={Boolean(
+            result?.signaturesMatch && result.signerMatches,
+          )}
+        />
 
         <p className="text-xs text-muted-foreground">
           Raw signatures are not rendered, logged, sent to a server, or written

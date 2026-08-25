@@ -15,7 +15,16 @@ import { TEST_ACCOUNT_FACTORY } from "./eip712-test";
 export const OWNERSHIP_MESSAGE = "Sign to verify that you own this account.";
 export const EXPECTED_OWNERSHIP_MESSAGE_HASH =
   "0x3ce976d55131cd0bdd49f20afbded052d8e907dc6034d95cdf117a8fd7752e3c";
+export const LEGACY_ETH712_ACCOUNT_CLASS_HASH =
+  "0x39ffe6e5bffb04de53189d1f4018f113d7ddcbc8ca5874f7a4986b4d1a77f55";
+export const STRK20_ETH712_ACCOUNT_CLASS_HASH =
+  "0x697437b25b81bcdd2d1b231d3b8670849fb318555903dbc2fefce2a1a35586e";
 const UINT128_MASK = (BigInt(1) << BigInt(128)) - BigInt(1);
+
+export type Eth712Strk20ClassMode =
+  | "compatible"
+  | "atomic_upgrade_required"
+  | "unsupported";
 
 export type Eth712AccountInspection = {
   evmAddress: string;
@@ -47,6 +56,25 @@ export function deployEth712AccountCall(args: {
       toCalldataFelt(sValue >> BigInt(128)),
       toCalldataFelt(BigInt(yParity)),
     ],
+  };
+}
+
+export function eth712Strk20ClassMode(classHash: string): Eth712Strk20ClassMode {
+  const value = BigInt(classHash);
+  if (value === BigInt(STRK20_ETH712_ACCOUNT_CLASS_HASH)) return "compatible";
+  if (value === BigInt(LEGACY_ETH712_ACCOUNT_CLASS_HASH)) {
+    return "atomic_upgrade_required";
+  }
+  return "unsupported";
+}
+
+export function strk20UpgradeCall(accountAddress: string): Call {
+  return {
+    contractAddress: validateAndParseAddress(accountAddress),
+    entrypoint: "upgrade",
+    // Cairo Option::None is variant 1. No EIC initializer is needed because the
+    // compatible class preserves src5, SRC9_nonces, and eth_address storage.
+    calldata: [STRK20_ETH712_ACCOUNT_CLASS_HASH, "0x1"],
   };
 }
 

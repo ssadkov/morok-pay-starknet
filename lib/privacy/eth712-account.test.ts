@@ -3,9 +3,13 @@ import { hashMessage } from "viem";
 
 import {
   deployEth712AccountCall,
+  eth712Strk20ClassMode,
   EXPECTED_OWNERSHIP_MESSAGE_HASH,
   inspectEth712Account,
+  LEGACY_ETH712_ACCOUNT_CLASS_HASH,
   OWNERSHIP_MESSAGE,
+  strk20UpgradeCall,
+  STRK20_ETH712_ACCOUNT_CLASS_HASH,
 } from "./eth712-account";
 
 describe("Eth712Account factory", () => {
@@ -35,6 +39,22 @@ describe("Eth712Account factory", () => {
         "0x0",
         "0x1",
       ],
+    });
+  });
+
+  it("only upgrades the known legacy class and encodes Option::None", () => {
+    expect(eth712Strk20ClassMode(LEGACY_ETH712_ACCOUNT_CLASS_HASH)).toBe(
+      "atomic_upgrade_required",
+    );
+    expect(eth712Strk20ClassMode(STRK20_ETH712_ACCOUNT_CLASS_HASH)).toBe(
+      "compatible",
+    );
+    expect(eth712Strk20ClassMode("0x123")).toBe("unsupported");
+    expect(strk20UpgradeCall("0x456")).toEqual({
+      contractAddress:
+        "0x0000000000000000000000000000000000000000000000000000000000000456",
+      entrypoint: "upgrade",
+      calldata: [STRK20_ETH712_ACCOUNT_CLASS_HASH, "0x1"],
     });
   });
 

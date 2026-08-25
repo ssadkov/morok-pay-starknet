@@ -8,7 +8,10 @@ MorokPay is a private donation product on Starknet for the STRK20 Private Sprint
 2. Dry-run the First 10 campaign with registered Ready accounts and record the required three-minute submission video.
 3. Replace the public unauthenticated mainnet RPC before campaign traffic.
 4. Add a downloadable branded QR image with the donation label and MorokPay logo while preserving a reliably scannable payment link.
-5. Test MetaMask as the entry wallet and document the exact account, funding, and Ready/private activation boundary.
+5. Continue the MetaMask Privacy SDK lab from confirmed STRK20 registration to
+   shield, private balance, private transfer, and unshield. The public account
+   path and registration are recorded in
+   [metamask-privacy-sdk-sepolia.md](metamask-privacy-sdk-sepolia.md).
 6. Return to the unshield-fee design after that test; do not charge a MorokPay fee on every private donation. See [fees.md](fees.md).
 7. Build DonationPot only if the core submission is complete.
 
@@ -24,7 +27,16 @@ Donation requests and app activity are stored in the current browser. Old invoic
 
 ## Technical boundary
 
-MorokPay uses Ready Wallet API methods for private balances and transactions. Ready owns the viewing key, note discovery, proving, and submission. Do not restore the removed direct Privacy SDK path or ask users for viewing keys.
+Production MorokPay uses Ready Wallet API methods for private balances and
+transactions. Ready owns the viewing key, note discovery, proving, and
+submission in that flow. Do not ask users for viewing keys.
+
+`/privacy-sdk-lab` is an explicitly isolated compatibility experiment. It uses
+MetaMask EIP-712 signatures, a deterministic Starknet smart account, and the
+Privacy SDK directly; it must not be confused with Ready Wallet API support or
+presented as evidence that MetaMask implements STRK20 wallet methods. The lab
+derives its viewing key in tab memory only. See
+[metamask-privacy-sdk-sepolia.md](metamask-privacy-sdk-sepolia.md).
 
 A donation is a normal `wallet_strk20InvokeTransaction` transfer. No helper contract is involved. Ready exposes balances, not private transfer history, so the creator refreshes the balance and explicitly marks a donation received.
 
