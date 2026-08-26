@@ -36,6 +36,9 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
+import { useNetwork } from "@/components/network-provider";
+import type { AppNetwork } from "@/lib/network";
+import { privacySdkOf, type PrivacySdkNetwork } from "@/lib/privacy/network";
 import {
   eth712Strk20ClassMode,
   strk20UpgradeCall,
@@ -49,7 +52,6 @@ import {
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
 import { readPoolFee } from "@/lib/starknet/pool-fee";
-import { starknetOf } from "@/lib/starknet/constants";
 import { formatStrk, getAccountSnapshot } from "@/lib/starknet/status";
 import {
   bounded,
@@ -57,16 +59,8 @@ import {
   WALLET_SUBMISSION_TIMEOUT_MS,
 } from "@/lib/starknet/transaction-confirmation";
 
-const POOL_ADDRESS =
-  "0x0254a6b2997ef52e9f830ce1f543f6b29768295e8d17e2267d672c552cfe0d91";
 const STRK_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
-const PROVER_URL = "https://transaction-prover.alpha-sepolia.sw-dev.io";
-const DISCOVERY_URL = "https://discovery-service.alpha-sepolia.sw-dev.io";
-const PRIVACY_RPC_URL =
-  process.env.NEXT_PUBLIC_STARKNET_PRIVACY_SEPOLIA_RPC_URL ??
-  "https://api.zan.top/public/starknet-sepolia/rpc/v0_10";
-const SN_CHAIN_NAME = "SN_SEPOLIA";
 const PROVING_BLOCK_DEPTH = 10;
 const MINIMUM_PRIVACY_RPC_VERSION = [0, 10, 1] as const;
 const PROOF1_VERSION = "0x50524f4f4631";
@@ -124,13 +118,16 @@ function maximumFee(bounds: ResourceBoundsBN) {
   );
 }
 
-function markerKey(accountAddress: string) {
-  return `morokpay:eth712-strk20-register:sepolia:${accountAddress.toLowerCase()}`;
+function markerKey(network: AppNetwork, accountAddress: string) {
+  return `morokpay:eth712-strk20-register:${network}:${accountAddress.toLowerCase()}`;
 }
 
-function restoredRegistration(accountAddress: string | null): RegistrationState | null {
+function restoredRegistration(
+  network: AppNetwork,
+  accountAddress: string | null,
+): RegistrationState | null {
   if (!accountAddress) return null;
-  const stored = window.localStorage.getItem(markerKey(accountAddress));
+  const stored = window.localStorage.getItem(markerKey(network, accountAddress));
   if (!stored) return null;
   try {
     const marker = JSON.parse(stored) as {
@@ -153,7 +150,7 @@ function restoredRegistration(accountAddress: string | null): RegistrationState 
         : "A previous registration request did not return a hash. Do not submit again until its nonce and pool state are checked.",
     };
   } catch {
-    window.localStorage.removeItem(markerKey(accountAddress));
+    window.localStorage.removeItem(markerKey(network, accountAddress));
     return null;
   }
 }
@@ -163,12 +160,12 @@ function proofByteLength(proof: string) {
   return Math.max(0, (proof.length * 3) / 4 - padding);
 }
 
-function approvalCall(amount: bigint): Call {
+function approvalCall(amount: bigint, poolAddress: string): Call {
   const value = cairo.uint256(amount);
   return {
     contractAddress: STRK_ADDRESS,
     entrypoint: "approve",
-    calldata: [POOL_ADDRESS, value.low.toString(), value.high.toString()],
+    calldata: [poolAddress, value.low.toString(), value.high.toString()],
   };
 }
 
@@ -206,15 +203,15 @@ function safeRegistrationPreparationError(caught: unknown) {
   return message;
 }
 
-function privacyProvider() {
+function privacyProvider(sdk: PrivacySdkNetwork) {
   return new RpcProvider({
-    nodeUrl: PRIVACY_RPC_URL,
+    nodeUrl: sdk.privacyRpcUrl,
     specVersion: "0.10.3",
   });
 }
 
-async function assertPrivacyRpcVersion() {
-  const response = await fetch(PRIVACY_RPC_URL, {
+async function assertPrivacyRpcVersion(sdk: PrivacySdkNetwork) {
+  const response = await fetch(sdk.privacyRpcUrl, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -281,7 +278,8 @@ export function Strk20RegistrationLab({
 }) {
   const { address, chainId } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
-  const sepolia = starknetOf("sepolia");
+  const { network, starknet } = useNetwork();
+  const sdk = privacySdkOf(network);
   const accountAddress = inspection?.deployed ? inspection.starknetAddress : null;
   const deployedClassMode = inspection?.deployedClassHash
     ? eth712Strk20ClassMode(inspection.deployedClassHash)
@@ -298,7 +296,7 @@ export function Strk20RegistrationLab({
   const [upgrade, setUpgrade] = useState<UpgradeState | null>(null);
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
   const [registration, setRegistration] = useState<RegistrationState | null>(() =>
-    restoredRegistration(accountAddress),
+    restoredRegistration(network, accountAddress),
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -315,11 +313,11 @@ export function Strk20RegistrationLab({
     starknetAddress: string,
     evmChainId: number,
     evmAddress: string,
-    provider = new RpcProvider({ nodeUrl: sepolia.rpc }),
+    provider = new RpcProvider({ nodeUrl: starknet.rpc }),
   ) {
     const signer = new Eth712TransactionSigner({
       accountAddress: starknetAddress,
-      snChainName: SN_CHAIN_NAME,
+      snChainName: sdk.snChainName,
       evmChainId,
       signTypedData: async (typedData) => {
         const signature = await signTypedDataAsync(typedData);
@@ -349,7 +347,7 @@ export function Strk20RegistrationLab({
     setUpgradeError(null);
 
     try {
-      const provider = new RpcProvider({ nodeUrl: sepolia.rpc });
+      const provider = new RpcProvider({ nodeUrl: starknet.rpc });
       const sourceClassHash = await provider.getClassHashAt(accountAddress);
       const classMode = eth712Strk20ClassMode(sourceClassHash);
       if (classMode === "compatible") {
@@ -369,7 +367,7 @@ export function Strk20RegistrationLab({
       const account = outerAccount(accountAddress, chainId, address);
       const [nonceValue, snapshot] = await Promise.all([
         account.getNonce(),
-        getAccountSnapshot(accountAddress, "sepolia"),
+        getAccountSnapshot(accountAddress, network),
       ]);
       const nonce = BigInt(nonceValue);
       const estimate = await account.estimateInvokeFee(
@@ -416,7 +414,7 @@ export function Strk20RegistrationLab({
     setSendingUpgrade(true);
     setUpgradeError(null);
     try {
-      const provider = new RpcProvider({ nodeUrl: sepolia.rpc });
+      const provider = new RpcProvider({ nodeUrl: starknet.rpc });
       const currentClassHash = await provider.getClassHashAt(accountAddress);
       if (BigInt(currentClassHash) !== BigInt(preparedUpgrade.sourceClassHash)) {
         setPreparedUpgrade(null);
@@ -502,8 +500,8 @@ export function Strk20RegistrationLab({
     payload.current = null;
 
     try {
-      const rpcSpecVersion = await assertPrivacyRpcVersion();
-      const provider = privacyProvider();
+      const rpcSpecVersion = await assertPrivacyRpcVersion(sdk);
+      const provider = privacyProvider(sdk);
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
       const [currentClassHash, provingClassHash] = await Promise.all([
@@ -524,6 +522,9 @@ export function Strk20RegistrationLab({
       const keyRequest = privacyKeyTypedData({
         evmAddress: address,
         evmChainId: chainId,
+        starknetChain: sdk.snChainName,
+        privacyPool: BigInt(sdk.poolAddress),
+        accountFactory: BigInt(sdk.accountFactory),
       });
       const keySignature = await signTypedDataAsync(keyRequest);
       const recoveredKeySigner = await recoverTypedDataAddress({
@@ -539,7 +540,7 @@ export function Strk20RegistrationLab({
       const viewingKey = deriveViewingKey(keySignature, accountAddress);
       const callSetSigner = new Eip712TypedDataSigner({
         accountAddress,
-        snChainName: SN_CHAIN_NAME,
+        snChainName: sdk.snChainName,
         evmChainId: chainId,
         signTypedData: async (typedData) => {
           const normalized = viemCallSetTypedData(typedData);
@@ -558,13 +559,13 @@ export function Strk20RegistrationLab({
         account: { address: accountAddress, signer: callSetSigner },
         viewingKeyProvider: { getViewingKey: async () => viewingKey },
         provingProvider: {
-          url: PROVER_URL,
-          chainId: constants.StarknetChainId.SN_SEPOLIA,
-          nodeUrl: PRIVACY_RPC_URL,
+          url: sdk.proverUrl,
+          chainId: sdk.starknetChainId,
+          nodeUrl: sdk.privacyRpcUrl,
           ohttp: true,
         },
-        discoveryProvider: { url: DISCOVERY_URL },
-        poolContractAddress: POOL_ADDRESS,
+        discoveryProvider: { url: sdk.discoveryUrl },
+        poolContractAddress: sdk.poolAddress,
       });
 
       const requirement = await transfers.discoverRequirement(
@@ -581,8 +582,8 @@ export function Strk20RegistrationLab({
       }
 
       const [poolFee, snapshot] = await Promise.all([
-        readPoolFee("sepolia"),
-        getAccountSnapshot(accountAddress, "sepolia"),
+        readPoolFee(network),
+        getAccountSnapshot(accountAddress, network),
       ]);
       const account = outerAccount(accountAddress, chainId, address, provider);
       const nonce = BigInt(await account.getNonce());
@@ -602,7 +603,7 @@ export function Strk20RegistrationLab({
           `The prover returned unsupported proof version ${callAndProof.proof.proofFacts[0]}.`,
         );
       }
-      const calls = [approvalCall(poolFee), callAndProof.call];
+      const calls = [approvalCall(poolFee, sdk.poolAddress), callAndProof.call];
       const proofDetails = {
         proof: callAndProof.proof.data,
         proofFacts: callAndProof.proof.proofFacts,
@@ -660,15 +661,15 @@ export function Strk20RegistrationLab({
 
     setSending(true);
     setError(null);
-    const key = markerKey(accountAddress);
+    const key = markerKey(network, accountAddress);
     window.localStorage.setItem(
       key,
       JSON.stringify({ status: "submitting", nonce: prepared.nonce.toString() }),
     );
 
     try {
-      await assertPrivacyRpcVersion();
-      const provider = privacyProvider();
+      await assertPrivacyRpcVersion(sdk);
+      const provider = privacyProvider(sdk);
       const account = outerAccount(accountAddress, chainId, address, provider);
       const currentClassHash = await provider.getClassHashAt(accountAddress);
       if (BigInt(currentClassHash) !== BigInt(prepared.sourceClassHash)) {
@@ -782,7 +783,7 @@ export function Strk20RegistrationLab({
           </div>
           <div>
             <p className="text-muted-foreground">Privacy pool</p>
-            <p className="break-all font-mono font-medium">{POOL_ADDRESS}</p>
+            <p className="break-all font-mono font-medium">{sdk.poolAddress}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Signing key</p>
@@ -826,7 +827,7 @@ export function Strk20RegistrationLab({
               {upgrade ? <span>{upgrade.message}</span> : null}
               {upgrade?.txHash ? (
                 <a
-                  href={`${sepolia.explorer}/tx/${upgrade.txHash}`}
+                  href={`${starknet.explorer}/tx/${upgrade.txHash}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 break-all font-mono underline underline-offset-4"
@@ -882,7 +883,7 @@ export function Strk20RegistrationLab({
               <span>{registration.message}</span>
               {registration.txHash ? (
                 <a
-                  href={`${sepolia.explorer}/tx/${registration.txHash}`}
+                  href={`${starknet.explorer}/tx/${registration.txHash}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 break-all font-mono underline underline-offset-4"

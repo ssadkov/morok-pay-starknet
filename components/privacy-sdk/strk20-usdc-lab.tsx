@@ -47,6 +47,9 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
 import { eth712Strk20ClassMode } from "@/lib/privacy/eth712-account";
+import { useNetwork } from "@/components/network-provider";
+import type { AppNetwork } from "@/lib/network";
+import { privacySdkOf, type PrivacySdkNetwork } from "@/lib/privacy/network";
 import {
   Eth712TransactionSigner,
   ETH712_TEST_MAXIMUM_GAS_FEE,
@@ -55,7 +58,6 @@ import {
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
 import { readPoolFee } from "@/lib/starknet/pool-fee";
-import { starknetOf } from "@/lib/starknet/constants";
 import { formatStrk } from "@/lib/starknet/status";
 import {
   bounded,
@@ -63,17 +65,8 @@ import {
   WALLET_SUBMISSION_TIMEOUT_MS,
 } from "@/lib/starknet/transaction-confirmation";
 
-const SEPOLIA = starknetOf("sepolia");
-const USDC_ADDRESS = SEPOLIA.usdc;
 const STRK_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
-const POOL_ADDRESS = SEPOLIA.pool;
-const PROVER_URL = "https://transaction-prover.alpha-sepolia.sw-dev.io";
-const DISCOVERY_URL = "https://discovery-service.alpha-sepolia.sw-dev.io";
-const PRIVACY_RPC_URL =
-  process.env.NEXT_PUBLIC_STARKNET_PRIVACY_SEPOLIA_RPC_URL ??
-  "https://api.zan.top/public/starknet-sepolia/rpc/v0_10";
-const SN_CHAIN_NAME = "SN_SEPOLIA";
 const PROVING_BLOCK_DEPTH = 10;
 const PROOF1_VERSION = "0x50524f4f4631";
 const USDC_DECIMALS = 6;
@@ -117,9 +110,9 @@ type OperationState = {
   txHash?: string;
 };
 
-function privacyProvider() {
+function privacyProvider(sdk: PrivacySdkNetwork) {
   return new RpcProvider({
-    nodeUrl: PRIVACY_RPC_URL,
+    nodeUrl: sdk.privacyRpcUrl,
     specVersion: "0.10.3",
   });
 }
@@ -143,17 +136,21 @@ function proofByteLength(proof: string) {
   return Math.max(0, (proof.length * 3) / 4 - padding);
 }
 
-function approvalCall(token: string, amount: bigint): Call {
+function approvalCall(token: string, amount: bigint, poolAddress: string): Call {
   const value = cairo.uint256(amount);
   return {
     contractAddress: token,
     entrypoint: "approve",
-    calldata: [POOL_ADDRESS, value.low.toString(), value.high.toString()],
+    calldata: [poolAddress, value.low.toString(), value.high.toString()],
   };
 }
 
-function markerKey(accountAddress: string, operation: UsdcOperation) {
-  return `morokpay:eth712-strk20-usdc:${operation}:sepolia:${accountAddress.toLowerCase()}`;
+function markerKey(
+  network: AppNetwork,
+  accountAddress: string,
+  operation: UsdcOperation,
+) {
+  return `morokpay:eth712-strk20-usdc:${operation}:${network}:${accountAddress.toLowerCase()}`;
 }
 
 function viemCallSetTypedData(typedData: CallSetTypedData) {
@@ -238,6 +235,9 @@ export function Strk20UsdcLab({
 }) {
   const { address, chainId } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
+  const { network, starknet } = useNetwork();
+  const sdk = privacySdkOf(network);
+  const usdcAddress = starknet.usdc;
   const accountAddress = inspection?.deployed ? inspection.starknetAddress : null;
   const compatible = inspection?.deployedClassHash
     ? eth712Strk20ClassMode(inspection.deployedClassHash) === "compatible"
@@ -259,7 +259,7 @@ export function Strk20UsdcLab({
   function callSetSigner(starknetAddress: string, evmAddress: string, evmChainId: number) {
     return new Eip712TypedDataSigner({
       accountAddress: starknetAddress,
-      snChainName: SN_CHAIN_NAME,
+      snChainName: sdk.snChainName,
       evmChainId,
       signTypedData: async (typedData) => {
         const normalized = viemCallSetTypedData(typedData);
@@ -284,7 +284,7 @@ export function Strk20UsdcLab({
       address: starknetAddress,
       signer: new Eth712TransactionSigner({
         accountAddress: starknetAddress,
-        snChainName: SN_CHAIN_NAME,
+        snChainName: sdk.snChainName,
         evmChainId,
         signTypedData: async (typedData) => {
           const signature = await signTypedDataAsync(typedData);
@@ -307,6 +307,9 @@ export function Strk20UsdcLab({
     const request = privacyKeyTypedData({
       evmAddress: evmAddress as Address,
       evmChainId,
+      starknetChain: sdk.snChainName,
+      privacyPool: BigInt(sdk.poolAddress),
+      accountFactory: BigInt(sdk.accountFactory),
     });
     const signature = await signTypedDataAsync(request);
     const recovered = await recoverTypedDataAddress({ ...request, signature });
@@ -332,13 +335,13 @@ export function Strk20UsdcLab({
       },
       viewingKeyProvider: { getViewingKey: async () => key },
       provingProvider: {
-        url: PROVER_URL,
-        chainId: constants.StarknetChainId.SN_SEPOLIA,
-        nodeUrl: PRIVACY_RPC_URL,
+        url: sdk.proverUrl,
+        chainId: sdk.starknetChainId,
+        nodeUrl: sdk.privacyRpcUrl,
         ohttp: true,
       },
-      discoveryProvider: { url: DISCOVERY_URL },
-      poolContractAddress: POOL_ADDRESS,
+      discoveryProvider: { url: sdk.discoveryUrl },
+      poolContractAddress: sdk.poolAddress,
     });
   }
 
@@ -351,10 +354,10 @@ export function Strk20UsdcLab({
   ) {
     const transfers = transfersFor(starknetAddress, evmAddress, evmChainId, key);
     const discovered = await transfers.discoverNotes({
-      tokens: [BigInt(USDC_ADDRESS)],
+      tokens: [BigInt(usdcAddress)],
       ...(blockIdentifier === undefined ? {} : { blockIdentifier }),
     });
-    return discovered.notes.get(BigInt(USDC_ADDRESS)) ?? [];
+    return discovered.notes.get(BigInt(usdcAddress)) ?? [];
   }
 
   async function refreshBalances() {
@@ -362,10 +365,10 @@ export function Strk20UsdcLab({
     setRefreshing(true);
     setError(null);
     try {
-      const provider = privacyProvider();
+      const provider = privacyProvider(sdk);
       const key = await getViewingKey(accountAddress, address, chainId);
       const [nextPublic, notes] = await Promise.all([
-        readTokenBalance(provider, USDC_ADDRESS, accountAddress),
+        readTokenBalance(provider, usdcAddress, accountAddress),
         discoverUsdcNotes(accountAddress, address, chainId, key),
       ]);
       setPublicUsdc(nextPublic);
@@ -396,7 +399,9 @@ export function Strk20UsdcLab({
     payload.current = null;
 
     try {
-      const stored = window.localStorage.getItem(markerKey(accountAddress, operation));
+      const stored = window.localStorage.getItem(
+        markerKey(network, accountAddress, operation),
+      );
       if (stored) {
         const marker = JSON.parse(stored) as { status?: string; txHash?: string };
         if (marker.status === "submitting" || marker.status === "pending") {
@@ -413,7 +418,7 @@ export function Strk20UsdcLab({
         operation === "transfer"
           ? validateAndParseAddress(recipientInput.trim())
           : accountAddress;
-      const provider = privacyProvider();
+      const provider = privacyProvider(sdk);
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
       const [latestClassHash, provingClassHash, publicStrk, nextPublicUsdc, provingUsdc] =
@@ -421,8 +426,8 @@ export function Strk20UsdcLab({
           provider.getClassHashAt(accountAddress),
           provider.getClassHashAt(accountAddress, provingBlock),
           readTokenBalance(provider, STRK_ADDRESS, accountAddress),
-          readTokenBalance(provider, USDC_ADDRESS, accountAddress),
-          readTokenBalance(provider, USDC_ADDRESS, accountAddress, provingBlock),
+          readTokenBalance(provider, usdcAddress, accountAddress),
+          readTokenBalance(provider, usdcAddress, accountAddress, provingBlock),
         ]);
       if (
         eth712Strk20ClassMode(latestClassHash) !== "compatible" ||
@@ -434,7 +439,7 @@ export function Strk20UsdcLab({
       const key = await getViewingKey(accountAddress, address, chainId);
       const transfers = transfersFor(accountAddress, address, chainId, key);
       const [poolFee, notes] = await Promise.all([
-        readPoolFee("sepolia"),
+        readPoolFee(network),
         discoverUsdcNotes(accountAddress, address, chainId, key, provingBlock),
       ]);
       const privateUsdcBefore = notes.reduce((sum, note) => sum + note.amount, 0n);
@@ -458,7 +463,7 @@ export function Strk20UsdcLab({
       }
 
       if (operation === "transfer") {
-        const requirement = await transfers.discoverRequirement(recipient, USDC_ADDRESS);
+        const requirement = await transfers.discoverRequirement(recipient, usdcAddress);
         if (requirement === SetupRequirement.Register) {
           throw new Error("The private-transfer recipient is not registered in STRK20.");
         }
@@ -468,17 +473,17 @@ export function Strk20UsdcLab({
       let builder = transfers.build({ autoSetup: operation !== "unshield" });
       if (operation === "shield") {
         builder = builder
-          .with(USDC_ADDRESS, (token) => token.deposit({ amount }))
+          .with(usdcAddress, (token) => token.deposit({ amount }))
           .surplusTo(accountAddress);
       } else if (operation === "transfer") {
         builder = builder
-          .with(USDC_ADDRESS, (token) =>
+          .with(usdcAddress, (token) =>
             token.inputs(...selected).transfer({ recipient, amount }),
           )
           .surplusTo(accountAddress);
       } else {
         builder = builder
-          .with(USDC_ADDRESS, (token) =>
+          .with(usdcAddress, (token) =>
             token.inputs(...selected).withdraw({ recipient: accountAddress, amount }),
           )
           .surplusTo(accountAddress);
@@ -499,11 +504,11 @@ export function Strk20UsdcLab({
       const calls =
         operation === "shield"
           ? [
-              approvalCall(USDC_ADDRESS, amount),
-              approvalCall(STRK_ADDRESS, poolFee),
+              approvalCall(usdcAddress, amount, sdk.poolAddress),
+              approvalCall(STRK_ADDRESS, poolFee, sdk.poolAddress),
               callAndProof.call,
             ]
-          : [approvalCall(STRK_ADDRESS, poolFee), callAndProof.call];
+          : [approvalCall(STRK_ADDRESS, poolFee, sdk.poolAddress), callAndProof.call];
       const proofDetails = {
         proof: callAndProof.proof.data,
         proofFacts: callAndProof.proof.proofFacts,
@@ -573,7 +578,7 @@ export function Strk20UsdcLab({
 
     setSending(true);
     setError(null);
-    const key = markerKey(accountAddress, prepared.operation);
+    const key = markerKey(network, accountAddress, prepared.operation);
     window.localStorage.setItem(
       key,
       JSON.stringify({
@@ -582,7 +587,7 @@ export function Strk20UsdcLab({
       }),
     );
     try {
-      const provider = privacyProvider();
+      const provider = privacyProvider(sdk);
       const account = outerAccount(provider, accountAddress, address, chainId);
       const [currentClassHash, currentNonce] = await Promise.all([
         provider.getClassHashAt(accountAddress),
@@ -706,7 +711,7 @@ export function Strk20UsdcLab({
           </div>
           <div>
             <p className="text-muted-foreground">USDC token</p>
-            <p className="break-all font-mono font-medium">{USDC_ADDRESS}</p>
+            <p className="break-all font-mono font-medium">{usdcAddress}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Viewing key</p>
@@ -788,7 +793,7 @@ export function Strk20UsdcLab({
               <span>{operationState.message}</span>
               {operationState.txHash ? (
                 <a
-                  href={`${SEPOLIA.explorer}/tx/${operationState.txHash}`}
+                  href={`${starknet.explorer}/tx/${operationState.txHash}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 break-all font-mono underline underline-offset-4"

@@ -9,6 +9,9 @@ export const TEST_ACCOUNT_FACTORY =
 export function privacyKeyTypedData(args: {
   evmAddress: Address;
   evmChainId: number;
+  starknetChain?: string;
+  privacyPool?: bigint;
+  accountFactory?: bigint;
 }) {
   return {
     domain: {
@@ -29,9 +32,9 @@ export function privacyKeyTypedData(args: {
     message: {
       purpose: "Derive the MorokPay STRK20 viewing key",
       evmAccount: args.evmAddress,
-      starknetChain: TEST_STARKNET_CHAIN,
-      privacyPool: TEST_PRIVACY_POOL,
-      accountFactory: TEST_ACCOUNT_FACTORY,
+      starknetChain: args.starknetChain ?? TEST_STARKNET_CHAIN,
+      privacyPool: args.privacyPool ?? TEST_PRIVACY_POOL,
+      accountFactory: args.accountFactory ?? TEST_ACCOUNT_FACTORY,
     },
   } as const;
 }

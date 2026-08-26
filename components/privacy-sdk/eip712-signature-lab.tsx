@@ -53,6 +53,7 @@ import {
   privacyKeyTypedData,
   signatureFingerprint,
 } from "@/lib/privacy/eip712-test";
+import { privacySdkOf } from "@/lib/privacy/network";
 import {
   bounded,
   pollTransactionReceipt,
@@ -88,7 +89,7 @@ async function responseMessage(response: Response) {
 }
 
 export function Eip712SignatureLab() {
-  const { network, setNetwork, starknet } = useNetwork();
+  const { network, starknet } = useNetwork();
   const { address, chainId, connector, isConnected, status } = useAccount();
   const { connectors, connect, isPending: connecting, error: connectError } =
     useConnect();
@@ -106,6 +107,9 @@ export function Eip712SignatureLab() {
     useState<Eth712AccountInspection | null>(null);
   const [ownership, setOwnership] = useState<OwnershipResult | null>(null);
   const [deployment, setDeployment] = useState<DeploymentResult | null>(null);
+  const sdk = privacySdkOf(network);
+  const isMainnet = network === "mainnet";
+  const networkLabel = isMainnet ? "mainnet" : "Sepolia";
 
   function clearAccountState() {
     ownershipSignature.current = null;
@@ -124,12 +128,18 @@ export function Eip712SignatureLab() {
     setOwnership(null);
     ownershipSignature.current = null;
     try {
-      setInspection(await inspectEth712Account(address));
+      setInspection(
+        await inspectEth712Account(
+          address,
+          new RpcProvider({ nodeUrl: starknet.rpc }),
+          sdk.accountFactory,
+        ),
+      );
     } catch (caught) {
       setError(
         caught instanceof Error
           ? caught.message
-          : "Could not inspect the Sepolia account factory",
+          : `Could not inspect the ${networkLabel} account factory`,
       );
     } finally {
       setInspecting(false);
@@ -145,6 +155,9 @@ export function Eip712SignatureLab() {
       const typedData = privacyKeyTypedData({
         evmAddress: address,
         evmChainId: chainId,
+        starknetChain: sdk.snChainName,
+        privacyPool: BigInt(sdk.poolAddress),
+        accountFactory: BigInt(sdk.accountFactory),
       });
       const first = await signTypedDataAsync(typedData);
       const firstRecovered = await recoverTypedDataAddress({
@@ -208,7 +221,11 @@ export function Eip712SignatureLab() {
 
   async function refreshDeployedAccount() {
     if (!address) return null;
-    const next = await inspectEth712Account(address);
+    const next = await inspectEth712Account(
+      address,
+      new RpcProvider({ nodeUrl: starknet.rpc }),
+      sdk.accountFactory,
+    );
     setInspection(next);
     if (next.deployed) {
       ownershipSignature.current = null;
@@ -240,7 +257,7 @@ export function Eip712SignatureLab() {
         message:
           caught instanceof Error
             ? caught.message
-            : "Could not read the account from Sepolia",
+            : `Could not read the account from ${networkLabel}`,
       }));
     } finally {
       setInspecting(false);
@@ -250,14 +267,6 @@ export function Eip712SignatureLab() {
   async function deployAccount() {
     const signature = ownershipSignature.current;
     if (!address || !currentInspection || !signature) return;
-    if (network !== "sepolia") {
-      setDeployment({
-        status: "failed",
-        message: "Switch the MorokPay Starknet network to Sepolia first.",
-      });
-      return;
-    }
-
     setDeploying(true);
     setError(null);
     setDeployment(null);
@@ -266,7 +275,7 @@ export function Eip712SignatureLab() {
         fetch("/api/privacy-sdk/deploy", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ evmAddress: address, signature }),
+          body: JSON.stringify({ evmAddress: address, signature, network }),
         }),
         WALLET_SUBMISSION_TIMEOUT_MS,
       );
@@ -299,7 +308,9 @@ export function Eip712SignatureLab() {
         status: "pending",
         txHash,
         message:
-          "MorokPay submitted one public transaction to fund the account to 20 STRK and deploy it. Waiting for Sepolia confirmation.",
+          network === "mainnet"
+            ? "MorokPay submitted the factory call from the deployed address's own public STRK. Waiting for mainnet confirmation."
+            : "MorokPay submitted one public transaction to fund the account to 20 STRK and deploy it. Waiting for Sepolia confirmation.",
       });
 
       const receipt = await pollTransactionReceipt({
@@ -371,7 +382,7 @@ export function Eip712SignatureLab() {
       <main className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-8 md:px-6 md:py-12">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">Sepolia experiment</Badge>
+            <Badge variant="outline">{isMainnet ? "Mainnet" : "Sepolia"} experiment</Badge>
             <Badge variant="outline">MetaMask onboarding</Badge>
           </div>
           <h1 className="text-3xl font-semibold tracking-tight">
@@ -472,15 +483,15 @@ export function Eip712SignatureLab() {
           <CardHeader>
             <CardTitle>2. Resolve the deterministic Starknet account</CardTitle>
             <CardDescription>
-              This is a read-only call to the live Sepolia AccountFactory. The
-              result is derived from the connected public EVM address.
+              This is a read-only call to the live {networkLabel} AccountFactory.
+              The result is derived from the connected public EVM address.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             {inspecting ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Spinner data-icon="inline-start" />
-                Reading Sepolia factory
+                Reading {networkLabel} factory
               </p>
             ) : currentInspection ? (
               <div className="flex flex-col gap-3 text-sm">
@@ -529,7 +540,7 @@ export function Eip712SignatureLab() {
             >
               {inspecting ? <Spinner data-icon="inline-start" /> : null}
               {inspecting
-                ? "Reading Sepolia factory"
+                ? `Reading ${networkLabel} factory`
                 : "Resolve Starknet account"}
             </Button>
           </CardFooter>
@@ -603,11 +614,16 @@ export function Eip712SignatureLab() {
 
         <Card>
           <CardHeader>
-            <CardTitle>4. Create the sponsored Starknet account</CardTitle>
+            <CardTitle>
+              4.{" "}
+              {isMainnet
+                ? "Deploy the self-funded Starknet account"
+                : "Create the sponsored Starknet account"}
+            </CardTitle>
             <CardDescription>
-              MorokPay uses one public Sepolia transaction to fund the
-              deterministic address to 20 STRK and deploy it through the
-              AccountFactory.
+              {isMainnet
+                ? "The generated address must already hold public STRK before this step - MorokPay does not top it up on mainnet. The relayer only submits the factory call and pays its own gas."
+                : "MorokPay uses one public Sepolia transaction to fund the deterministic address to 20 STRK and deploy it through the AccountFactory."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -621,26 +637,30 @@ export function Eip712SignatureLab() {
               <div>
                 <p className="text-muted-foreground">Public gas payer</p>
                 <p className="break-all font-mono font-medium">
-                  Dedicated MorokPay Sepolia relayer
+                  Dedicated MorokPay {networkLabel} relayer
                 </p>
               </div>
             </div>
-            <Alert>
-              <AlertTitle>20 test STRK, ownership stays with MetaMask</AlertTitle>
-              <AlertDescription>
-                The sponsored balance and deployment are public. The ownership
-                signature fixes the EVM owner; the MorokPay relayer never
-                becomes the generated account or its owner.
-              </AlertDescription>
-            </Alert>
-            {network !== "sepolia" ? (
+            {isMainnet ? (
               <Alert variant="destructive">
-                <AlertTitle>MorokPay is not set to Sepolia</AlertTitle>
+                <AlertTitle>Fund this address first</AlertTitle>
                 <AlertDescription>
-                  This lab never deploys the account on mainnet.
+                  Send at least 15 STRK of real public STRK to the generated
+                  account above before deploying - it pays the mainnet pool fee
+                  and gas for the registration step that follows. This is real
+                  money; MorokPay never sends it for you on mainnet.
                 </AlertDescription>
               </Alert>
-            ) : null}
+            ) : (
+              <Alert>
+                <AlertTitle>20 test STRK, ownership stays with MetaMask</AlertTitle>
+                <AlertDescription>
+                  The sponsored balance and deployment are public. The
+                  ownership signature fixes the EVM owner; the MorokPay
+                  relayer never becomes the generated account or its owner.
+                </AlertDescription>
+              </Alert>
+            )}
             {deployment ? (
               <Alert
                 variant={
@@ -666,22 +686,11 @@ export function Eip712SignatureLab() {
             ) : null}
           </CardContent>
           <CardFooter className="flex flex-wrap gap-2">
-            {network !== "sepolia" ? (
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={() => setNetwork("sepolia")}
-              >
-                Use Sepolia
-              </Button>
-            ) : null}
             <Button
               type="button"
               size="lg"
               disabled={
                 busy ||
-                network !== "sepolia" ||
                 !currentInspection ||
                 currentInspection.deployed ||
                 !ownership?.signerMatches ||
@@ -697,7 +706,11 @@ export function Eip712SignatureLab() {
               ) : (
                 <RocketIcon data-icon="inline-start" />
               )}
-              {deploying ? "Funding and deploying" : "Get 20 STRK and deploy"}
+              {deploying
+                ? "Deploying"
+                : isMainnet
+                  ? "Deploy (self-funded)"
+                  : "Get 20 STRK and deploy"}
             </Button>
             {deployment?.status === "unknown" ||
             deployment?.status === "pending" ? (
@@ -707,7 +720,7 @@ export function Eip712SignatureLab() {
                 disabled={busy || !address}
                 onClick={() => void checkDeployment()}
               >
-                {inspecting ? "Checking Sepolia" : "Check deployment"}
+                {inspecting ? `Checking ${networkLabel}` : "Check deployment"}
               </Button>
             ) : null}
           </CardFooter>

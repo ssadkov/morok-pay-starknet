@@ -14,6 +14,11 @@ const MAINNET = {
   escrow: "",
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_MAINNET_ADDRESS?.trim() ?? "",
+  // Declared 2026-08-26 by scripts/deploy-eth712-factory.mjs, configured for
+  // the STRK20-compatible Eth712 account class. See
+  // docs/metamask-privacy-sdk-sepolia.md for the declare and deploy hashes.
+  accountFactory:
+    "0x7ead3a89ae0a67ed6ba18caa1b9643437ff9432bab66ab0b2a27e46e0c627aa",
 } as const;
 
 const SEPOLIA = {
@@ -32,6 +37,8 @@ const SEPOLIA = {
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_SEPOLIA_ADDRESS?.trim() ??
     "0x00E5887fC74A11d10Ad5dd2f69D3911Fb352d9b811528a9281Ca8aBAc8498423",
+  accountFactory:
+    "0x078ce3c3e3080a579d268feae011761b32146efd40f4faa14dc8b9a30b4de35f",
 } as const;
 
 const STARKNET = {

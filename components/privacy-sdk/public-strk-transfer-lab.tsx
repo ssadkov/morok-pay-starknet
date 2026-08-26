@@ -23,6 +23,9 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
+import { useNetwork } from "@/components/network-provider";
+import type { AppNetwork } from "@/lib/network";
+import { privacySdkOf } from "@/lib/privacy/network";
 import {
   Eth712TransactionSigner,
   ETH712_TEST_MAXIMUM_GAS_FEE,
@@ -30,7 +33,6 @@ import {
   safeEth712TransactionError,
 } from "@/lib/privacy/eth712-transaction";
 import { publicStrkTransferCall } from "@/lib/starknet/actions";
-import { starknetOf } from "@/lib/starknet/constants";
 import { getAccountSnapshot, formatStrk } from "@/lib/starknet/status";
 import {
   bounded,
@@ -39,7 +41,6 @@ import {
 } from "@/lib/starknet/transaction-confirmation";
 
 const TEST_AMOUNT = parseUnits("0.01", 18);
-const SN_CHAIN_NAME = "SN_SEPOLIA";
 
 type PreparedTransfer = {
   balance: bigint;
@@ -66,13 +67,16 @@ function maxFee(bounds: ResourceBoundsBN) {
   );
 }
 
-function markerKey(accountAddress: string) {
-  return `morokpay:eth712-public-transfer:sepolia:${accountAddress.toLowerCase()}`;
+function markerKey(network: AppNetwork, accountAddress: string) {
+  return `morokpay:eth712-public-transfer:${network}:${accountAddress.toLowerCase()}`;
 }
 
-function restoredTransfer(accountAddress: string | null): TransferState | null {
+function restoredTransfer(
+  network: AppNetwork,
+  accountAddress: string | null,
+): TransferState | null {
   if (!accountAddress) return null;
-  const stored = window.localStorage.getItem(markerKey(accountAddress));
+  const stored = window.localStorage.getItem(markerKey(network, accountAddress));
   if (!stored) return null;
   try {
     const marker = JSON.parse(stored) as {
@@ -87,7 +91,7 @@ function restoredTransfer(accountAddress: string | null): TransferState | null {
         : "A previous wallet request did not return a hash. Do not submit again until its nonce is checked.",
     };
   } catch {
-    window.localStorage.removeItem(markerKey(accountAddress));
+    window.localStorage.removeItem(markerKey(network, accountAddress));
     return null;
   }
 }
@@ -99,16 +103,17 @@ export function PublicStrkTransferLab({
 }) {
   const { address, chainId } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
-  const sepolia = starknetOf("sepolia");
+  const { network, starknet } = useNetwork();
+  const sdk = privacySdkOf(network);
   const accountAddress = inspection?.deployed
     ? inspection.starknetAddress
     : null;
-  const recipient = sepolia.treasury;
+  const recipient = starknet.treasury;
   const [preparing, setPreparing] = useState(false);
   const [sending, setSending] = useState(false);
   const [prepared, setPrepared] = useState<PreparedTransfer | null>(null);
   const [transfer, setTransfer] = useState<TransferState | null>(() =>
-    restoredTransfer(accountAddress),
+    restoredTransfer(network, accountAddress),
   );
   const [error, setError] = useState<string | null>(null);
 
@@ -122,10 +127,10 @@ export function PublicStrkTransferLab({
     evmChainId: number,
     evmAddress: string,
   ) {
-    const provider = new RpcProvider({ nodeUrl: sepolia.rpc });
+    const provider = new RpcProvider({ nodeUrl: starknet.rpc });
     const signer = new Eth712TransactionSigner({
       accountAddress: starknetAddress,
-      snChainName: SN_CHAIN_NAME,
+      snChainName: sdk.snChainName,
       evmChainId,
       signTypedData: async (typedData) => {
         const signature = await signTypedDataAsync(typedData);
@@ -158,7 +163,7 @@ export function PublicStrkTransferLab({
     try {
       const account = signerAccount(accountAddress, chainId, address);
       const [snapshot, nonceHex] = await Promise.all([
-        getAccountSnapshot(accountAddress, "sepolia"),
+        getAccountSnapshot(accountAddress, network),
         account.getNonce(),
       ]);
       const nonce = BigInt(nonceHex);
@@ -209,7 +214,7 @@ export function PublicStrkTransferLab({
 
     setSending(true);
     setError(null);
-    const key = markerKey(accountAddress);
+    const key = markerKey(network, accountAddress);
     window.localStorage.setItem(
       key,
       JSON.stringify({ status: "submitting", nonce: prepared.nonce.toString() }),
@@ -251,7 +256,7 @@ export function PublicStrkTransferLab({
       setTransfer({
         status: "pending",
         txHash,
-        message: "The MetaMask-signed InvokeV3 was submitted to Sepolia.",
+        message: `The MetaMask-signed InvokeV3 was submitted to ${network}.`,
       });
       const receipt = await pollTransactionReceipt({
         read: () => account.provider.getTransactionReceipt(txHash),
@@ -266,7 +271,7 @@ export function PublicStrkTransferLab({
         return;
       }
       if (receipt === "confirmed") {
-        const snapshot = await getAccountSnapshot(accountAddress, "sepolia");
+        const snapshot = await getAccountSnapshot(accountAddress, network);
         window.localStorage.setItem(
           key,
           JSON.stringify({ status: "confirmed", txHash }),
@@ -300,14 +305,14 @@ export function PublicStrkTransferLab({
     if (!transfer?.txHash || !accountAddress) return;
     setSending(true);
     try {
-      const provider = new RpcProvider({ nodeUrl: sepolia.rpc });
+      const provider = new RpcProvider({ nodeUrl: starknet.rpc });
       const receipt = await pollTransactionReceipt({
         read: () => provider.getTransactionReceipt(transfer.txHash!),
       });
       if (receipt === "confirmed") {
-        const snapshot = await getAccountSnapshot(accountAddress, "sepolia");
+        const snapshot = await getAccountSnapshot(accountAddress, network);
         window.localStorage.setItem(
-          markerKey(accountAddress),
+          markerKey(network, accountAddress),
           JSON.stringify({ status: "confirmed", txHash: transfer.txHash }),
         );
         setTransfer((current) =>
@@ -322,7 +327,7 @@ export function PublicStrkTransferLab({
             : current,
         );
       } else if (receipt === "failed") {
-        window.localStorage.removeItem(markerKey(accountAddress));
+        window.localStorage.removeItem(markerKey(network, accountAddress));
         setTransfer((current) =>
           current
             ? { ...current, status: "failed", message: "The transaction failed." }
@@ -393,7 +398,7 @@ export function PublicStrkTransferLab({
               ) : null}
               {transfer.txHash ? (
                 <a
-                  href={`${sepolia.explorer}/tx/${transfer.txHash}`}
+                  href={`${starknet.explorer}/tx/${transfer.txHash}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 break-all font-mono underline underline-offset-4"

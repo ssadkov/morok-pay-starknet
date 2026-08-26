@@ -38,6 +38,9 @@ import {
 import { Spinner } from "@/components/ui/spinner";
 import type { Eth712AccountInspection } from "@/lib/privacy/eth712-account";
 import { eth712Strk20ClassMode } from "@/lib/privacy/eth712-account";
+import { useNetwork } from "@/components/network-provider";
+import type { AppNetwork } from "@/lib/network";
+import { privacySdkOf, type PrivacySdkNetwork } from "@/lib/privacy/network";
 import {
   Eth712TransactionSigner,
   ETH712_TEST_MAXIMUM_GAS_FEE,
@@ -46,7 +49,6 @@ import {
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
 import { readPoolFee } from "@/lib/starknet/pool-fee";
-import { starknetOf } from "@/lib/starknet/constants";
 import { formatStrk } from "@/lib/starknet/status";
 import {
   bounded,
@@ -54,16 +56,8 @@ import {
   WALLET_SUBMISSION_TIMEOUT_MS,
 } from "@/lib/starknet/transaction-confirmation";
 
-const POOL_ADDRESS =
-  "0x0254a6b2997ef52e9f830ce1f543f6b29768295e8d17e2267d672c552cfe0d91";
 const STRK_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
-const PROVER_URL = "https://transaction-prover.alpha-sepolia.sw-dev.io";
-const DISCOVERY_URL = "https://discovery-service.alpha-sepolia.sw-dev.io";
-const PRIVACY_RPC_URL =
-  process.env.NEXT_PUBLIC_STARKNET_PRIVACY_SEPOLIA_RPC_URL ??
-  "https://api.zan.top/public/starknet-sepolia/rpc/v0_10";
-const SN_CHAIN_NAME = "SN_SEPOLIA";
 const PROVING_BLOCK_DEPTH = 10;
 const PROOF1_VERSION = "0x50524f4f4631";
 const SHIELD_AMOUNT = 1_000_000_000_000_000_000n;
@@ -119,9 +113,9 @@ type ShieldState = {
   txHash?: string;
 };
 
-function privacyProvider() {
+function privacyProvider(sdk: PrivacySdkNetwork) {
   return new RpcProvider({
-    nodeUrl: PRIVACY_RPC_URL,
+    nodeUrl: sdk.privacyRpcUrl,
     specVersion: "0.10.3",
   });
 }
@@ -139,26 +133,29 @@ function proofByteLength(proof: string) {
   return Math.max(0, (proof.length * 3) / 4 - padding);
 }
 
-function approvalCall(amount: bigint): Call {
+function approvalCall(amount: bigint, poolAddress: string): Call {
   const value = cairo.uint256(amount);
   return {
     contractAddress: STRK_ADDRESS,
     entrypoint: "approve",
-    calldata: [POOL_ADDRESS, value.low.toString(), value.high.toString()],
+    calldata: [poolAddress, value.low.toString(), value.high.toString()],
   };
 }
 
-function markerKey(accountAddress: string) {
-  return `morokpay:eth712-strk20-shield:sepolia:${accountAddress.toLowerCase()}`;
+function markerKey(network: AppNetwork, accountAddress: string) {
+  return `morokpay:eth712-strk20-shield:${network}:${accountAddress.toLowerCase()}`;
 }
 
-function unshieldMarkerKey(accountAddress: string) {
-  return `morokpay:eth712-strk20-unshield:sepolia:${accountAddress.toLowerCase()}`;
+function unshieldMarkerKey(network: AppNetwork, accountAddress: string) {
+  return `morokpay:eth712-strk20-unshield:${network}:${accountAddress.toLowerCase()}`;
 }
 
-function restoredShield(accountAddress: string | null): ShieldState | null {
+function restoredShield(
+  network: AppNetwork,
+  accountAddress: string | null,
+): ShieldState | null {
   if (!accountAddress) return null;
-  const stored = window.localStorage.getItem(markerKey(accountAddress));
+  const stored = window.localStorage.getItem(markerKey(network, accountAddress));
   if (!stored) return null;
   try {
     const marker = JSON.parse(stored) as { status?: string; txHash?: string };
@@ -178,14 +175,19 @@ function restoredShield(accountAddress: string | null): ShieldState | null {
         : "A previous shield request did not return a hash. Check the nonce and private balance before retrying.",
     };
   } catch {
-    window.localStorage.removeItem(markerKey(accountAddress));
+    window.localStorage.removeItem(markerKey(network, accountAddress));
     return null;
   }
 }
 
-function restoredUnshield(accountAddress: string | null): ShieldState | null {
+function restoredUnshield(
+  network: AppNetwork,
+  accountAddress: string | null,
+): ShieldState | null {
   if (!accountAddress) return null;
-  const stored = window.localStorage.getItem(unshieldMarkerKey(accountAddress));
+  const stored = window.localStorage.getItem(
+    unshieldMarkerKey(network, accountAddress),
+  );
   if (!stored) return null;
   try {
     const marker = JSON.parse(stored) as { status?: string; txHash?: string };
@@ -205,7 +207,7 @@ function restoredUnshield(accountAddress: string | null): ShieldState | null {
         : "A previous unshield did not return a hash. Check nonce and balances before retrying.",
     };
   } catch {
-    window.localStorage.removeItem(unshieldMarkerKey(accountAddress));
+    window.localStorage.removeItem(unshieldMarkerKey(network, accountAddress));
     return null;
   }
 }
@@ -287,7 +289,8 @@ export function Strk20ShieldLab({
 }) {
   const { address, chainId } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
-  const sepolia = starknetOf("sepolia");
+  const { network, starknet } = useNetwork();
+  const sdk = privacySdkOf(network);
   const accountAddress = inspection?.deployed ? inspection.starknetAddress : null;
   const compatible = inspection?.deployedClassHash
     ? eth712Strk20ClassMode(inspection.deployedClassHash) === "compatible"
@@ -304,10 +307,10 @@ export function Strk20ShieldLab({
   const [preparedUnshield, setPreparedUnshield] =
     useState<PreparedUnshield | null>(null);
   const [shield, setShield] = useState<ShieldState | null>(() =>
-    restoredShield(accountAddress),
+    restoredShield(network, accountAddress),
   );
   const [unshield, setUnshield] = useState<ShieldState | null>(() =>
-    restoredUnshield(accountAddress),
+    restoredUnshield(network, accountAddress),
   );
   const [privateBalance, setPrivateBalance] = useState<bigint | null>(null);
   const [viewingKeyReady, setViewingKeyReady] = useState(false);
@@ -317,7 +320,7 @@ export function Strk20ShieldLab({
   function callSetSigner(starknetAddress: string, evmAddress: string, evmChainId: number) {
     return new Eip712TypedDataSigner({
       accountAddress: starknetAddress,
-      snChainName: SN_CHAIN_NAME,
+      snChainName: sdk.snChainName,
       evmChainId,
       signTypedData: async (typedData) => {
         const normalized = viemCallSetTypedData(typedData);
@@ -342,7 +345,7 @@ export function Strk20ShieldLab({
       address: starknetAddress,
       signer: new Eth712TransactionSigner({
         accountAddress: starknetAddress,
-        snChainName: SN_CHAIN_NAME,
+        snChainName: sdk.snChainName,
         evmChainId,
         signTypedData: async (typedData) => {
           const signature = await signTypedDataAsync(typedData);
@@ -365,6 +368,9 @@ export function Strk20ShieldLab({
     const request = privacyKeyTypedData({
       evmAddress: evmAddress as Address,
       evmChainId,
+      starknetChain: sdk.snChainName,
+      privacyPool: BigInt(sdk.poolAddress),
+      accountFactory: BigInt(sdk.accountFactory),
     });
     const signature = await signTypedDataAsync(request);
     const recovered = await recoverTypedDataAddress({ ...request, signature });
@@ -390,13 +396,13 @@ export function Strk20ShieldLab({
       },
       viewingKeyProvider: { getViewingKey: async () => key },
       provingProvider: {
-        url: PROVER_URL,
-        chainId: constants.StarknetChainId.SN_SEPOLIA,
-        nodeUrl: PRIVACY_RPC_URL,
+        url: sdk.proverUrl,
+        chainId: sdk.starknetChainId,
+        nodeUrl: sdk.privacyRpcUrl,
         ohttp: true,
       },
-      discoveryProvider: { url: DISCOVERY_URL },
-      poolContractAddress: POOL_ADDRESS,
+      discoveryProvider: { url: sdk.discoveryUrl },
+      poolContractAddress: sdk.poolAddress,
     });
   }
 
@@ -455,7 +461,7 @@ export function Strk20ShieldLab({
     payload.current = null;
 
     try {
-      const provider = privacyProvider();
+      const provider = privacyProvider(sdk);
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
       const [latestClassHash, provingClassHash, publicBalance, provingBalance] =
@@ -482,7 +488,7 @@ export function Strk20ShieldLab({
         throw new Error("Discovery does not see the confirmed STRK20 registration yet.");
       }
       const [poolFee, privateBalanceBefore] = await Promise.all([
-        readPoolFee("sepolia"),
+        readPoolFee(network),
         discoverPrivateBalance(accountAddress, address, chainId, key),
       ]);
       const publicSpend = SHIELD_AMOUNT + poolFee;
@@ -507,7 +513,7 @@ export function Strk20ShieldLab({
           `The prover returned unsupported proof version ${callAndProof.proof.proofFacts[0]}.`,
         );
       }
-      const calls = [approvalCall(publicSpend), callAndProof.call];
+      const calls = [approvalCall(publicSpend, sdk.poolAddress), callAndProof.call];
       const proofDetails = {
         proof: callAndProof.proof.data,
         proofFacts: callAndProof.proof.proofFacts,
@@ -571,13 +577,13 @@ export function Strk20ShieldLab({
 
     setSending(true);
     setError(null);
-    const key = markerKey(accountAddress);
+    const key = markerKey(network, accountAddress);
     window.localStorage.setItem(
       key,
       JSON.stringify({ status: "submitting", nonce: prepared.nonce.toString() }),
     );
     try {
-      const provider = privacyProvider();
+      const provider = privacyProvider(sdk);
       const account = outerAccount(provider, accountAddress, address, chainId);
       const [currentClassHash, currentNonce] = await Promise.all([
         provider.getClassHashAt(accountAddress),
@@ -672,7 +678,7 @@ export function Strk20ShieldLab({
     unshieldPayload.current = null;
 
     try {
-      const provider = privacyProvider();
+      const provider = privacyProvider(sdk);
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
       const [latestClassHash, provingClassHash, publicBalance, provingBalance] =
@@ -692,7 +698,7 @@ export function Strk20ShieldLab({
       const key = await getViewingKey(accountAddress, address, chainId);
       const transfers = transfersFor(accountAddress, address, chainId, key);
       const [poolFee, notes] = await Promise.all([
-        readPoolFee("sepolia"),
+        readPoolFee(network),
         discoverStrkNotes(accountAddress, address, chainId, key, provingBlock),
       ]);
       const privateBalanceBefore = notes.reduce(
@@ -733,7 +739,7 @@ export function Strk20ShieldLab({
           `The prover returned unsupported proof version ${callAndProof.proof.proofFacts[0]}.`,
         );
       }
-      const calls = [approvalCall(poolFee), callAndProof.call];
+      const calls = [approvalCall(poolFee, sdk.poolAddress), callAndProof.call];
       const proofDetails = {
         proof: callAndProof.proof.data,
         proofFacts: callAndProof.proof.proofFacts,
@@ -806,7 +812,7 @@ export function Strk20ShieldLab({
 
     setSendingUnshield(true);
     setUnshieldError(null);
-    const key = unshieldMarkerKey(accountAddress);
+    const key = unshieldMarkerKey(network, accountAddress);
     window.localStorage.setItem(
       key,
       JSON.stringify({
@@ -815,7 +821,7 @@ export function Strk20ShieldLab({
       }),
     );
     try {
-      const provider = privacyProvider();
+      const provider = privacyProvider(sdk);
       const account = outerAccount(provider, accountAddress, address, chainId);
       const [currentClassHash, currentNonce] = await Promise.all([
         provider.getClassHashAt(accountAddress),
@@ -982,7 +988,7 @@ export function Strk20ShieldLab({
               <span>{shield.message}</span>
               {shield.txHash ? (
                 <a
-                  href={`${sepolia.explorer}/tx/${shield.txHash}`}
+                  href={`${starknet.explorer}/tx/${shield.txHash}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 break-all font-mono underline underline-offset-4"
@@ -1114,7 +1120,7 @@ export function Strk20ShieldLab({
               <span>{unshield.message}</span>
               {unshield.txHash ? (
                 <a
-                  href={`${sepolia.explorer}/tx/${unshield.txHash}`}
+                  href={`${starknet.explorer}/tx/${unshield.txHash}`}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1 break-all font-mono underline underline-offset-4"

@@ -1,10 +1,12 @@
 import { Account, RpcProvider, validateAndParseAddress } from "starknet";
 
+import { parseAppNetwork, type AppNetwork } from "@/lib/network";
 import {
   deployEth712AccountCall,
   eth712Strk20ClassMode,
   inspectEth712Account,
 } from "@/lib/privacy/eth712-account";
+import { privacySdkOf } from "@/lib/privacy/network";
 import {
   parseWholeStrk,
   readPublicStrkBalance,
@@ -18,22 +20,48 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 const DEFAULT_SPONSORED_BALANCE = 20n * 10n ** 18n;
+/**
+ * Mainnet never sponsors a balance - the connecting account must already hold
+ * public STRK. This is only a courtesy check so a deploy doesn't succeed into
+ * an account that visibly cannot afford the registration step right after it.
+ */
+const DEFAULT_MAINNET_MIN_DEPLOY_STRK = 15n * 10n ** 18n;
 
-function provider() {
-  return new RpcProvider({
-    nodeUrl:
-      process.env.MOROKPAY_SEPOLIA_RPC_URL ?? starknetOf("sepolia").rpc,
-  });
+function relayerEnv(network: AppNetwork) {
+  return network === "mainnet"
+    ? {
+        rpc: process.env.MOROKPAY_MAINNET_RPC_URL ?? starknetOf("mainnet").rpc,
+        address: process.env.MOROKPAY_MAINNET_RELAYER_ADDRESS?.trim(),
+        privateKey: process.env.MOROKPAY_MAINNET_RELAYER_PRIVATE_KEY?.trim(),
+      }
+    : {
+        rpc: process.env.MOROKPAY_SEPOLIA_RPC_URL ?? starknetOf("sepolia").rpc,
+        address: process.env.MOROKPAY_SEPOLIA_RELAYER_ADDRESS?.trim(),
+        privateKey: process.env.MOROKPAY_SEPOLIA_RELAYER_PRIVATE_KEY?.trim(),
+      };
 }
 
 export async function POST(request: Request) {
+  let network: AppNetwork = "sepolia";
   try {
     if (Number(request.headers.get("content-length") ?? 0) > 10_000) {
       return Response.json({ error: "Request is too large" }, { status: 413 });
     }
-    const ownership = await verifyOwnershipRequest(await request.json());
-    const rpc = provider();
-    const inspection = await inspectEth712Account(ownership.evmAddress, rpc);
+    const body = await request.json();
+    network = parseAppNetwork(
+      typeof body?.network === "string" ? body.network : null,
+      "sepolia",
+    );
+    const ownership = await verifyOwnershipRequest(body);
+
+    const env = relayerEnv(network);
+    const rpc = new RpcProvider({ nodeUrl: env.rpc });
+    const factoryAddress = privacySdkOf(network).accountFactory;
+    const inspection = await inspectEth712Account(
+      ownership.evmAddress,
+      rpc,
+      factoryAddress,
+    );
     if (inspection.deployed) {
       return Response.json({
         status: "already_deployed",
@@ -51,43 +79,58 @@ export async function POST(request: Request) {
       );
     }
 
-    const balance = await readPublicStrkBalance(rpc, inspection.starknetAddress);
-    const sponsoredBalance = parseWholeStrk(
-      process.env.MOROKPAY_SEPOLIA_SPONSORED_STRK,
-      DEFAULT_SPONSORED_BALANCE,
-    );
-    const sponsoredAmount = sponsoredTopUpAmount(balance, sponsoredBalance);
-
-    const relayerAddress = process.env.MOROKPAY_SEPOLIA_RELAYER_ADDRESS?.trim();
-    const relayerPrivateKey =
-      process.env.MOROKPAY_SEPOLIA_RELAYER_PRIVATE_KEY?.trim();
-    if (!relayerAddress || !relayerPrivateKey) {
+    if (!env.address || !env.privateKey) {
       return Response.json(
-        { error: "MorokPay Sepolia relayer is not configured" },
+        { error: `MorokPay ${network} relayer is not configured` },
         { status: 503 },
       );
     }
-
     const relayer = new Account({
       provider: rpc,
-      address: validateAndParseAddress(relayerAddress),
-      signer: relayerPrivateKey,
+      address: validateAndParseAddress(env.address),
+      signer: env.privateKey,
     });
     const deploymentCall = deployEth712AccountCall({
       factoryAddress: inspection.factoryAddress,
       evmAddress: ownership.evmAddress,
       signature: ownership.signature,
     });
-    const calls =
-      sponsoredAmount > 0n
-        ? [
-            publicStrkTransferCall(
-              inspection.starknetAddress,
-              sponsoredAmount,
-            ),
-            deploymentCall,
-          ]
-        : [deploymentCall];
+
+    let calls = [deploymentCall];
+    let sponsoredAmount = 0n;
+    let sponsoredBalance = 0n;
+
+    if (network === "sepolia") {
+      const balance = await readPublicStrkBalance(rpc, inspection.starknetAddress);
+      sponsoredBalance = parseWholeStrk(
+        process.env.MOROKPAY_SEPOLIA_SPONSORED_STRK,
+        DEFAULT_SPONSORED_BALANCE,
+      );
+      sponsoredAmount = sponsoredTopUpAmount(balance, sponsoredBalance);
+      if (sponsoredAmount > 0n) {
+        calls = [
+          publicStrkTransferCall(inspection.starknetAddress, sponsoredAmount),
+          deploymentCall,
+        ];
+      }
+    } else {
+      // Mainnet: self-funded only. The relayer pays its own gas for the
+      // factory call and never transfers STRK to the connecting account.
+      const balance = await readPublicStrkBalance(rpc, inspection.starknetAddress);
+      const minimum = parseWholeStrk(
+        process.env.MOROKPAY_MAINNET_MIN_DEPLOY_STRK,
+        DEFAULT_MAINNET_MIN_DEPLOY_STRK,
+      );
+      if (balance < minimum) {
+        return Response.json(
+          {
+            error: `Fund ${inspection.starknetAddress} with at least ${(Number(minimum) / 1e18).toFixed(0)} public STRK before deploying. MorokPay does not sponsor mainnet accounts.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const submission = await relayer.execute(calls);
     return Response.json({
       status: "pending",
@@ -106,7 +149,7 @@ export async function POST(request: Request) {
         error:
           status === 400
             ? message
-            : "MorokPay could not submit the Sepolia deployment",
+            : `MorokPay could not submit the ${network} deployment`,
       },
       { status },
     );

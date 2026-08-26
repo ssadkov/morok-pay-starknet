@@ -97,8 +97,9 @@ export async function inspectEth712Account(
   reader: FactoryReader = new RpcProvider({
     nodeUrl: starknetOf("sepolia").rpc,
   }),
+  factory: bigint | string = TEST_ACCOUNT_FACTORY,
 ): Promise<Eth712AccountInspection> {
-  const factoryAddress = addAddressPadding(TEST_ACCOUNT_FACTORY);
+  const factoryAddress = addAddressPadding(factory);
   const ethAddress = num.toHex(BigInt(evmAddress));
   const call = (entrypoint: string) =>
     reader.callContract({
