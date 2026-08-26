@@ -105,6 +105,7 @@ export function PublicStrkTransferLab({
   const { signTypedDataAsync } = useSignTypedData();
   const { network, starknet } = useNetwork();
   const sdk = privacySdkOf(network);
+  const networkLabel = network === "mainnet" ? "mainnet" : "Sepolia";
   const accountAddress = inspection?.deployed
     ? inspection.starknetAddress
     : null;
@@ -360,7 +361,9 @@ export function PublicStrkTransferLab({
           </div>
           <div>
             <p className="text-muted-foreground">To · test treasury</p>
-            <p className="break-all font-mono font-medium">{recipient}</p>
+            <p className="break-all font-mono font-medium">
+              {recipient || `No ${networkLabel} treasury configured`}
+            </p>
           </div>
           <div>
             <p className="text-muted-foreground">Amount</p>
@@ -425,6 +428,7 @@ export function PublicStrkTransferLab({
             !accountAddress ||
             !address ||
             !chainId ||
+            !recipient ||
             preparing ||
             sending ||
             (!!transfer && transfer.status !== "failed")
@@ -433,8 +437,10 @@ export function PublicStrkTransferLab({
         >
           {preparing ? <Spinner data-icon="inline-start" /> : null}
           {preparing
-            ? "Reading Sepolia gas prices"
-            : "Prepare max-gas transfer"}
+            ? `Reading ${networkLabel} gas prices`
+            : recipient
+              ? "Prepare max-gas transfer"
+              : `No ${networkLabel} treasury configured`}
         </Button>
         <Button
           type="button"
