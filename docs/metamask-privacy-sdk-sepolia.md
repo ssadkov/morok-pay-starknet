@@ -271,13 +271,37 @@ who transacts and leaves; it is a custody hazard for a creator holding a
 shielded balance, and is the reason Ready stays the recommended route for the
 receiving side.
 
+### Mainnet deploy relayer
+
+The browser deploy route (`/api/privacy-sdk/deploy`) needs a funded Starknet
+account to submit `deploy_account` on a new user's behalf and pay its own gas
+- it never transfers STRK to the connecting account on mainnet (see
+`app/api/privacy-sdk/deploy/route.ts`). This is a plain OpenZeppelin account,
+generated and deployed 2026-08-26 for that role alone, separate from the
+existing Sepolia relayer:
+
+| | |
+| --- | --- |
+| Address | `0x34d43acc20256972081101fe26be76bf4abbb4a191d7d4630e3fe527183c792` |
+| Deploy transaction | `0x17d96e01628c10154372e1e1fd80a5f66e7c8c4b326c39e11e3234e5e1431d0`, `0.075 STRK` |
+| Role | `MOROKPAY_MAINNET_RELAYER_ADDRESS` / `_PRIVATE_KEY` |
+| Funded with | `15 STRK` for gas only - enough for roughly ten `deploy_account` calls at the ~1-2 STRK each has cost so far |
+
+Kept deliberately separate from the Sepolia relayer: reusing one key across a
+test and a real-money network is an unnecessary way to widen what a key
+compromise costs. Top up as the balance runs low; it holds no other funds and
+has no role beyond paying its own gas.
+
 ### What is still missing for MetaMask
 
-Only deployment. `AccountFactory` is absent from mainnet and neither the
-`Primer` class nor the STRK20-compatible `StarknetEth712Account` class is
-declared there. The account address derives from the EVM address as salt plus
-the fixed `Primer` class hash, so the same compiled `Primer` must be declared
-or every derived address changes.
+Nothing on the contract or infrastructure side - only wiring this relayer's
+private key into the deployment environment
+(`MOROKPAY_MAINNET_RELAYER_PRIVATE_KEY`) makes the browser path work end to
+end. `AccountFactory` is live and configured with the STRK20-compatible
+`StarknetEth712Account` class; `Primer` was already declared by StarkWare. The
+account address derives from the EVM address as salt plus the fixed `Primer`
+class hash, so the same compiled `Primer` must stay declared or every derived
+address changes.
 
 A browser Starknet wallet signing the same `CallSet` is untested. The signer
 builds the digest with direct `poseidonHashMany` rather than
