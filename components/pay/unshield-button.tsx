@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { EyeOffIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -24,6 +25,24 @@ export function UnshieldButton() {
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
 
   if (!session) return null;
+
+  if (session.kind === "evm") {
+    return (
+      <div className="flex flex-col gap-2">
+        <p className="text-xs text-muted-foreground">
+          EVM unshield remains in the Sepolia lab so its public recipient, pool
+          fee, and proof can be reviewed before signing.
+        </p>
+        <Button
+          nativeButton={false}
+          variant="outline"
+          render={<Link href="/privacy-sdk-lab" />}
+        >
+          Open EVM Lab
+        </Button>
+      </div>
+    );
+  }
 
   async function handleUnshield() {
     if (!session) return;

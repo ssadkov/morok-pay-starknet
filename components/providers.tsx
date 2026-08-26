@@ -7,6 +7,7 @@ import { WagmiProvider } from "wagmi";
 
 import { NetworkProvider } from "@/components/network-provider";
 import { TreasuryProvider } from "@/components/treasury/treasury-context";
+import { EvmOnboardingGate } from "@/components/treasury/evm-onboarding-gate";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { wagmiConfig } from "@/lib/wagmi";
@@ -32,6 +33,7 @@ export function Providers({ children }: { children: ReactNode }) {
             <NetworkProvider>
               <TreasuryProvider>
                 {children}
+                <EvmOnboardingGate />
                 <Toaster />
               </TreasuryProvider>
             </NetworkProvider>

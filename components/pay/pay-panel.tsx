@@ -10,7 +10,7 @@ import {
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
-import { ConnectReady } from "@/components/pay/connect-ready";
+import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { OnboardingSteps } from "@/components/pay/onboarding-steps";
 import { ShieldButton } from "@/components/pay/shield-button";
 import { useNetwork } from "@/components/network-provider";
@@ -135,6 +135,7 @@ export function PayPanel() {
     creatorReady &&
     notes.ready &&
     privateRaw > BigInt(0);
+  const walletName = session?.kind === "evm" ? "EVM wallet" : "Ready";
 
   useEffect(() => {
     if (fromQuery && fromQuery.network !== network) {
@@ -197,7 +198,7 @@ export function PayPanel() {
       return;
     }
     setError(
-      "The wallet submission is still pending. MorokPay will not send it again; check again after Ready finishes syncing.",
+      `The wallet submission is still pending. MorokPay will not send it again; check again after ${walletName} finishes syncing.`,
     );
   }
 
@@ -293,7 +294,7 @@ export function PayPanel() {
       const txHash = extractTxHash(response);
       if (!txHash) {
         setError(
-          "Ready returned without a transaction hash. MorokPay will check the private balance and will not submit again.",
+          `${walletName} returned without a transaction hash. MorokPay will check the private balance and will not submit again.`,
         );
         await refreshPrivateSafely();
         return;
@@ -324,7 +325,7 @@ export function PayPanel() {
         await settleResponse(result.value);
       } else {
         setError(
-          "Ready has not returned yet. The donation stays pending; use Check pending donation instead of sending it again.",
+          `${walletName} has not returned yet. The donation stays pending; use Check pending donation instead of sending it again.`,
         );
         void submission.then(settleResponse).catch((caught) => {
           const txHash = extractTxHash(caught);
@@ -381,8 +382,8 @@ export function PayPanel() {
 
       <OnboardingSteps
         title="Get ready to donate"
-        description="Ready must be on the same network as the QR. New notes take about ten blocks before they can move."
-        doneLabel={`Ready · ${formatUsdc(privateRaw)} private USDC · notes mature`}
+        description="Use Ready or, on Sepolia, an onboarded EVM wallet. New notes take about ten blocks before they can move."
+        doneLabel={`${walletName} · ${formatUsdc(privateRaw)} private USDC · notes mature`}
         steps={[
           {
             id: "link",
@@ -414,10 +415,10 @@ export function PayPanel() {
           },
           {
             id: "ready",
-            title: "Connect Ready",
-            body: "Use Ready X on the same network as the header.",
+            title: network === "sepolia" ? "Connect Ready or EVM wallet" : "Connect Ready",
+            body: "Use a supported private wallet on the same network as the header.",
             status: readyStatus,
-            children: readyStatus === "current" ? <ConnectReady /> : null,
+            children: readyStatus === "current" ? <ConnectWalletChoices /> : null,
           },
           {
             id: "shield",

@@ -273,9 +273,11 @@ function viemCallSetTypedData(typedData: CallSetTypedData) {
 export function Strk20RegistrationLab({
   inspection,
   signatureTestPassed,
+  onAccountChanged,
 }: {
   inspection: Eth712AccountInspection | null;
   signatureTestPassed: boolean;
+  onAccountChanged?: () => Promise<unknown> | unknown;
 }) {
   const { address, chainId } = useAccount();
   const { signTypedDataAsync } = useSignTypedData();
@@ -299,6 +301,15 @@ export function Strk20RegistrationLab({
     restoredRegistration(accountAddress),
   );
   const [error, setError] = useState<string | null>(null);
+
+  async function refreshParentInspection() {
+    try {
+      await onAccountChanged?.();
+    } catch {
+      // The confirmed transaction state is authoritative. A later read failure
+      // must not turn it into a failed upgrade or registration in the UI.
+    }
+  }
 
   function outerAccount(
     starknetAddress: string,
@@ -460,6 +471,7 @@ export function Strk20RegistrationLab({
           message:
             "Upgrade confirmed. Wait about 10 Starknet blocks so the prover sees the new class, then prepare registration.",
         });
+        await refreshParentInspection();
         return;
       }
       setUpgrade({
@@ -727,6 +739,7 @@ export function Strk20RegistrationLab({
           message:
             "Registration is confirmed. The derived viewing key stayed in this browser tab; MetaMask retains the EVM signing key.",
         });
+        await refreshParentInspection();
         return;
       }
       setRegistration({

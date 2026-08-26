@@ -4,7 +4,7 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { CopyIcon } from "lucide-react";
 
-import { ConnectReady } from "@/components/pay/connect-ready";
+import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { DeployReadyButton } from "@/components/pay/deploy-ready-button";
 import { OnboardingSteps } from "@/components/pay/onboarding-steps";
 import { QrCode } from "@/components/pay/qr-code";
@@ -133,11 +133,11 @@ export function SellPanel() {
     }
   }
 
-  async function copyReadyAddress() {
+  async function copyWalletAddress() {
     if (!session) return;
     try {
       await navigator.clipboard.writeText(session.address);
-      toast.success("Ready address copied");
+      toast.success("Starknet address copied");
     } catch {
       toast.error("Could not copy address");
     }
@@ -167,19 +167,19 @@ export function SellPanel() {
 
       <OnboardingSteps
         title="Get ready to receive"
-        description={`Match the header to ${network === "sepolia" ? "Sepolia" : "Mainnet"} in Ready. Fund and deploy the account, then confirm Ready's one-time privacy activation.`}
-        doneLabel={`Ready · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
+        description={network === "sepolia" ? "Connect Ready or an onboarded EVM wallet. MorokPay verifies deployment and privacy activation before creating a QR." : "Match the header to Mainnet in Ready. Fund and deploy the account, then confirm Ready's one-time privacy activation."}
+        doneLabel={`${session?.kind === "evm" ? "EVM wallet" : "Ready"} · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
         steps={[
           {
             id: "ready",
-            title: "Connect Ready",
-            body: "Ready holds the viewing key. Braavos cannot shield.",
+            title: network === "sepolia" ? "Connect Ready or EVM wallet" : "Connect Ready",
+            body: "The connected wallet must control the signing key and its private viewing key.",
             status: session ? "done" : "current",
-            children: session ? null : <ConnectReady />,
+            children: session ? null : <ConnectWalletChoices />,
           },
           {
             id: "deploy",
-            title: `Deploy Ready on ${network === "sepolia" ? "Sepolia" : "Mainnet"}`,
+            title: `Deploy the Starknet account on ${network === "sepolia" ? "Sepolia" : "Mainnet"}`,
             body:
               presence === "unknown"
                 ? "Checking whether this Ready account is deployed…"
@@ -192,7 +192,7 @@ export function SellPanel() {
                 <>
                   <div className="rounded-xl bg-muted/40 p-3 ring-1 ring-foreground/10">
                     <p className="text-xs text-muted-foreground">
-                      Ready address
+                      Starknet address
                     </p>
                     <p className="mt-1 break-all font-mono text-xs tabular-nums">
                       {session.address}
@@ -205,7 +205,7 @@ export function SellPanel() {
                       size="lg"
                       className="min-h-12"
                       onClick={() => {
-                        void copyReadyAddress();
+                        void copyWalletAddress();
                       }}
                     >
                       <CopyIcon data-icon="inline-start" />
@@ -242,7 +242,7 @@ export function SellPanel() {
           },
           {
             id: "activate",
-            title: "Enable Private in Ready",
+            title: "Enable STRK20 Private",
             body: registration === "unknown" && presence === "deployed"
               ? "Checking this Ready on the pool…"
               : "This account has no viewing key in the STRK20 pool yet. Ready must create and register it once before apps can shield or read private balances.",
@@ -272,7 +272,7 @@ export function SellPanel() {
                         size="lg"
                         className="min-h-12"
                         onClick={() => {
-                          void copyReadyAddress();
+                          void copyWalletAddress();
                         }}
                       >
                         <CopyIcon data-icon="inline-start" />
@@ -310,7 +310,7 @@ export function SellPanel() {
             <CardTitle>Create your QR</CardTitle>
             <CardDescription>
               Amount stays off the link. Incoming USDC shows in Activity as To
-              this Ready, From hidden.
+              this Starknet account, From hidden.
             </CardDescription>
           </CardHeader>
           <CardContent>

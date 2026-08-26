@@ -12,6 +12,7 @@ import {
 } from "react";
 import type { WalletWithStarknetFeatures } from "@starknet-io/get-starknet-wallet-standard/features";
 import type { WalletAccountV6 } from "starknet";
+import { useAccount, useConnect, useDisconnect as useEvmDisconnect, useSignTypedData } from "wagmi";
 
 import { useNetwork } from "@/components/network-provider";
 import {
@@ -21,6 +22,14 @@ import {
   writePrivateBalanceSnapshot,
 } from "@/lib/pay/activity";
 import { poolRegistration } from "@/lib/starknet/account-status";
+import {
+  inspectEth712Account,
+} from "@/lib/privacy/eth712-account";
+import { classifyEvmReadiness } from "@/lib/privacy/evm-onboarding";
+import {
+  createEvmStrk20Account,
+  type MorokPrivateAccount,
+} from "@/lib/privacy/evm-strk20-account";
 import { privateBalanceFromEntries } from "@/lib/starknet/actions";
 import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import { formatStrk20Error } from "@/lib/starknet/errors";
@@ -42,10 +51,28 @@ import {
 } from "@/lib/starknet/wallet";
 
 export type ReadySession = {
+  kind: "ready";
   account: WalletAccountV6;
   wallet: WalletWithStarknetFeatures;
   address: string;
   chainId: string;
+};
+
+export type EvmSession = {
+  kind: "evm";
+  account: MorokPrivateAccount;
+  address: string;
+  chainId: string;
+  evmAddress: string;
+  evmChainId: number;
+};
+
+export type TreasurySession = ReadySession | EvmSession;
+
+export type EvmOnboardingGate = {
+  address: string;
+  reason: "undeployed" | "upgrade" | "unregistered" | "unsupported" | "error";
+  message: string;
 };
 
 export type TreasuryBalances = AccountSnapshot & {
@@ -62,7 +89,7 @@ export type RefreshBalancesOptions = {
 
 type TreasuryContextValue = {
   wallets: WalletWithStarknetFeatures[];
-  session: ReadySession | null;
+  session: TreasurySession | null;
   connecting: boolean;
   connectError: string | null;
   balances: TreasuryBalances | null;
@@ -73,6 +100,11 @@ type TreasuryContextValue = {
   publicRaw: bigint;
   privateRaw: bigint;
   connectWallet: (wallet: WalletWithStarknetFeatures) => Promise<void>;
+  evmConnecting: boolean;
+  evmConnectedAddress: string | null;
+  evmGate: EvmOnboardingGate | null;
+  connectEvm: () => Promise<void>;
+  dismissEvmGate: () => void;
   disconnect: () => void;
   refreshBalances: (options?: RefreshBalancesOptions) => Promise<void>;
 };
@@ -116,11 +148,21 @@ const EMPTY_PRIVATE: LastPrivate = {
 
 export function TreasuryProvider({ children }: { children: ReactNode }) {
   const { network } = useNetwork();
+  const {
+    address: connectedEvmAddress,
+    chainId: connectedEvmChainId,
+    isConnected: evmConnected,
+  } = useAccount();
+  const { connectors: evmConnectors, connectAsync: connectEvmAsync } = useConnect();
+  const { disconnect: disconnectEvmWallet } = useEvmDisconnect();
+  const { signTypedDataAsync } = useSignTypedData();
   const tokens = useMemo(() => listShieldTokens(network), [network]);
   const [wallets, setWallets] = useState<WalletWithStarknetFeatures[]>([]);
-  const [session, setSession] = useState<ReadySession | null>(null);
+  const [session, setSession] = useState<TreasurySession | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
+  const [evmConnecting, setEvmConnecting] = useState(false);
+  const [evmGate, setEvmGate] = useState<EvmOnboardingGate | null>(null);
   const [balances, setBalances] = useState<TreasuryBalances | null>(null);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [tokenId, setTokenId] = useState<ShieldTokenId>("usdc");
@@ -142,10 +184,26 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   }, [session]);
 
   useEffect(() => {
+    if (session?.kind !== "evm") return;
+    if (
+      !connectedEvmAddress ||
+      !connectedEvmChainId ||
+      connectedEvmAddress.toLowerCase() !== session.evmAddress.toLowerCase() ||
+      connectedEvmChainId !== session.evmChainId
+    ) {
+      const clear = window.setTimeout(() => {
+        setSession(null);
+        setBalances(null);
+      }, 0);
+      return () => window.clearTimeout(clear);
+    }
+  }, [connectedEvmAddress, connectedEvmChainId, session]);
+
+  useEffect(() => {
     return watchWallets((next) => setWallets(listReadyWallets(next)));
   }, []);
 
-  const sessionAccount = session?.account;
+  const sessionAccount = session?.kind === "ready" ? session.account : null;
   useEffect(() => {
     if (!sessionAccount) return;
     const account = sessionAccount;
@@ -155,26 +213,28 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       setSession((current) => {
         if (!current) return current;
         const chain = nextAccount.chains?.[0];
-        return {
+        return current.kind === "ready" ? {
           ...current,
           address: nextAccount.address || current.address,
           chainId: chain
             ? String(chain).replace(/^starknet:/, "")
             : current.chainId,
-        };
+        } : current;
       });
     });
   }, [sessionAccount]);
 
   const disconnect = useCallback(() => {
-    session?.account.unsubscribeChange();
+    if (session?.kind === "ready") session.account.unsubscribeChange();
+    if (session?.kind === "evm") disconnectEvmWallet();
     previousPrivateUsdc.current = null;
     previousAddress.current = null;
     lastPrivate.current = { ...EMPTY_PRIVATE };
     setSession(null);
     setBalances(null);
     setConnectError(null);
-  }, [session]);
+    setEvmGate(null);
+  }, [disconnectEvmWallet, session]);
 
   const networkReady = useRef(false);
   useEffect(() => {
@@ -186,7 +246,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     previousPrivateUsdc.current = null;
     previousAddress.current = null;
     lastPrivate.current = { ...EMPTY_PRIVATE };
-    session?.account.unsubscribeChange();
+    if (session?.kind === "ready") session.account.unsubscribeChange();
     setSession(null);
     setBalances(null);
     setConnectError(null);
@@ -344,7 +404,8 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       setConnectError(null);
       try {
         const next = await connectReadyWallet(wallet, network);
-        setSession(next);
+        setSession({ ...next, kind: "ready" });
+        setEvmGate(null);
       } catch (error) {
         setConnectError(
           error instanceof Error ? error.message : "Could not connect Ready",
@@ -355,6 +416,72 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     },
     [network],
   );
+
+  const connectEvm = useCallback(async () => {
+    setEvmConnecting(true);
+    setConnectError(null);
+    setEvmGate(null);
+    try {
+      if (network !== "sepolia") {
+        throw new Error("EVM wallet onboarding is available on Sepolia only.");
+      }
+      let evmAddress = connectedEvmAddress;
+      let evmChainId = connectedEvmChainId;
+      if (!evmConnected || !evmAddress || !evmChainId) {
+        const connector = evmConnectors.find((candidate) => candidate.type === "injected") ?? evmConnectors[0];
+        if (!connector) throw new Error("No injected EVM wallet was found.");
+        const connected = await connectEvmAsync({ connector });
+        evmAddress = connected.accounts[0];
+        evmChainId = connected.chainId;
+      }
+      if (!evmAddress || !evmChainId) {
+        throw new Error("The EVM wallet did not return an account.");
+      }
+
+      const inspection = await inspectEth712Account(evmAddress);
+      const registration = inspection.deployed
+        ? await poolRegistration("sepolia", inspection.starknetAddress)
+        : null;
+      const readiness = classifyEvmReadiness(inspection, registration);
+      if (readiness.status === "onboarding") {
+        setEvmGate({
+          address: readiness.starknetAddress,
+          reason: readiness.reason,
+          message: readiness.message,
+        });
+        return;
+      }
+
+      const account = createEvmStrk20Account({
+        starknetAddress: readiness.starknetAddress,
+        evmAddress,
+        evmChainId,
+        signTypedData: (typedData) => signTypedDataAsync(typedData as never),
+      });
+      setSession({
+        kind: "evm",
+        account,
+        address: readiness.starknetAddress,
+        chainId: "SN_SEPOLIA",
+        evmAddress,
+        evmChainId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Could not connect EVM wallet";
+      setConnectError(message);
+      setEvmGate({ address: "", reason: "error", message });
+    } finally {
+      setEvmConnecting(false);
+    }
+  }, [
+    connectedEvmAddress,
+    connectedEvmChainId,
+    connectEvmAsync,
+    evmConnected,
+    evmConnectors,
+    network,
+    signTypedDataAsync,
+  ]);
 
   const value = useMemo(
     () => ({
@@ -370,6 +497,11 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       publicRaw: publicBalance(balances, token),
       privateRaw: privateBalance(balances, token),
       connectWallet,
+      evmConnecting,
+      evmConnectedAddress: connectedEvmAddress ?? null,
+      evmGate,
+      connectEvm,
+      dismissEvmGate: () => setEvmGate(null),
       disconnect,
       refreshBalances,
     }),
@@ -383,6 +515,10 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       tokens,
       token,
       connectWallet,
+      evmConnecting,
+      connectedEvmAddress,
+      evmGate,
+      connectEvm,
       disconnect,
       refreshBalances,
     ],

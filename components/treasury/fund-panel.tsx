@@ -112,7 +112,7 @@ export function FundPanel() {
     query: { enabled: Boolean(address) },
   });
 
-  if (!session) return null;
+  if (!session || session.kind !== "ready") return null;
   const ready = session;
 
   async function mintOnStarknet(message: string, attestation: string) {

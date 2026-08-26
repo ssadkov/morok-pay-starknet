@@ -187,3 +187,25 @@ design.
    Record its single public hash, funded balance, account class, and actual gas.
 5. Keep the treasury key out of the app and Vercel; only the limited relayer key
    may be stored as a server-only environment variable.
+
+## Shared Sepolia app integration
+
+Donate and My QR now show `Connect EVM wallet` beside Ready on Sepolia. After
+the injected wallet connects, MorokPay resolves the deterministic Starknet
+address and independently verifies:
+
+1. the account is deployed;
+2. its live class hash is the approved STRK20-compatible Eth712 class;
+3. `get_public_key` confirms registration in the live privacy pool.
+
+Failure at any gate shows the exact Starknet address and sends the user to this
+lab. A ready account can read its private balances and prepare a private USDC
+donation through the Privacy SDK. Shield and unshield remain in the lab for the
+Sepolia test so their public edges, pool fee, gas cap, and proof are reviewed
+explicitly.
+
+The registration UI previously kept the parent account inspection from before
+the self-upgrade. Registration could confirm on-chain while Shield and USDC
+cards remained hidden until a page refresh. Upgrade and registration
+confirmation now refresh the parent inspection immediately; transaction state
+and class state no longer diverge in the UI.

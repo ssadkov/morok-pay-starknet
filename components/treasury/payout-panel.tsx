@@ -109,7 +109,7 @@ export function PayoutPanel() {
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const toBase = token.id === "usdc" && destination === "base";
 
-  if (!session) return null;
+  if (!session || session.kind !== "ready") return null;
   const ready = session;
 
   async function mintOnBase(message: string, attestation: string) {

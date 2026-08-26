@@ -2,18 +2,18 @@
 
 Private USDC donations on Starknet, built for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
 
-A creator publishes one reusable QR. A supporter chooses the amount and confirms the transfer in Ready. The payment stays inside the STRK20 pool, so its amount and sender-to-recipient relationship are not published on-chain.
+A creator publishes one reusable QR. A supporter chooses the amount and confirms the transfer in Ready or the Sepolia EVM beta. The payment stays inside the STRK20 pool, so its amount and sender-to-recipient relationship are not published on-chain.
 
 [Open the live demo](https://morok-pay-starknet.vercel.app)
 
 ## How it works
 
-1. Connect Ready on Starknet Mainnet or Sepolia.
+1. Connect Ready on Starknet Mainnet or Sepolia, or an EVM wallet in the Sepolia beta.
 2. Activate STRK20 by shielding once.
 3. Create one open-amount donation QR, or open a creator's link.
-4. Confirm the private USDC transfer in Ready.
+4. Confirm the private USDC transfer in the connected wallet.
 
-Ready holds the viewing key, discovers notes, creates proofs, and submits private transactions. MorokPay never asks for a viewing key and does not call the proving service directly.
+Ready holds the viewing key and implements the STRK20 Wallet API. In the Sepolia EVM beta, MetaMask retains the EVM signing key while MorokPay derives the deterministic viewing key in browser memory and uses the Privacy SDK directly. MorokPay never asks for either secret.
 
 ## Privacy boundary
 
@@ -27,6 +27,11 @@ STRK20 hides the transfer amount and sender-to-recipient relationship on-chain. 
 ## Current status
 
 - Donation QR, private pay, balance refresh, top-up, and onboarding are implemented.
+- Donate and My QR expose `Connect EVM wallet` on Sepolia. Connection checks
+  deterministic-account deployment, the approved STRK20 account class, and
+  live privacy-pool registration. Incomplete accounts are gated into
+  `/privacy-sdk-lab`; ready accounts can discover private balances and send a
+  private USDC donation through the Privacy SDK.
 - `strk20.json` contains three succeeded mainnet pool transactions required for the sprint submission.
 - The First 10 activation campaign is planned; see [docs/private-first-10.md](docs/private-first-10.md).
 - MorokPay's fee is planned for the in-app unshield step, not for each private donation; see [docs/fees.md](docs/fees.md).
@@ -45,8 +50,8 @@ Legacy claim links remain redeemable at `/claim` on networks where `MorokEscrow`
 ## Run locally
 
 Requirements: Node.js 22+ and the [Ready X extension](https://chromewebstore.google.com/detail/ready-x/dlcobpjiigpikoobohmabehhmhfoodbb).
-The isolated `/privacy-sdk-lab` additionally supports MetaMask or another
-compatible injected EVM wallet.
+The `/privacy-sdk-lab` onboarding and the Sepolia Donate/My QR EVM connector
+support MetaMask or another compatible injected EVM wallet.
 
 ```bash
 npm install

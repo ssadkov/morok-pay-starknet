@@ -29,11 +29,11 @@ export function DeployReadyButton() {
   const [submitting, setSubmitting] = useState(false);
   const treasury = treasuryAddress(starknet.treasury);
 
-  if (!session || !treasury) return null;
+  if (!session || session.kind !== "ready" || !treasury) return null;
   const publicStrk = balances?.strkWei ?? BigInt(0);
 
   async function deploy() {
-    if (!session || !treasury) return;
+    if (!session || session.kind !== "ready" || !treasury) return;
     setSubmitting(true);
     try {
       const response = await transferPublicStrk(

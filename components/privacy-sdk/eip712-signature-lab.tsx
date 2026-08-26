@@ -800,6 +800,7 @@ export function Eip712SignatureLab() {
           signatureTestPassed={Boolean(
             result?.signaturesMatch && result.signerMatches,
           )}
+          onAccountChanged={refreshDeployedAccount}
         />
 
         <Strk20ShieldLab

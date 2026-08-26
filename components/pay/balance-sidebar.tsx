@@ -143,7 +143,7 @@ export function BalanceSidebar() {
             <div>
               <CardTitle>Balances</CardTitle>
               <CardDescription>
-                Public Ready and private donation wallet.
+                Public Starknet and private donation wallet.
               </CardDescription>
             </div>
             {session ? (
@@ -151,8 +151,8 @@ export function BalanceSidebar() {
                 type="button"
                 size="icon"
                 variant="ghost"
-                aria-label="Refresh balances (asks Ready to share private balances)"
-                title="Refresh — Ready will ask to share private balances once"
+                aria-label="Refresh public and private balances"
+                title="Refresh balances"
                 onClick={() => {
                   void refreshBalances();
                 }}
@@ -165,13 +165,13 @@ export function BalanceSidebar() {
         <CardContent className="flex flex-col gap-3">
           {!session ? (
             <p className="text-sm text-muted-foreground">
-              Connect Ready to see public and private USDC.
+              Connect Ready or, on Sepolia, an EVM wallet to see balances.
             </p>
           ) : (
             <>
               <BalanceRow
                 label="Wallet"
-                hint="Public Ready account"
+                hint="Public Starknet account"
                 loading={loading}
                 amount={`${formatUsdc(publicUsdc)} USDC`}
                 extra={`${formatStrk(publicStrk)} public STRK for gas · ${formatStrk(balances?.privateStrk ?? BigInt(0))} shielded`}
@@ -185,7 +185,9 @@ export function BalanceSidebar() {
                 extra={
                   balances?.privateError
                     ? balances.privateError
-                    : "Ready holds the viewing key"
+                    : session.kind === "evm"
+                      ? "Viewing key derived in this browser session"
+                      : "Ready holds the viewing key"
                 }
                 action={<UnshieldButton />}
               />
@@ -199,7 +201,7 @@ export function BalanceSidebar() {
           <CardTitle>Activity</CardTitle>
           <CardDescription>
             Donations this browser recorded. Incoming sender is hidden by the
-            pool; destination is this Ready.
+            pool; destination is this Starknet account.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -209,8 +211,8 @@ export function BalanceSidebar() {
             </p>
           ) : items.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No movement yet. Ready keeps the full history; this list is what
-              this browser can see.
+              No movement yet. This list contains only activity recorded by
+              this browser.
             </p>
           ) : (
             <ul className="flex flex-col gap-2">

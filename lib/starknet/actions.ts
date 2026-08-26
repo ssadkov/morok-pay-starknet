@@ -6,6 +6,14 @@ import {
 
 import { STRK_ADDRESS } from "./constants";
 import type { ShieldToken } from "./tokens";
+import type {
+  MorokPrivateAccount,
+  Strk20Action,
+} from "../privacy/evm-strk20-account";
+
+type PrivateWalletAccount =
+  | Pick<WalletAccountV6, "strk20InvokeTransaction">
+  | MorokPrivateAccount;
 
 /** Ready's Wallet API rejects padded felts in invoke calldata. */
 const CALLDATA_FELT_RE =
@@ -68,7 +76,7 @@ export async function transferPublicStrk(
 }
 
 export async function shieldToken(
-  account: WalletAccountV6,
+  account: PrivateWalletAccount,
   token: ShieldToken,
   amount: bigint,
 ) {
@@ -76,7 +84,7 @@ export async function shieldToken(
 }
 
 export async function shieldAsset(
-  account: WalletAccountV6,
+  account: PrivateWalletAccount,
   token: string,
   amount: bigint,
 ) {
@@ -86,11 +94,11 @@ export async function shieldAsset(
       token,
       amount: toFelt(amount),
     },
-  ]);
+  ] as Strk20Action[] & Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0]);
 }
 
 export async function payoutToken(
-  account: WalletAccountV6,
+  account: PrivateWalletAccount,
   token: ShieldToken,
   amount: bigint,
   recipient: string,
@@ -102,11 +110,11 @@ export async function payoutToken(
       amount: toFelt(amount),
       recipient: validateAndParseAddress(recipient),
     },
-  ]);
+  ] as Strk20Action[] & Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0]);
 }
 
 export async function transferPrivate(
-  account: WalletAccountV6,
+  account: PrivateWalletAccount,
   token: ShieldToken,
   amount: bigint,
   recipient: string,
@@ -127,7 +135,10 @@ export async function transferPrivate(
       calldata: invokeCalldata(invoke.calldata ?? []),
     });
   }
-  return account.strk20InvokeTransaction(actions);
+  return account.strk20InvokeTransaction(
+    actions as Strk20Action[] &
+      Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
+  );
 }
 
 /** Park private USDC in the escrow. The pool withdraws to the helper first. */

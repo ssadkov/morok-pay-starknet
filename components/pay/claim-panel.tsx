@@ -70,7 +70,12 @@ export function ClaimPanel() {
   }, [request, network, starknet.escrow]);
 
   async function handleClaim() {
-    if (!session || !request || !starknet.escrow) return;
+    if (
+      !session ||
+      session.kind !== "ready" ||
+      !request ||
+      !starknet.escrow
+    ) return;
     setError(null);
     setClaiming(true);
     try {

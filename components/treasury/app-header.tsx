@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { WalletIcon } from "lucide-react";
+import { BlocksIcon, WalletIcon } from "lucide-react";
 
 import { MorokMark } from "@/components/brand/morok-mark";
 import { useNetwork } from "@/components/network-provider";
@@ -22,8 +22,15 @@ const NAV = [
 
 export function AppHeader() {
   const pathname = usePathname();
-  const { session, wallets, connecting, connectWallet, disconnect } =
-    useTreasury();
+  const {
+    session,
+    wallets,
+    connecting,
+    evmConnecting,
+    connectWallet,
+    connectEvm,
+    disconnect,
+  } = useTreasury();
   const { network, setNetwork } = useNetwork();
   const wallet = wallets[0];
 
@@ -86,26 +93,49 @@ export function AppHeader() {
             className="min-h-10 max-w-44 truncate"
             onClick={disconnect}
           >
-            {shortenAddress(session.address)}
+            {session.kind === "evm" ? "EVM · " : ""}
+            {shortenAddress(
+              session.kind === "evm" ? session.evmAddress : session.address,
+            )}
           </Button>
         ) : (
-          <Button
-            type="button"
-            size="lg"
-            className="min-h-10 px-3 text-sm sm:px-5 sm:text-base"
-            disabled={!wallet || connecting}
-            aria-busy={connecting}
-            onClick={() => {
-              if (wallet) void connectWallet(wallet);
-            }}
-          >
-            {connecting ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <WalletIcon data-icon="inline-start" />
-            )}
-            {connecting ? "Connecting" : "Connect Ready"}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="lg"
+              className="min-h-10 px-3 text-sm sm:px-4"
+              disabled={!wallet || connecting || evmConnecting}
+              aria-busy={connecting}
+              onClick={() => {
+                if (wallet) void connectWallet(wallet);
+              }}
+            >
+              {connecting ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <WalletIcon data-icon="inline-start" />
+              )}
+              {connecting ? "Connecting" : "Connect Ready"}
+            </Button>
+            {network === "sepolia" ? (
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                className="min-h-10 px-3 text-sm sm:px-4"
+                disabled={connecting || evmConnecting}
+                aria-busy={evmConnecting}
+                onClick={() => void connectEvm()}
+              >
+                {evmConnecting ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <BlocksIcon data-icon="inline-start" />
+                )}
+                {evmConnecting ? "Checking" : "Connect EVM wallet"}
+              </Button>
+            ) : null}
+          </div>
         )}
       </div>
       <nav
