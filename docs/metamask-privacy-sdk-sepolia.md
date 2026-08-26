@@ -244,3 +244,45 @@ Sepolia required.
 Do not read this as permission. The endpoint being open is not the same as the
 STRK20 team intending it for sprint traffic; ask before putting user volume
 through it.
+
+### Confirmed on-chain
+
+The proof was submitted and the pool accepted it.
+
+| | |
+| --- | --- |
+| Transaction | `0x2b82b0c6bb056cfa6af1036a1a178b9de84f6f91567925456e87b5d84e1096d` |
+| Result | `SUCCEEDED`, `ACCEPTED_ON_L2`, block `13887364` |
+| Account | `0x3b0f997f8ef8e1532406037be4d9c57d0fbc870a5af518fe0abdb92a6458bba`, OpenZeppelin Account v1.0.0 |
+| Signature | SNIP-12 `CallSet`, stark key, no custom account class |
+| Pool fee | `6 STRK` |
+| Actual gas | `2.682059588286245 STRK` |
+| Proof | 314,692 felts, nine proof facts, `PROOF1`, returned in 3.9s |
+| `get_public_key` after | `0x1e5d9659076e794dc6163289e0a4a6f3c5027b94b46bd14adf81b06cb7fc9b5` |
+
+An ordinary Starknet account is therefore a registered STRK20 participant on
+mainnet, reached through the Privacy SDK and the public proving service, with
+no Ready and no bespoke account contract. Total cost was 8.68 STRK.
+
+The viewing key came from `passphraseViewingKeyProvider`. The pool stores the
+derived public key permanently, so the passphrase cannot be rotated after
+registration and cannot be recovered if lost. That is acceptable for a payer
+who transacts and leaves; it is a custody hazard for a creator holding a
+shielded balance, and is the reason Ready stays the recommended route for the
+receiving side.
+
+### What is still missing for MetaMask
+
+Only deployment. `AccountFactory` is absent from mainnet and neither the
+`Primer` class nor the STRK20-compatible `StarknetEth712Account` class is
+declared there. The account address derives from the EVM address as salt plus
+the fixed `Primer` class hash, so the same compiled `Primer` must be declared
+or every derived address changes.
+
+A browser Starknet wallet signing the same `CallSet` is untested. The signer
+builds the digest with direct `poseidonHashMany` rather than
+`typedData.getMessageHash`, because the SNIP-12 domain `version` is the numeric
+felt `1` and typed-data encoding would treat the declared `shortstring` as
+ASCII. A wallet that computes the hash from typed data on its own side may
+therefore produce a different digest. Do not claim Argent or Braavos support
+before one of them has signed a `CallSet` the pool accepted.
