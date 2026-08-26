@@ -34,8 +34,18 @@ scoped Sepolia beta and is not presented as mainnet capability.
 | Donation QR, private pay, activity | Ready | Ready |
 | Private balances and top-up | Ready | Ready |
 | In-app USDC unshield | Ready | Ready |
-| EVM wallet entry (MetaMask, no Ready) | not deployed | beta |
-| Shield / unshield from an EVM-owned account | not deployed | `/privacy-sdk-lab` |
+| EVM wallet entry (MetaMask, no Ready) | scripted only (see below) | beta, in the app |
+| Shield / unshield from an EVM-owned account | not exposed | `/privacy-sdk-lab` |
+
+The MetaMask account class and factory are declared and deployed on mainnet,
+and one EVM-derived account has registered in the live mainnet pool through a
+self-signed transaction - no Ready. That was driven by
+`scripts/mainnet-eth712-probe.mjs`, not the browser app: `Connect EVM wallet`
+in Donate and My QR still only targets Sepolia, because
+`lib/privacy/evm-strk20-account.ts` hard-codes the Sepolia pool, factory,
+prover, and discovery services. See
+[docs/metamask-privacy-sdk-sepolia.md](docs/metamask-privacy-sdk-sepolia.md)
+for every transaction hash.
 
 `strk20.json` lists three succeeded mainnet transactions against the live STRK20
 pool. This project answers [RFP-12 — private subscriptions and creator

@@ -286,3 +286,51 @@ felt `1` and typed-data encoding would treat the declared `shortstring` as
 ASCII. A wallet that computes the hash from typed data on its own side may
 therefore produce a different digest. Do not claim Argent or Braavos support
 before one of them has signed a `CallSet` the pool accepted.
+
+### The MetaMask path itself, confirmed on mainnet (2026-08-26)
+
+`scripts/deploy-eth712-factory.mjs` declared the STRK20-compatible `Eth712`
+account class and `AccountFactory` on mainnet by re-declaring the exact bytes
+already live on Sepolia (`scripts/fetch-class.mjs` pulls them over RPC and
+refuses to write anything that doesn't rehash to the class hash asked for -
+account addresses derive from a hard-coded `Primer` class hash, so a rebuild
+that shifted it by one compiler version would move every address). `Primer`
+itself needed no work: StarkWare had already declared it on mainnet.
+
+| | |
+| --- | --- |
+| `Eth712` account class declare | `0x3b29d8a2cd0b536bcc067ed65adb823d708baf63508865fb1d0432f1da197d4`, `33.85 STRK` |
+| `AccountFactory` class declare | `0x5cbc0979186dff8b983a37593695cfa65bebb6a9c28bdc05926c832d829a88`, `37.64 STRK` |
+| `AccountFactory` instance deploy | `0x7920a73972e256d09a116c44440ff4d86b6abd60859eba7fd2f93467b3ae78e`, `0.71 STRK` |
+| Factory address | `0x7ead3a89ae0a67ed6ba18caa1b9643437ff9432bab66ab0b2a27e46e0c627aa` |
+
+`scripts/mainnet-eth712-probe.mjs` then drove the path StarkWare's stack exists
+for: a local EVM key (viem's account signer, cryptographically identical to
+what MetaMask itself produces for `eth_signTypedData_v4` and `personal_sign` -
+the account's on-chain validator cannot tell them apart) signed the factory's
+ownership message, deployed its deterministic Starknet account through that
+factory, signed the pool's `CallSet` authorization as EIP-712 typed data, and
+submitted its own `InvokeV3` - the account validating its own transaction, no
+Ready involved at any step.
+
+| | |
+| --- | --- |
+| EVM address | `0x7f5C9666A0Ba912Dd5E5bdd8154271e45B955da9` |
+| Derived Starknet account | `0x36b11089ce5a8ffef7adabdd67f32951fa36499b013553a781a1ef6c311ff94` |
+| Deploy (funded + factory call, one relayer tx) | `0x4f550991adf6b5da36252e2fb097c871d74c146187862e171dee7b7dd16c02d` |
+| Pool registration (self-signed InvokeV3) | `0x78abd030f99f94b757aee36dd32cb77bc864ee6fc116503259a02e47b472617` |
+| `get_public_key` after | `0x5ebb2a0637e63fe308fbc6001caf716f065366b9dccab57cfbae8704a40e71` |
+
+One timing note for anyone repeating this: the first registration attempt
+failed with `Requested contract address ... is not deployed`, because the
+prover builds its proof against a block ~10 behind head, and that block still
+predated the deploy transaction. Waiting for more blocks to pass and retrying
+succeeded - this is the same proving-block-depth constraint noted above for
+Sepolia, just met from the other direction.
+
+**This was driven by scripts, not the browser app.** `lib/privacy/eip712-test.ts`
+and `lib/privacy/evm-strk20-account.ts` still hard-code the Sepolia pool,
+factory, prover, and discovery URLs, so Donate and My QR's `Connect EVM wallet`
+button still only targets Sepolia. Pointing the shared UI at mainnet is the
+remaining step, not a technical unknown - every service and contract it needs
+now exists on mainnet and has processed a real transaction.
