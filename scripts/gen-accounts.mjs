@@ -2,8 +2,15 @@
  * Generates Starknet accounts for contract work.
  *
  * These are plain OpenZeppelin accounts. They can deploy contracts, hold public
- * USDC, and receive payouts — they cannot shield or transfer privately, because
- * STRK20 proving is IP-whitelisted to Ready and Xverse.
+ * USDC, and receive payouts.
+ *
+ * They can also transact privately, which this comment used to deny. The pool
+ * accepts an ordinary SRC6 account through its `is_valid_signature` fallback
+ * over a SNIP-12 CallSet, and the mainnet proving service answers without a
+ * credential — confirmed 2026-08-26 by scripts/mainnet-prover-probe.mjs. The
+ * earlier claim that proving is IP-whitelisted to Ready and Xverse was wrong,
+ * and it is why the Eth712 account class looked mandatory for longer than it
+ * was.
  *
  * Keys land in .secrets/<network>-accounts.json, which is gitignored. On
  * mainnet these hold real funds, so treat that file as a wallet.
