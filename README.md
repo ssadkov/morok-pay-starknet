@@ -32,8 +32,10 @@ STRK20 hides the transfer amount and sender-to-recipient relationship on-chain. 
 - MorokPay's fee is planned for the in-app unshield step, not for each private donation; see [docs/fees.md](docs/fees.md).
 - The isolated MetaMask + Privacy SDK lab has confirmed deterministic Starknet
   account control, STRK20 registration, STRK and USDC shield/unshield, and a
-  private USDC transfer on Sepolia. Faucet funding and server-relayed factory
-  deployment are implemented but still require a fresh-account browser test. See
+  private USDC transfer on Sepolia. A fresh MetaMask account also completed
+  faucet funding and server-relayed factory deployment. The home page now links
+  to a Sepolia beta that atomically sponsors the generated account to 20 STRK
+  and deploys it with a server-only relayer. See
   [docs/metamask-privacy-sdk-sepolia.md](docs/metamask-privacy-sdk-sepolia.md).
 - DonationPot is a design-only follow-up; see [docs/donation-pot.md](docs/donation-pot.md).
 - The required three-minute submission video is still missing.

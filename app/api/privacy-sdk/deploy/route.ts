@@ -8,14 +8,16 @@ import {
 import {
   parseWholeStrk,
   readPublicStrkBalance,
+  sponsoredTopUpAmount,
   verifyOwnershipRequest,
 } from "@/lib/privacy/onboarding-server";
+import { publicStrkTransferCall } from "@/lib/starknet/actions";
 import { starknetOf } from "@/lib/starknet/constants";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const DEFAULT_MINIMUM_BALANCE = 10n * 10n ** 18n;
+const DEFAULT_SPONSORED_BALANCE = 20n * 10n ** 18n;
 
 function provider() {
   return new RpcProvider({
@@ -50,21 +52,11 @@ export async function POST(request: Request) {
     }
 
     const balance = await readPublicStrkBalance(rpc, inspection.starknetAddress);
-    const minimum = parseWholeStrk(
-      process.env.MOROKPAY_SEPOLIA_MIN_DEPLOY_STRK,
-      DEFAULT_MINIMUM_BALANCE,
+    const sponsoredBalance = parseWholeStrk(
+      process.env.MOROKPAY_SEPOLIA_SPONSORED_STRK,
+      DEFAULT_SPONSORED_BALANCE,
     );
-    if (balance < minimum) {
-      return Response.json(
-        {
-          error: "Fund the deterministic account before deployment",
-          starknetAddress: inspection.starknetAddress,
-          balance: balance.toString(),
-          minimum: minimum.toString(),
-        },
-        { status: 409 },
-      );
-    }
+    const sponsoredAmount = sponsoredTopUpAmount(balance, sponsoredBalance);
 
     const relayerAddress = process.env.MOROKPAY_SEPOLIA_RELAYER_ADDRESS?.trim();
     const relayerPrivateKey =
@@ -81,17 +73,28 @@ export async function POST(request: Request) {
       address: validateAndParseAddress(relayerAddress),
       signer: relayerPrivateKey,
     });
-    const submission = await relayer.execute(
-      deployEth712AccountCall({
-        factoryAddress: inspection.factoryAddress,
-        evmAddress: ownership.evmAddress,
-        signature: ownership.signature,
-      }),
-    );
+    const deploymentCall = deployEth712AccountCall({
+      factoryAddress: inspection.factoryAddress,
+      evmAddress: ownership.evmAddress,
+      signature: ownership.signature,
+    });
+    const calls =
+      sponsoredAmount > 0n
+        ? [
+            publicStrkTransferCall(
+              inspection.starknetAddress,
+              sponsoredAmount,
+            ),
+            deploymentCall,
+          ]
+        : [deploymentCall];
+    const submission = await relayer.execute(calls);
     return Response.json({
       status: "pending",
       starknetAddress: inspection.starknetAddress,
       relayerAddress: relayer.address,
+      sponsoredAmount: sponsoredAmount.toString(),
+      sponsoredBalance: sponsoredBalance.toString(),
       transactionHash: submission.transaction_hash,
     });
   } catch (error) {

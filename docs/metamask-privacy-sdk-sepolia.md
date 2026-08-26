@@ -1,9 +1,10 @@
 # MetaMask + Privacy SDK Sepolia test
 
 Status: public account control, STRK20 registration, the 1 STRK shield/unshield
-cycle, a 1 USDC shield/unshield cycle, and a USDC private-transfer transaction
-are confirmed on Sepolia as of 2026-08-25. Recipient-side private balance
-discovery is the next test stage.
+cycle, a 1 USDC shield/unshield cycle, a USDC private-transfer transaction, and
+a fresh-account MetaMask onboarding through a dedicated server relayer are
+confirmed on Sepolia as of 2026-08-26. Recipient-side private balance discovery
+and the atomic 20 STRK sponsored variant are the next test stages.
 
 ## What this path is
 
@@ -29,6 +30,37 @@ implements `wallet_strk20InvokeTransaction` or any STRK20 Wallet API method.
 
 The Ready address above paid for the public factory deployment only. It is not
 the generated account, its owner, signing key, or private-transfer sender.
+
+## Fresh MetaMask onboarding result
+
+- EVM owner: `0x76af1622c80a7302c80b1429a4c1575945a56e9f`.
+- Deterministic Starknet account:
+  `0x079c035509d371a29aedae6f0834e590a2e200b2bee44fcbe0c3ebdbc6c96ce1`.
+- Dedicated Sepolia relayer:
+  `0x04d6417a0493814a0bb964d704cf544b722d3f44a99ba3d936e8b8577af42030`.
+- Relayer deployment transaction:
+  `0x04cf58950f3ac32cd3528b3de9d4cf90068281eef963259888bbe5f5225743ec`;
+  `SUCCEEDED`, with `0.071747129727181878 STRK` gas.
+- Public faucet funding transaction:
+  `0x0348b659fe49a55dd8161e8aef0f6802849bf18330e9ee508cd6a07e003f6695`;
+  exactly `5 STRK` reached the undeployed deterministic address.
+- Factory deployment transaction:
+  `0x048fc2df2eed002d807c61f038eac0418e1adf203a6d569a9d17c8ba7d869b93`;
+  `SUCCEEDED`, block `14041639`, with
+  `0.693526254887962828 STRK` gas paid by the dedicated relayer.
+- Resulting account class:
+  `0x039ffe6e5bffb04de53189d1f4018f113d7ddcbc8ca5874f7a4986b4d1a77f55`.
+
+The generated account retained all 5 faucet STRK after deployment. The factory
+event stored the EVM owner above. The relayer is only the public transaction
+sender and gas payer; it does not hold the account signing or viewing key.
+
+The faucet UI later displayed a misleading failure because a repeated challenge
+returned the expected 24-hour address cooldown even though the first transfer
+had succeeded. The current home-page beta avoids that dependency: one relayer
+Invoke transfers only the amount required to bring an undeployed account to 20
+STRK and then calls the factory atomically. This new variant must be confirmed
+with another fresh EVM account after deployment.
 
 ## Confirmed transactions
 
@@ -114,9 +146,9 @@ construct the Starknet and STRK20 operations.
 - Only transfers performed inside the STRK20 pool are intended to hide the
   amount and sender-to-recipient relationship. Registration itself is public.
 
-## Faucet-funded onboarding
+## Sponsored onboarding
 
-The lab now contains a no-Ready onboarding path for a fresh EVM account:
+The first no-Ready onboarding test used the public faucet:
 
 1. MetaMask signs the factory's fixed ownership message.
 2. A server route verifies that signature, resolves the deterministic Starknet
@@ -129,17 +161,17 @@ The lab now contains a no-Ready onboarding path for a fresh EVM account:
    submits the public factory call. It refuses deployment until the generated
    address holds the configured minimum public STRK balance.
 
-The relayer key is never exposed to the browser and must belong to a dedicated,
-balance-limited Sepolia account rather than the 3,000 STRK test treasury. The
-default deployment threshold is 10 STRK. Factory deployment previously cost
-only `0.037221845127255808 STRK`; all later upgrade, registration, pool fees,
-and transactions remain paid by the generated account. Faucet PoW, quota, and
-cooldown are onboarding gates, not authentication or mainnet funding.
+The current implementation replaces those separate funding and deployment
+requests with one atomic relayer Invoke. It tops an undeployed account up to 20
+STRK, then submits the factory call. A factory revert also reverts the transfer;
+after deployment the route returns `already_deployed` instead of refilling the
+account. All later upgrade, registration, pool fees, and transactions remain
+paid by the generated account.
 
-This implementation is not yet a confirmed onboarding result. A fresh MetaMask
-EVM account, configured server relayer, faucet amount, faucet transaction hash,
-deployment hash, cooldown response, and resulting account class must be recorded
-before presenting the path as complete.
+The relayer key is never exposed to the browser and belongs to the dedicated,
+balance-limited Sepolia account above rather than the test treasury. For this
+Sepolia promotion the same key funds and deploys. This is not a mainnet funding
+design.
 
 ## Next bounded test
 
@@ -151,7 +183,7 @@ before presenting the path as complete.
 3. If the recipient is a Ready account, repeat with a separately controlled
    MetaMask-derived account so signing and viewing-key custody are proven on
    both sides.
-4. Configure the dedicated Sepolia relayer and run the new faucet-funded path
-   with a fresh MetaMask account. Record both public hashes and actual balances.
+4. Run the atomic 20 STRK sponsored path with a second fresh MetaMask account.
+   Record its single public hash, funded balance, account class, and actual gas.
 5. Keep the treasury key out of the app and Vercel; only the limited relayer key
    may be stored as a server-only environment variable.

@@ -4,6 +4,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { OWNERSHIP_MESSAGE } from "./eth712-account";
 import {
   parseWholeStrk,
+  sponsoredTopUpAmount,
   verifyOwnershipRequest,
 } from "./onboarding-server";
 
@@ -29,5 +30,13 @@ describe("MetaMask onboarding server validation", () => {
     expect(parseWholeStrk("10", 0n)).toBe(10n * 10n ** 18n);
     expect(() => parseWholeStrk("1.5", 0n)).toThrow(/configuration/i);
     expect(() => parseWholeStrk("1001", 0n)).toThrow(/configuration/i);
+  });
+
+  it("tops up to the configured balance without overfunding", () => {
+    const strk = 10n ** 18n;
+    expect(sponsoredTopUpAmount(0n, 20n * strk)).toBe(20n * strk);
+    expect(sponsoredTopUpAmount(5n * strk, 20n * strk)).toBe(15n * strk);
+    expect(sponsoredTopUpAmount(20n * strk, 20n * strk)).toBe(0n);
+    expect(sponsoredTopUpAmount(25n * strk, 20n * strk)).toBe(0n);
   });
 });

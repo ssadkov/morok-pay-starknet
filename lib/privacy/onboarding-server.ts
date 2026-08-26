@@ -78,3 +78,15 @@ export function parseWholeStrk(
   }
   return BigInt(value) * 10n ** 18n;
 }
+
+export function sponsoredTopUpAmount(
+  currentBalance: bigint,
+  targetBalance: bigint,
+) {
+  if (currentBalance < 0n || targetBalance <= 0n) {
+    throw new Error("Invalid sponsored STRK balance");
+  }
+  return currentBalance >= targetBalance
+    ? 0n
+    : targetBalance - currentBalance;
+}

@@ -2,10 +2,16 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRightIcon, HeartIcon, QrCodeIcon } from "lucide-react";
+import {
+  ArrowUpRightIcon,
+  HeartIcon,
+  QrCodeIcon,
+  WalletIcon,
+} from "lucide-react";
 
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { useNetwork } from "@/components/network-provider";
+import { cn } from "@/lib/utils";
 
 export function HomeDoors() {
   const { network } = useNetwork();
@@ -43,6 +49,14 @@ export function HomeDoors() {
           title="My QR"
           body="Create one durable donation QR. Share it anywhere. Watch incoming USDC in Activity."
         />
+        <Door
+          href="/privacy-sdk-lab"
+          icon={<WalletIcon />}
+          title="Connect EVM wallet"
+          body="Use MetaMask to create a deterministic Starknet account. MorokPay sponsors 20 STRK on Sepolia for the beta."
+          eyebrow="Sepolia beta"
+          wide
+        />
       </div>
       <p className="text-sm text-muted-foreground">
         Need private USDC first?{" "}
@@ -62,19 +76,33 @@ function Door({
   icon,
   title,
   body,
+  eyebrow,
+  wide = false,
 }: {
   href: string;
   icon: ReactNode;
   title: string;
   body: string;
+  eyebrow?: string;
+  wide?: boolean;
 }) {
   return (
     <Link
       href={href}
-      className="group flex min-h-56 flex-col gap-4 rounded-2xl border border-border/80 bg-card p-6 shadow-[0_18px_50px_-36px_color-mix(in_oklch,var(--foreground)_45%,transparent)] transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-1 hover:border-primary/45 hover:shadow-[0_26px_60px_-34px_color-mix(in_oklch,var(--primary)_55%,transparent)] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:p-7"
+      className={cn(
+        "group flex min-h-56 flex-col gap-4 rounded-2xl border border-border/80 bg-card p-6 shadow-[0_18px_50px_-36px_color-mix(in_oklch,var(--foreground)_45%,transparent)] transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-1 hover:border-primary/45 hover:shadow-[0_26px_60px_-34px_color-mix(in_oklch,var(--primary)_55%,transparent)] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:p-7",
+        wide && "sm:col-span-2 sm:min-h-48",
+      )}
     >
-      <span className="flex size-12 items-center justify-center rounded-xl bg-accent text-primary ring-1 ring-primary/15 [&_svg]:size-5">
-        {icon}
+      <span className="flex items-start justify-between gap-4">
+        <span className="flex size-12 items-center justify-center rounded-xl bg-accent text-primary ring-1 ring-primary/15 [&_svg]:size-5">
+          {icon}
+        </span>
+        {eyebrow ? (
+          <span className="rounded-full border border-primary/25 bg-accent px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
+            {eyebrow}
+          </span>
+        ) : null}
       </span>
       <span className="flex items-center justify-between gap-4 text-xl font-semibold tracking-tight">
         {title}

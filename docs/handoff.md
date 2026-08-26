@@ -12,9 +12,10 @@ MorokPay is a private donation product on Starknet for the STRK20 Private Sprint
    the 1 USDC shield/unshield cycle, and a confirmed private USDC transaction to
    recipient-side discovery/unshield. The measured results are recorded in
    [metamask-privacy-sdk-sepolia.md](metamask-privacy-sdk-sepolia.md).
-6. Test the implemented faucet-funded MetaMask onboarding with a fresh EVM
-   account and a dedicated, balance-limited Sepolia relayer. Do not place the
-   test treasury key in Vercel.
+6. Deploy and test the atomic 20 STRK sponsored MetaMask onboarding with a
+   second fresh EVM account. The earlier faucet-funded deployment is confirmed;
+   the new code replaces its two-step funding/deployment UI with one relayed
+   transaction. Do not place the test treasury key in Vercel.
 7. Return to the unshield-fee design after that test; do not charge a MorokPay fee on every private donation. See [fees.md](fees.md).
 8. Build DonationPot only if the core submission is complete.
 
@@ -24,6 +25,8 @@ MorokPay is a private donation product on Starknet for the STRK20 Private Sprint
 - `/pay` — open or paste a donation request, choose an amount, and pay privately.
 - `/sell` — activate STRK20 and create one reusable open-amount Donation QR.
 - `/treasury` — Base CCTP top-up, shield, private balances, and payout.
+- `/privacy-sdk-lab` — Sepolia-only MetaMask beta with sponsored deterministic
+  account creation and direct Privacy SDK operations.
 - `/claim` — compatibility route for previously issued `MorokEscrow` links; it is not linked from the current product UI.
 
 Donation requests and app activity are stored in the current browser. Old invoice, sale, and Drop links remain parseable so existing URLs can still open, but those flows are not presented as product choices.
