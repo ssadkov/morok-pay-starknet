@@ -352,9 +352,32 @@ predated the deploy transaction. Waiting for more blocks to pass and retrying
 succeeded - this is the same proving-block-depth constraint noted above for
 Sepolia, just met from the other direction.
 
-**This was driven by scripts, not the browser app.** `lib/privacy/eip712-test.ts`
-and `lib/privacy/evm-strk20-account.ts` still hard-code the Sepolia pool,
-factory, prover, and discovery URLs, so Donate and My QR's `Connect EVM wallet`
-button still only targets Sepolia. Pointing the shared UI at mainnet is the
-remaining step, not a technical unknown - every service and contract it needs
-now exists on mainnet and has processed a real transaction.
+### Confirmed through the browser, with a real MetaMask (2026-08-26)
+
+Everything above was driven by scripts with a local EVM key. The same path then
+ran end to end through the deployed app at `/privacy-sdk-lab`, in a browser,
+with the MetaMask extension producing every signature:
+
+| | |
+| --- | --- |
+| EVM owner | `0x5371486EdF41539725aC5E35FfeB24725eD3ABF9` |
+| Derived Starknet account | `0x06c90d9b384e76a72435b87634153999b8690b3305e18a43613ab368fea887a9` |
+| Deploy through the factory | `0x6ab36fb2b64e42dfb584594876bae028958be69b2d4eb81289d24acb336894`, block `13897879` |
+| Pool registration | `0x21b12f4dbebf9271d5142f44b75439c0e9944608416e47e55b511d04d7f22d0`, `SUCCEEDED`, block `13898265`, `4.42 STRK` gas |
+| `get_public_key` after | `0x40e1abf7f60f7a7a7c011e39d3db97e3675980337b86d023c4a715bb708a99b` |
+
+The factory's `AccountDeployed` event on the deploy transaction carries the EVM
+owner and the account address, and `get_expected_account_address` for that EVM
+address returns the same account - the derivation is verifiable from outside
+the app.
+
+This is what the scripted run could not prove: that MetaMask's own
+`eth_signTypedData_v4` implementation, not just viem's local signer, produces
+signatures the deployed account validates. The remaining gap is the reverse of
+what it was - the lab is confirmed on mainnet, while `Connect EVM wallet` on
+Donate and My QR still routes through `lib/privacy/evm-strk20-account.ts`,
+which has not been repointed yet.
+
+For what another application would need in order to resolve the same account
+and read the same private balance, see
+[evm-account-portability.md](evm-account-portability.md).

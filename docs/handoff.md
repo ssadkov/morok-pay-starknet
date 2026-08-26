@@ -2,19 +2,47 @@
 
 MorokPay is a private donation product on Starknet for the STRK20 Private Sprint. The current sprint cut is not a generic wallet or merchant checkout.
 
-## Current focus (2026-08-26)
+## Done (2026-08-26)
 
-1. Donation UI and onboarding are shipped on `master`.
-2. Dry-run the First 10 campaign with registered Ready accounts and record the required three-minute submission video.
-3. Replace the public unauthenticated mainnet RPC before campaign traffic.
-4. Add a downloadable branded QR image with the donation label and MorokPay logo while preserving a reliably scannable payment link.
-5. Dry-run the new Sepolia `Connect EVM wallet` path on Donate and My QR. It
-   gates undeployed, legacy-class, and unregistered accounts into the EVM lab;
-   a ready account uses direct Privacy SDK discovery and private USDC transfer.
-6. Keep EVM shield/unshield in the explicit-review lab for this test cut. The
-   shared Donate UI supports the confirmed private-transfer path only.
-7. Return to the unshield-fee design after that test; do not charge a MorokPay fee on every private donation. See [fees.md](fees.md).
-8. Build DonationPot only if the core submission is complete.
+The MetaMask entry path is live on mainnet, end to end, confirmed from the
+browser rather than from a script:
+
+- Mainnet proving and discovery services are reachable and unauthenticated -
+  the assumption that they were whitelisted to Ready and Xverse was wrong, and
+  a plain SRC6 account can register through the pool's SNIP-12 fallback.
+- `StarknetEth712Account` and `AccountFactory` are declared and deployed on
+  mainnet; `Primer` was already there. Total cost of the whole stack: ~$4.70.
+- A real MetaMask account deployed and registered in the live pool through the
+  deployed app. `strk20.json` carries six verified pool transactions.
+- `/privacy-sdk-lab` is network-aware on both chains. Mainnet deliberately
+  requires a self-funded account; only Sepolia sponsors.
+
+## Current focus
+
+1. **Record the three-minute submission video.** This is the only hard
+   requirement still missing and it is binary - 13 of 151 projects have one.
+   Everything below is worth less than this.
+2. Dry-run the First 10 campaign with registered Ready accounts.
+3. Repoint `lib/privacy/evm-strk20-account.ts` at mainnet so `Connect EVM
+   wallet` works on Donate and My QR, not only in the lab. Wiring, not an
+   unknown - every service it needs is confirmed.
+4. Configure `MOROKPAY_MAINNET_RELAYER_PRIVATE_KEY` in the deployment
+   environment; the relayer account is deployed and funded but the browser
+   deploy route cannot sign without it.
+5. Replace the public unauthenticated mainnet RPC before campaign traffic.
+6. Publish [evm-account-portability.md](evm-account-portability.md) to the
+   sprint channel. The factory is permissionless, so another team can adopt the
+   scheme without asking; the sprint's judging note says work other teams
+   depend on counts in a project's favour.
+7. Add a downloadable branded QR image with the donation label and MorokPay logo
+   while preserving a reliably scannable payment link.
+8. Return to the unshield-fee design after that; do not charge a MorokPay fee on
+   every private donation. See [fees.md](fees.md).
+9. Rename the viewing-key EIP-712 domain from `MorokPay Privacy Access` to a
+   neutral versioned string - **post-sprint**. It is a breaking change that
+   strands already-registered accounts, and only test accounts exist today.
+10. Build DonationPot only if the core submission is complete. Lantern shipped
+    the same idea with a video and five mainnet transactions.
 
 ## Product flow
 
@@ -22,9 +50,10 @@ MorokPay is a private donation product on Starknet for the STRK20 Private Sprint
 - `/pay` — open or paste a donation request, choose an amount, and pay privately.
 - `/sell` — activate STRK20 and create one reusable open-amount Donation QR.
 - `/treasury` — Base CCTP top-up, shield, private balances, and payout.
-- `/privacy-sdk-lab` — Sepolia EVM onboarding, shield/unshield, and diagnostic
-  operations. Donate and My QR now connect an already-onboarded EVM account
-  from their shared header and onboarding steps.
+- `/privacy-sdk-lab` — EVM onboarding, shield/unshield, and diagnostic
+  operations, network-aware on mainnet and Sepolia. Donate and My QR connect an
+  already-onboarded EVM account from their shared header, but that shared
+  adapter is still Sepolia-only.
 - `/claim` — compatibility route for previously issued `MorokEscrow` links; it is not linked from the current product UI.
 
 Donation requests and app activity are stored in the current browser. Old invoice, sale, and Drop links remain parseable so existing URLs can still open, but those flows are not presented as product choices.
@@ -52,9 +81,17 @@ The deployed `MorokInvoices` event is not settlement proof: an empty-note helper
 ## Submission state
 
 - Ready wallet with pool activity: `0x00e5887fc74a11d10ad5dd2f69d3911fb352d9b811528a9281ca8abac8498423`.
-- `strk20.json` lists three succeeded mainnet pool transactions. Their Starknet sender is the relayer, not the user.
+- `strk20.json` lists six succeeded mainnet pool transactions, all verified to
+  carry a pool event. Three are Ready relayer transactions; three are from the
+  EVM path, two of those signed by the generated account itself.
+- Mainnet EVM stack: factory `0x7ead3a89ae0a67ed6ba18caa1b9643437ff9432bab66ab0b2a27e46e0c627aa`,
+  deploy relayer `0x34d43acc20256972081101fe26be76bf4abbb4a191d7d4630e3fe527183c792`
+  (deployed and funded; its key is not yet in the deployment environment).
 - Live demo: https://morok-pay-starknet.vercel.app
 - Three-minute video: missing and required for scoring.
+- `contracts` in `strk20.json` stays empty on purpose: listing the factory would
+  require every listed transaction to carry an event from it, which none of the
+  pool transactions do.
 - Mainnet `MorokEscrow`: not deployed. Do not create or advertise mainnet claim links.
 - DonationPot: designed, not implemented.
 
