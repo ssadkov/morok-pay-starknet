@@ -7,7 +7,6 @@ import { useAccount, useSignTypedData } from "wagmi";
 import {
   Account,
   cairo,
-  constants,
   RpcError,
   RpcProvider,
   type Call,
@@ -198,7 +197,7 @@ function safeRegistrationPreparationError(caught: unknown) {
     return `Privacy RPC ${caught.code}: ${rpcMessage}`;
   }
   if (/starknet_estimateFee/i.test(message) || message.length > 800) {
-    return "Sepolia could not estimate the proof-backed registration. Raw proof data is hidden.";
+    return "The RPC could not estimate the proof-backed registration. Raw proof data is hidden.";
   }
   return message;
 }
@@ -280,6 +279,7 @@ export function Strk20RegistrationLab({
   const { signTypedDataAsync } = useSignTypedData();
   const { network, starknet } = useNetwork();
   const sdk = privacySdkOf(network);
+  const networkLabel = network === "mainnet" ? "mainnet" : "Sepolia";
   const accountAddress = inspection?.deployed ? inspection.starknetAddress : null;
   const deployedClassMode = inspection?.deployedClassHash
     ? eth712Strk20ClassMode(inspection.deployedClassHash)
@@ -448,7 +448,7 @@ export function Strk20RegistrationLab({
       setUpgrade({
         status: "pending",
         txHash,
-        message: "The public account upgrade was submitted to Sepolia.",
+        message: `The public account upgrade was submitted to ${networkLabel}.`,
       });
       const receipt = await pollTransactionReceipt({
         read: () => provider.getTransactionReceipt(txHash),
@@ -713,7 +713,7 @@ export function Strk20RegistrationLab({
       setRegistration({
         status: "pending",
         txHash,
-        message: "The real proof-backed registration was submitted to Sepolia.",
+        message: `The real proof-backed registration was submitted to ${networkLabel}.`,
       });
 
       const receipt = await pollTransactionReceipt({
@@ -936,7 +936,7 @@ export function Strk20RegistrationLab({
               ) : (
                 <SendIcon data-icon="inline-start" />
               )}
-              {sendingUpgrade ? "Waiting for MetaMask" : "Sign and upgrade on Sepolia"}
+              {sendingUpgrade ? "Waiting for MetaMask" : `Sign and upgrade on ${networkLabel}`}
             </Button>
           </>
         ) : null}
@@ -967,7 +967,7 @@ export function Strk20RegistrationLab({
           onClick={() => void submitRegistration()}
         >
           {sending ? <Spinner data-icon="inline-start" /> : <SendIcon data-icon="inline-start" />}
-          {sending ? "Waiting for MetaMask" : "Sign and register on Sepolia"}
+          {sending ? "Waiting for MetaMask" : `Sign and register on ${networkLabel}`}
         </Button>
       </CardFooter>
     </Card>

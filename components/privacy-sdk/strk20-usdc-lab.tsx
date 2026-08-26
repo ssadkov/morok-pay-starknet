@@ -14,7 +14,6 @@ import { useAccount, useSignTypedData } from "wagmi";
 import {
   Account,
   cairo,
-  constants,
   RpcError,
   RpcProvider,
   validateAndParseAddress,
@@ -188,7 +187,7 @@ function safePreparationError(caught: unknown) {
     return `Privacy RPC ${caught.code}: ${String(caught.baseError.message).slice(0, 600)}`;
   }
   if (/starknet_estimateFee/i.test(message) || message.length > 800) {
-    return "Sepolia could not estimate the proof-backed USDC operation. Raw proof data is hidden.";
+    return "The RPC could not estimate the proof-backed USDC operation. Raw proof data is hidden.";
   }
   return message;
 }
@@ -237,6 +236,7 @@ export function Strk20UsdcLab({
   const { signTypedDataAsync } = useSignTypedData();
   const { network, starknet } = useNetwork();
   const sdk = privacySdkOf(network);
+  const networkLabel = network === "mainnet" ? "mainnet" : "Sepolia";
   const usdcAddress = starknet.usdc;
   const accountAddress = inspection?.deployed ? inspection.starknetAddress : null;
   const compatible = inspection?.deployedClassHash
@@ -628,7 +628,7 @@ export function Strk20UsdcLab({
         status: "pending",
         operation: prepared.operation,
         txHash,
-        message: `${operationLabel(prepared.operation)} USDC was submitted to Sepolia.`,
+        message: `${operationLabel(prepared.operation)} USDC was submitted to ${networkLabel}.`,
       });
       const receipt = await pollTransactionReceipt({
         read: () => provider.getTransactionReceipt(txHash),

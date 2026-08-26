@@ -7,7 +7,6 @@ import { useAccount, useSignTypedData } from "wagmi";
 import {
   Account,
   cairo,
-  constants,
   RpcError,
   RpcProvider,
   type Call,
@@ -247,7 +246,7 @@ function safePreparationError(caught: unknown) {
     return `Privacy RPC ${caught.code}: ${String(caught.baseError.message).slice(0, 600)}`;
   }
   if (/starknet_estimateFee/i.test(message) || message.length > 800) {
-    return "Sepolia could not estimate the proof-backed shield. Raw proof data is hidden.";
+    return "The RPC could not estimate the proof-backed shield. Raw proof data is hidden.";
   }
   return message;
 }
@@ -291,6 +290,7 @@ export function Strk20ShieldLab({
   const { signTypedDataAsync } = useSignTypedData();
   const { network, starknet } = useNetwork();
   const sdk = privacySdkOf(network);
+  const networkLabel = network === "mainnet" ? "mainnet" : "Sepolia";
   const accountAddress = inspection?.deployed ? inspection.starknetAddress : null;
   const compatible = inspection?.deployedClassHash
     ? eth712Strk20ClassMode(inspection.deployedClassHash) === "compatible"
@@ -622,7 +622,7 @@ export function Strk20ShieldLab({
       setShield({
         status: "pending",
         txHash,
-        message: "The 1 STRK shield was submitted to Sepolia.",
+        message: `The 1 STRK shield was submitted to ${networkLabel}.`,
       });
       const receipt = await pollTransactionReceipt({
         read: () => provider.getTransactionReceipt(txHash),
@@ -860,7 +860,7 @@ export function Strk20ShieldLab({
       setUnshield({
         status: "pending",
         txHash,
-        message: "The 1 STRK unshield was submitted to Sepolia.",
+        message: `The 1 STRK unshield was submitted to ${networkLabel}.`,
       });
       const receipt = await pollTransactionReceipt({
         read: () => provider.getTransactionReceipt(txHash),
@@ -1044,7 +1044,7 @@ export function Strk20ShieldLab({
           onClick={() => void submitShield()}
         >
           {sending ? <Spinner data-icon="inline-start" /> : <SendIcon data-icon="inline-start" />}
-          {sending ? "Waiting for MetaMask" : "Sign and shield on Sepolia"}
+          {sending ? "Waiting for MetaMask" : `Sign and shield on ${networkLabel}`}
         </Button>
       </CardFooter>
     </Card>
@@ -1178,7 +1178,7 @@ export function Strk20ShieldLab({
           ) : (
             <SendIcon data-icon="inline-start" />
           )}
-          {sendingUnshield ? "Waiting for MetaMask" : "Sign and unshield on Sepolia"}
+          {sendingUnshield ? "Waiting for MetaMask" : `Sign and unshield on ${networkLabel}`}
         </Button>
       </CardFooter>
     </Card>
