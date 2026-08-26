@@ -209,3 +209,38 @@ the self-upgrade. Registration could confirm on-chain while Shield and USDC
 cards remained hidden until a page refresh. Upgrade and registration
 confirmation now refresh the parent inspection immediately; transaction state
 and class state no longer diverge in the UI.
+
+## Mainnet status (2026-08-26)
+
+The mainnet proving service and discovery service are live, unauthenticated,
+and answer the same JSON-RPC as their Sepolia counterparts. Confirmed with
+`scripts/mainnet-prover-probe.mjs`, which asks the question without deploying
+anything and without spending anything:
+
+- `discovery-service.alpha-mainnet.sw-dev.io/health` returns the mainnet chain
+  head with a single-digit second lag.
+- `transaction-prover.alpha-mainnet.sw-dev.io` accepts
+  `starknet_proveTransaction` with no credential.
+- A registration proof for the ordinary OpenStarknet account
+  `0x3b0f997f8ef8e1532406037be4d9c57d0fbc870a5af518fe0abdb92a6458bba` returned
+  in 4.1 seconds: 309,312 felts, nine proof facts, proof version `PROOF1`.
+- The mainnet pool charges `6 STRK` per operation, read from `get_fee_amount`.
+
+That proof was requested through `Snip12CallSetSigner`, not through the Eth712
+path. The pool verifies an OR-fallback,
+`is_valid_signature(compute_call_set_hash(account, calls), sig)`, so a plain
+SRC6 account signing a SNIP-12 `CallSet` is a first-class depositor and needs
+no custom account class. This is a second non-Ready route into STRK20, and it
+works on mainnet today.
+
+Proving is therefore **not** what blocks MetaMask on mainnet. What blocks it is
+deployment: `AccountFactory` is absent from mainnet and neither the `Primer`
+class nor the STRK20-compatible `StarknetEth712Account` class is declared
+there. Both are open source in `starkware-libs/starkware-starknet-utils`
+(`packages/accounts`). Configuring the mainnet factory to point straight at the
+STRK20-compatible class also removes the separate self-upgrade transaction that
+Sepolia required.
+
+Do not read this as permission. The endpoint being open is not the same as the
+STRK20 team intending it for sprint traffic; ask before putting user volume
+through it.
