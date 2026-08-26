@@ -492,9 +492,18 @@ export function Strk20ShieldLab({
         discoverPrivateBalance(accountAddress, address, chainId, key),
       ]);
       const publicSpend = SHIELD_AMOUNT + poolFee;
+      /* Two different failures used to share one message that blamed timing.
+         Being short of STRK is not something waiting fixes, so say which it
+         is: the proving-block wait only applies when the money is already
+         there and the older block cannot see it yet. */
+      if (publicBalance < publicSpend) {
+        throw new Error(
+          `This account holds ${formatStrk(publicBalance)} STRK. Shielding ${formatStrk(SHIELD_AMOUNT)} needs ${formatStrk(publicSpend)} before gas - the deposit plus a ${formatStrk(poolFee)} pool fee. Send more public STRK to this account.`,
+        );
+      }
       if (provingBalance < publicSpend) {
         throw new Error(
-          `The proving block ${provingBlock} sees only ${formatStrk(provingBalance)} STRK. Wait until the recent top-up is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
+          `The account holds ${formatStrk(publicBalance)} STRK, but proving block ${provingBlock} still sees ${formatStrk(provingBalance)}. Wait until the top-up is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
         );
       }
 
@@ -710,8 +719,22 @@ export function Strk20ShieldLab({
         SHIELD_AMOUNT,
       );
       if (selectedTotal < SHIELD_AMOUNT) {
+        /* Same distinction as the shield path, one discovery call deeper:
+           having no private balance is not a problem waiting solves. */
+        const latestNotes = await discoverStrkNotes(
+          accountAddress,
+          address,
+          chainId,
+          key,
+        );
+        const latestPrivate = latestNotes.reduce(
+          (sum, note) => sum + note.amount,
+          0n,
+        );
         throw new Error(
-          `The proving block ${provingBlock} sees only ${formatStrk(privateBalanceBefore)} private STRK. Wait until the shield note is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
+          latestPrivate < SHIELD_AMOUNT
+            ? `This account has ${formatStrk(latestPrivate)} private STRK. Shield at least ${formatStrk(SHIELD_AMOUNT)} before unshielding it.`
+            : `The account has ${formatStrk(latestPrivate)} private STRK, but proving block ${provingBlock} still sees ${formatStrk(privateBalanceBefore)}. Wait until the shield note is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
         );
       }
       if (provingBalance < poolFee) {

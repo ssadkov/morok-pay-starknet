@@ -448,16 +448,35 @@ export function Strk20UsdcLab({
       let readiness: string | null = null;
 
       if (operation === "shield") {
+        /* Not having the USDC and the proving block not seeing it yet are
+           different problems; only the second one is fixed by waiting. */
+        if (nextPublicUsdc < amount) {
+          throw new Error(
+            `This account holds ${formatUsdc(nextPublicUsdc)} public USDC. Send at least ${formatUsdc(amount)} to it before shielding.`,
+          );
+        }
         if (provingUsdc < amount) {
           throw new Error(
-            `The proving block ${provingBlock} sees only ${formatUsdc(provingUsdc)} public USDC. Wait until funding is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
+            `The account holds ${formatUsdc(nextPublicUsdc)} public USDC, but proving block ${provingBlock} still sees ${formatUsdc(provingUsdc)}. Wait until funding is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
           );
         }
       } else {
         ({ selected, total: selectedTotal } = selectNotesForAmount(notes, amount));
         if (selectedTotal < amount) {
+          const latestNotes = await discoverUsdcNotes(
+            accountAddress,
+            address,
+            chainId,
+            key,
+          );
+          const latestPrivate = latestNotes.reduce(
+            (sum, note) => sum + note.amount,
+            0n,
+          );
           throw new Error(
-            `The proving block ${provingBlock} sees only ${formatUsdc(privateUsdcBefore)} private USDC.`,
+            latestPrivate < amount
+              ? `This account has ${formatUsdc(latestPrivate)} private USDC. Shield at least ${formatUsdc(amount)} first.`
+              : `The account has ${formatUsdc(latestPrivate)} private USDC, but proving block ${provingBlock} still sees ${formatUsdc(privateUsdcBefore)}. Wait until the shield note is at least ${PROVING_BLOCK_DEPTH} blocks old.`,
           );
         }
       }
