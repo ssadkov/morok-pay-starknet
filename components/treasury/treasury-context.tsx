@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from "react";
 import type { WalletWithStarknetFeatures } from "@starknet-io/get-starknet-wallet-standard/features";
-import type { WalletAccountV6 } from "starknet";
+import { RpcProvider, type WalletAccountV6 } from "starknet";
 import { useAccount, useConnect, useDisconnect as useEvmDisconnect, useSignTypedData } from "wagmi";
 
 import { useNetwork } from "@/components/network-provider";
@@ -26,12 +26,13 @@ import {
   inspectEth712Account,
 } from "@/lib/privacy/eth712-account";
 import { classifyEvmReadiness } from "@/lib/privacy/evm-onboarding";
+import { privacySdkOf } from "@/lib/privacy/network";
 import {
   createEvmStrk20Account,
   type MorokPrivateAccount,
 } from "@/lib/privacy/evm-strk20-account";
 import { privateBalanceFromEntries } from "@/lib/starknet/actions";
-import { STRK_ADDRESS } from "@/lib/starknet/constants";
+import { starknetOf, STRK_ADDRESS } from "@/lib/starknet/constants";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import {
   getAccountSnapshot,
@@ -422,9 +423,6 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     setConnectError(null);
     setEvmGate(null);
     try {
-      if (network !== "sepolia") {
-        throw new Error("EVM wallet onboarding is available on Sepolia only.");
-      }
       let evmAddress = connectedEvmAddress;
       let evmChainId = connectedEvmChainId;
       if (!evmConnected || !evmAddress || !evmChainId) {
@@ -438,9 +436,14 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         throw new Error("The EVM wallet did not return an account.");
       }
 
-      const inspection = await inspectEth712Account(evmAddress);
+      const sdk = privacySdkOf(network);
+      const inspection = await inspectEth712Account(
+        evmAddress,
+        new RpcProvider({ nodeUrl: starknetOf(network).rpc }),
+        sdk.accountFactory,
+      );
       const registration = inspection.deployed
-        ? await poolRegistration("sepolia", inspection.starknetAddress)
+        ? await poolRegistration(network, inspection.starknetAddress)
         : null;
       const readiness = classifyEvmReadiness(inspection, registration);
       if (readiness.status === "onboarding") {
@@ -456,13 +459,14 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         starknetAddress: readiness.starknetAddress,
         evmAddress,
         evmChainId,
+        network,
         signTypedData: (typedData) => signTypedDataAsync(typedData as never),
       });
       setSession({
         kind: "evm",
         account,
         address: readiness.starknetAddress,
-        chainId: "SN_SEPOLIA",
+        chainId: sdk.snChainName,
         evmAddress,
         evmChainId,
       });

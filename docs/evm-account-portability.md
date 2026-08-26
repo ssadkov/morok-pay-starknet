@@ -168,3 +168,50 @@ Everything else must stay client-side. A hosted API that derives viewing keys
 would mean the server sees them, which is the whole privacy model handed to a
 third party. If this scheme is ever offered as "an API", that boundary is the
 part that must not move.
+
+## Funding the account: CCTP straight into the pool
+
+The onboarding above has one manual step left on mainnet - the user must send
+STRK to an address they have never seen before, to cover a pool fee they did
+not ask about. That step can be removed, and StarkWare has already built the
+piece that removes it.
+
+[`starkware-libs/privacy-bridge`](https://github.com/starkware-libs/privacy-bridge)
+moves USDC from an EVM chain into the privacy pool **as a private note, in one
+transaction**, using CCTP v2 hooks. Verified live on Starknet mainnet:
+
+| | |
+| --- | --- |
+| `InboundAnonymizer` | `0x03a7e7f34e530f8ec00b1ff7eaca90a136311d9da7cb17a73203f813b56c86cb` |
+| CCTP `MessageTransmitterV2` | `0x02EBB5777B6dD8B26ea11D68Fdf1D2c85cD2099335328Be845a28c77A8AEf183` |
+| Pool | `0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a` |
+| Base as source | supported, CCTP domain 6 |
+
+The transmitter address is already in `lib/cctp/constants.ts` - MorokPay's
+existing Base CCTP top-up targets the same contract.
+
+How it works, from the contract's own comments: the burn on Base sets
+`destination_caller` to the anonymizer and carries a commitment in the attested
+message's **`hookData`**, "not a caller arg, so it cannot be forged". On
+Starknet the pool calls `privacy_compute` to derive that commitment from the
+authenticated signer, then `privacy_invoke_with_computation`, which atomically
+verifies the binding, mints the CCTP transfer, and hands the USDC to the pool
+as a fresh open note. There is no intermediate public balance and no
+"bind now, claim later" state to strand funds in.
+
+The commitment is
+`poseidon([poseidon([identity_key, dapp_name, source_domain]), nonce])` -
+`dapp_name` is a parameter, so the scheme is multi-tenant by construction and
+MorokPay would pass its own.
+
+**What this changes for a donor:** they pay from Base, where their USDC
+already is, and it lands directly in the creator's private balance. The two
+hardest onboarding questions - "install a Starknet wallet" and "get STRK for
+gas onto an address you have never used" - both disappear.
+
+**What it costs to adopt:** this is a different pool surface than MorokPay uses
+today (`privacy_invoke_with_computation` rather than a plain private transfer),
+plus constructing the CCTP burn with the right `destination_caller` and
+`hookData`, plus testing a real cross-chain transfer with real money. Two to
+three days of careful work, not a configuration change. Worth doing after the
+sprint deadline rather than instead of the submission.

@@ -167,12 +167,12 @@ export function SellPanel() {
 
       <OnboardingSteps
         title="Get ready to receive"
-        description={network === "sepolia" ? "Connect Ready or an onboarded EVM wallet. MorokPay verifies deployment and privacy activation before creating a QR." : "Match the header to Mainnet in Ready. Fund and deploy the account, then confirm Ready's one-time privacy activation."}
+        description="Connect Ready, or MetaMask with no Starknet wallet at all. MorokPay verifies deployment and privacy activation before creating a QR."
         doneLabel={`${session?.kind === "evm" ? "EVM wallet" : "Ready"} · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
         steps={[
           {
             id: "ready",
-            title: network === "sepolia" ? "Connect Ready or EVM wallet" : "Connect Ready",
+            title: "Connect Ready or MetaMask",
             body: "The connected wallet must control the signing key and its private viewing key.",
             status: session ? "done" : "current",
             children: session ? null : <ConnectWalletChoices />,

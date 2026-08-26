@@ -415,7 +415,7 @@ export function PayPanel() {
           },
           {
             id: "ready",
-            title: network === "sepolia" ? "Connect Ready or EVM wallet" : "Connect Ready",
+            title: "Connect Ready or MetaMask",
             body: "Use a supported private wallet on the same network as the header.",
             status: readyStatus,
             children: readyStatus === "current" ? <ConnectWalletChoices /> : null,

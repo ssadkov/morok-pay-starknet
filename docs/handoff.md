@@ -23,9 +23,9 @@ browser rather than from a script:
    requirement still missing and it is binary - 13 of 151 projects have one.
    Everything below is worth less than this.
 2. Dry-run the First 10 campaign with registered Ready accounts.
-3. Repoint `lib/privacy/evm-strk20-account.ts` at mainnet so `Connect EVM
-   wallet` works on Donate and My QR, not only in the lab. Wiring, not an
-   unknown - every service it needs is confirmed.
+3. Dry-run the new one-button EVM onboarding on both networks with a fresh
+   MetaMask address. `Connect EVM wallet` now works on mainnet as well as
+   Sepolia and no longer dumps the user into the lab.
 4. Configure `MOROKPAY_MAINNET_RELAYER_PRIVATE_KEY` in the deployment
    environment; the relayer account is deployed and funded but the browser
    deploy route cannot sign without it.
@@ -38,10 +38,15 @@ browser rather than from a script:
    while preserving a reliably scannable payment link.
 8. Return to the unshield-fee design after that; do not charge a MorokPay fee on
    every private donation. See [fees.md](fees.md).
-9. Rename the viewing-key EIP-712 domain from `MorokPay Privacy Access` to a
-   neutral versioned string - **post-sprint**. It is a breaking change that
-   strands already-registered accounts, and only test accounts exist today.
-10. Build DonationPot only if the core submission is complete. Lantern shipped
+9. Fund EVM accounts through CCTP straight into the pool, removing the manual
+   STRK top-up mainnet onboarding still needs. StarkWare's `privacy-bridge`
+   already does this with CCTP v2 hooks and its `InboundAnonymizer` is live on
+   mainnet; two to three days to adopt. See
+   [evm-account-portability.md](evm-account-portability.md).
+10. Rename the viewing-key EIP-712 domain from `MorokPay Privacy Access` to a
+    neutral versioned string - **post-sprint**. It is a breaking change that
+    strands already-registered accounts, and only test accounts exist today.
+11. Build DonationPot only if the core submission is complete. Lantern shipped
     the same idea with a video and five mainnet transactions.
 
 ## Product flow

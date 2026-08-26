@@ -7,7 +7,6 @@ import {
 import {
   Account,
   cairo,
-  constants,
   RpcProvider,
   validateAndParseAddress,
   type Call,
@@ -28,17 +27,12 @@ import {
   eth712FundedResourceBounds,
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
+import { privacySdkOf } from "@/lib/privacy/network";
+import type { AppNetwork } from "@/lib/network";
 import { readPoolFee } from "@/lib/starknet/pool-fee";
-import { starknetOf, STRK_ADDRESS } from "@/lib/starknet/constants";
+import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import { getAccountSnapshot } from "@/lib/starknet/status";
 
-const POOL_ADDRESS = starknetOf("sepolia").pool;
-const PROVER_URL = "https://transaction-prover.alpha-sepolia.sw-dev.io";
-const DISCOVERY_URL = "https://discovery-service.alpha-sepolia.sw-dev.io";
-const PRIVACY_RPC_URL =
-  process.env.NEXT_PUBLIC_STARKNET_PRIVACY_SEPOLIA_RPC_URL ??
-  "https://api.zan.top/public/starknet-sepolia/rpc/v0_10";
-const SN_CHAIN_NAME = "SN_SEPOLIA";
 const PROVING_BLOCK_DEPTH = 10;
 const PROOF1_VERSION = BigInt("0x50524f4f4631");
 
@@ -79,12 +73,12 @@ function normalizedCallSet(typedData: CallSetTypedData) {
   } as const;
 }
 
-function approvalCall(amount: bigint): Call {
+function approvalCall(amount: bigint, poolAddress: string): Call {
   const value = cairo.uint256(amount);
   return {
     contractAddress: STRK_ADDRESS,
     entrypoint: "approve",
-    calldata: [POOL_ADDRESS, value.low.toString(), value.high.toString()],
+    calldata: [poolAddress, value.low.toString(), value.high.toString()],
   };
 }
 
@@ -92,10 +86,12 @@ export function createEvmStrk20Account(options: {
   starknetAddress: string;
   evmAddress: string;
   evmChainId: number;
+  network: AppNetwork;
   signTypedData: SignTypedData;
 }): MorokPrivateAccount {
+  const sdk = privacySdkOf(options.network);
   const provider = new RpcProvider({
-    nodeUrl: PRIVACY_RPC_URL,
+    nodeUrl: sdk.privacyRpcUrl,
     specVersion: "0.10.3",
   });
   let viewingKey: bigint | null = null;
@@ -119,6 +115,9 @@ export function createEvmStrk20Account(options: {
     const request = privacyKeyTypedData({
       evmAddress: options.evmAddress as `0x${string}`,
       evmChainId: options.evmChainId,
+      starknetChain: sdk.snChainName,
+      privacyPool: BigInt(sdk.poolAddress),
+      accountFactory: BigInt(sdk.accountFactory),
     });
     const signature = await checkedSignature(
       request as unknown as Record<string, unknown>,
@@ -129,7 +128,7 @@ export function createEvmStrk20Account(options: {
 
   const callSetSigner = new Eip712TypedDataSigner({
     accountAddress: options.starknetAddress,
-    snChainName: SN_CHAIN_NAME,
+    snChainName: sdk.snChainName,
     evmChainId: options.evmChainId,
     signTypedData: async (typedData) =>
       checkedSignature(
@@ -141,13 +140,13 @@ export function createEvmStrk20Account(options: {
     account: { address: options.starknetAddress, signer: callSetSigner },
     viewingKeyProvider: { getViewingKey },
     provingProvider: {
-      url: PROVER_URL,
-      chainId: constants.StarknetChainId.SN_SEPOLIA,
-      nodeUrl: PRIVACY_RPC_URL,
+      url: sdk.proverUrl,
+      chainId: sdk.starknetChainId,
+      nodeUrl: sdk.privacyRpcUrl,
       ohttp: true,
     },
-    discoveryProvider: { url: DISCOVERY_URL },
-    poolContractAddress: POOL_ADDRESS,
+    discoveryProvider: { url: sdk.discoveryUrl },
+    poolContractAddress: sdk.poolAddress,
   });
 
   const account = new Account({
@@ -155,7 +154,7 @@ export function createEvmStrk20Account(options: {
     address: options.starknetAddress,
     signer: new Eth712TransactionSigner({
       accountAddress: options.starknetAddress,
-      snChainName: SN_CHAIN_NAME,
+      snChainName: sdk.snChainName,
       evmChainId: options.evmChainId,
       signTypedData: async (typedData) =>
         checkedSignature(typedData as unknown as Record<string, unknown>),
@@ -179,7 +178,7 @@ export function createEvmStrk20Account(options: {
     async strk20InvokeTransaction(actions) {
       if (actions.length !== 1 || actions[0]?.type !== "transfer") {
         throw new Error(
-          "This Sepolia EVM session currently supports private transfers from Donate. Use EVM Lab for shield and unshield.",
+          "This EVM session supports private transfers from Donate. Use the EVM lab for shield and unshield.",
         );
       }
       const action = actions[0];
@@ -188,7 +187,7 @@ export function createEvmStrk20Account(options: {
       const token = validateAndParseAddress(action.token);
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
-      const poolFee = await readPoolFee("sepolia");
+      const poolFee = await readPoolFee(options.network);
       const builder = transfers
         .build({ autoSetup: true })
         .with(token, (operations) => {
@@ -209,14 +208,14 @@ export function createEvmStrk20Account(options: {
       ) {
         throw new Error("The prover returned unsupported proof facts.");
       }
-      const calls = [approvalCall(poolFee), callAndProof.call];
+      const calls = [approvalCall(poolFee, sdk.poolAddress), callAndProof.call];
       const proofDetails = {
         proof: callAndProof.proof.data,
         proofFacts: callAndProof.proof.proofFacts,
       };
       const [nonceValue, snapshot] = await Promise.all([
         account.getNonce(),
-        getAccountSnapshot(options.starknetAddress, "sepolia"),
+        getAccountSnapshot(options.starknetAddress, options.network),
       ]);
       const nonce = BigInt(nonceValue);
       const estimate = await account.estimateInvokeFee(calls, {
