@@ -98,6 +98,8 @@ monetization](https://strk20.starknet.io/rfp/private-subscriptions).
   amount parsing is decimals-aware. The donation request format is USDC-only, so
   private BTC donations remain a follow-up rather than a shipped feature.
 - DonationPot is a design-only follow-up; see [docs/donation-pot.md](docs/donation-pot.md).
+- Funded onboarding - bridge, auto-swap to STRK, then shield - is researched but
+  unbuilt; see [docs/funded-onboarding.md](docs/funded-onboarding.md).
 
 Legacy claim links remain redeemable at `/claim` on networks where `MorokEscrow` is deployed. New claim-link creation is no longer part of the donation UI.
 
@@ -132,6 +134,7 @@ Open [http://localhost:3000](http://localhost:3000).
 - [Portable EVM-owned STRK20 accounts](docs/evm-account-portability.md)
 - [Why invoice events are not payment proof](docs/private-invoices.md)
 - [Legacy claim-link boundary](docs/claim-links.md)
+- [Funded onboarding: bridge, swap, shield](docs/funded-onboarding.md)
 
 ## License
 
