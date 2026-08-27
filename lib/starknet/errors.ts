@@ -1,3 +1,15 @@
+/**
+ * Ready sometimes never replies once the strk20InvokeTransaction popup is
+ * rejected or closed, so the wallet call is bounded and rejects with this
+ * instead of hanging forever.
+ */
+export class WalletTimeoutError extends Error {
+  constructor() {
+    super("Ready did not respond in time");
+    this.name = "WalletTimeoutError";
+  }
+}
+
 function errorText(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
   if (typeof error === "string") return error;
@@ -74,6 +86,9 @@ export function formatStrk20Error(
   error: unknown,
   action: "shield" | "payout" | "pay" | "balance",
 ): string {
+  if (error instanceof WalletTimeoutError) {
+    return "Ready did not respond. If you closed or rejected the popup, try again.";
+  }
   const message = errorText(error);
   if (/Account not found on the privacy backend/i.test(message)) {
     return "Ready privacy could not find this account. In the current Ready X, enable Smart Account in Settings and retry Shield.";

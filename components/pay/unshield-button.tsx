@@ -119,6 +119,15 @@ export function UnshieldButton() {
           size="sm"
           variant="outline"
           disabled={unshielding || !canUnshield}
+          onClick={() => setAmount(formatUsdc(privateUsdc / BigInt(2)))}
+        >
+          50%
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={unshielding || !canUnshield}
           onClick={() => setAmount(formatUsdc(privateUsdc))}
         >
           Max

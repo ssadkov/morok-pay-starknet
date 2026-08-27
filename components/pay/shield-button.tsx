@@ -80,6 +80,14 @@ export function ShieldButton({
     );
   }
 
+  function fillHalf() {
+    setAmount(
+      needsFeeStrk
+        ? formatStrk(publicStrk / BigInt(2))
+        : formatUsdc(publicUsdc / BigInt(2)),
+    );
+  }
+
   async function handleShield() {
     if (!session) return;
     setShielding(true);
@@ -212,6 +220,15 @@ export function ShieldButton({
           disabled={shielding || !canShield}
           onChange={(event) => setAmount(event.target.value)}
         />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={shielding || !canShield}
+          onClick={fillHalf}
+        >
+          50%
+        </Button>
         <Button
           type="button"
           size="sm"

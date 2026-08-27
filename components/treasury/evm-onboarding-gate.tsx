@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ExternalLinkIcon, RocketIcon, XIcon } from "lucide-react";
+import { CopyIcon, ExternalLinkIcon, RocketIcon, XIcon } from "lucide-react";
 import { RpcProvider } from "starknet";
+import { toast } from "sonner";
 import { useAccount, useSignMessage, useSignTypedData } from "wagmi";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -59,6 +60,15 @@ export function EvmOnboardingGate() {
     Boolean(evmGate.address) &&
     evmGate.reason !== "unsupported" &&
     evmGate.reason !== "error";
+
+  async function copyAddress(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success("Starknet address copied");
+    } catch {
+      toast.error("Could not copy address");
+    }
+  }
 
   async function waitForProver(accountAddress: string) {
     setPhase({
@@ -209,10 +219,25 @@ export function EvmOnboardingGate() {
 
         {evmGate.address ? (
           <div className="mt-4 rounded-xl bg-muted/50 p-3 ring-1 ring-foreground/10">
-            <p className="text-xs text-muted-foreground">Your Starknet account</p>
-            <p className="mt-1 break-all font-mono text-xs tabular-nums">
-              {evmGate.address}
-            </p>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground">Your Starknet account</p>
+                <p className="mt-1 break-all font-mono text-xs tabular-nums">
+                  {evmGate.address}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                className="shrink-0"
+                aria-label="Copy Starknet address"
+                title="Copy address"
+                onClick={() => void copyAddress(evmGate.address)}
+              >
+                <CopyIcon />
+              </Button>
+            </div>
           </div>
         ) : null}
 
