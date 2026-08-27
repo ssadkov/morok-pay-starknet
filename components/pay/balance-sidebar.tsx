@@ -1,17 +1,10 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
-import {
-  ArrowDownLeftIcon,
-  ArrowUpRightIcon,
-  RefreshCwIcon,
-  WalletIcon,
-} from "lucide-react";
-import { toast } from "sonner";
+import type { ReactNode } from "react";
+import { RefreshCwIcon, WalletIcon } from "lucide-react";
 
 import { ShieldButton } from "@/components/pay/shield-button";
 import { UnshieldButton } from "@/components/pay/unshield-button";
-import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
 import {
@@ -22,114 +15,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { shortenAddress } from "@/lib/format";
-import {
-  activityParties,
-  readActivity,
-  subscribeActivity,
-  type ActivityItem,
-} from "@/lib/pay/activity";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 
-const EMPTY_ACTIVITY: ActivityItem[] = [];
-
-function useActivity(
-  network: ReturnType<typeof useNetwork>["network"],
-  address?: string,
-) {
-  return useSyncExternalStore(
-    subscribeActivity,
-    () => readActivity(network, address),
-    () => EMPTY_ACTIVITY,
-  );
-}
-
-function activityCopy(item: ActivityItem) {
-  switch (item.kind) {
-    case "pay":
-      return {
-        title: item.status === "pending" ? "Sending" : "Sent",
-        icon: ArrowUpRightIcon,
-        sign: "−" as const,
-      };
-    case "receive":
-      return {
-        title: "Received",
-        icon: ArrowDownLeftIcon,
-        sign: "+" as const,
-      };
-    case "shield":
-      return {
-        title: "Shield",
-        icon: ArrowDownLeftIcon,
-        sign: "+" as const,
-      };
-    case "unshield":
-      return {
-        title: "Cash out",
-        icon: ArrowUpRightIcon,
-        sign: "−" as const,
-      };
-  }
-}
-
-async function copyAddress(value: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success("Address copied");
-  } catch {
-    toast.error("Could not copy address");
-  }
-}
-
-function WalletLine({
-  label,
-  value,
-}: {
-  label: string;
-  value?: string;
-}) {
-  if (!value) {
-    return (
-      <p className="text-[11px] text-muted-foreground">
-        {label} Hidden
-      </p>
-    );
-  }
-  return (
-    <p className="flex min-w-0 items-baseline gap-1.5 text-[11px] text-muted-foreground">
-      <span>{label}</span>
-      <button
-        type="button"
-        className="min-w-0 truncate font-mono tabular-nums underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none"
-        title={value}
-        onClick={() => {
-          void copyAddress(value);
-        }}
-      >
-        {shortenAddress(value)}
-      </button>
-    </p>
-  );
-}
-
-function ActivityParties({ item }: { item: ActivityItem }) {
-  const { from, to } = activityParties(item);
-  if (item.kind === "shield" || item.kind === "unshield") {
-    return <WalletLine label="Wallet" value={from ?? to} />;
-  }
-  return (
-    <div className="flex flex-col gap-0.5">
-      <WalletLine label="From" value={from} />
-      <WalletLine label="To" value={to} />
-    </div>
-  );
-}
-
 export function BalanceSidebar() {
-  const { network, starknet } = useNetwork();
   const { session, balances, balancesLoading, refreshBalances } = useTreasury();
-  const items = useActivity(network, session?.address);
   const loading = balancesLoading && !balances;
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
@@ -165,7 +54,7 @@ export function BalanceSidebar() {
         <CardContent className="flex flex-col gap-3">
           {!session ? (
             <p className="text-sm text-muted-foreground">
-              Connect Ready or, on Sepolia, an EVM wallet to see balances.
+              Connect Ready or an EVM wallet to see balances.
             </p>
           ) : (
             <>
@@ -192,76 +81,6 @@ export function BalanceSidebar() {
                 action={<UnshieldButton />}
               />
             </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Activity</CardTitle>
-          <CardDescription>
-            Donations this browser recorded. Incoming sender is hidden by the
-            pool; destination is this Starknet account.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!session ? (
-            <p className="text-sm text-muted-foreground">
-              Donations and top-ups show up here after you connect.
-            </p>
-          ) : items.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No movement yet. This list contains only activity recorded by
-              this browser.
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2">
-              {items.slice(0, 10).map((item) => {
-                const copy = activityCopy(item);
-                const Icon = copy.icon;
-                return (
-                  <li
-                    key={item.id}
-                    className="rounded-xl bg-muted/40 px-3 py-2.5 ring-1 ring-foreground/10"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-medium">{copy.title}</p>
-                          {item.label ? (
-                            <p className="truncate text-xs text-muted-foreground">
-                              {item.label}
-                            </p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <p className="shrink-0 font-mono text-sm tabular-nums">
-                        {copy.sign}
-                        {item.amount} USDC
-                      </p>
-                    </div>
-                    <div className="mt-1.5 flex items-end justify-between gap-2">
-                      <ActivityParties item={item} />
-                      <span className="shrink-0 text-[11px] text-muted-foreground">
-                        {item.txHash ? (
-                          <a
-                            href={`${starknet.explorer}/tx/${item.txHash}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="underline underline-offset-2"
-                          >
-                            Voyager
-                          </a>
-                        ) : (
-                          new Date(item.at).toLocaleString()
-                        )}
-                      </span>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
           )}
         </CardContent>
       </Card>

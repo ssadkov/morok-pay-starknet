@@ -2,12 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BlocksIcon, WalletIcon } from "lucide-react";
+import { BlocksIcon, ChevronDownIcon, CopyIcon, LogOutIcon, WalletIcon } from "lucide-react";
+import { toast } from "sonner";
 
 import { MorokMark } from "@/components/brand/morok-mark";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
@@ -19,6 +29,15 @@ const NAV = [
   { href: "/sell", label: "My QR" },
   { href: "/treasury", label: "Top up" },
 ] as const;
+
+async function copyAddress(value: string, message: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    toast.success(message);
+  } catch {
+    toast.error("Could not copy address");
+  }
+}
 
 export function AppHeader() {
   const pathname = usePathname();
@@ -86,18 +105,52 @@ export function AppHeader() {
           <ToggleGroupItem value="sepolia">Sepolia</ToggleGroupItem>
         </ToggleGroup>
         {session ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="min-h-10 max-w-44 truncate"
-            onClick={disconnect}
-          >
-            {session.kind === "evm" ? "EVM · " : ""}
-            {shortenAddress(
-              session.kind === "evm" ? session.evmAddress : session.address,
-            )}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button type="button" variant="outline" size="lg" className="min-h-10" />
+              }
+            >
+              <span className="max-w-32 truncate">
+                {session.kind === "evm" ? "EVM · " : ""}
+                {shortenAddress(
+                  session.kind === "evm" ? session.evmAddress : session.address,
+                )}
+              </span>
+              <ChevronDownIcon data-icon="inline-end" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              {session.kind === "evm" ? (
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>EVM address</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      void copyAddress(session.evmAddress, "EVM address copied");
+                    }}
+                  >
+                    <CopyIcon />
+                    {shortenAddress(session.evmAddress)}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              ) : null}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Starknet address</DropdownMenuLabel>
+                <DropdownMenuItem
+                  onClick={() => {
+                    void copyAddress(session.address, "Starknet address copied");
+                  }}
+                >
+                  <CopyIcon />
+                  {shortenAddress(session.address)}
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onClick={disconnect}>
+                <LogOutIcon />
+                Disconnect
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         ) : (
           <div className="flex items-center gap-2">
             <Button
@@ -117,24 +170,22 @@ export function AppHeader() {
               )}
               {connecting ? "Connecting" : "Connect Ready"}
             </Button>
-            {network === "sepolia" ? (
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                className="min-h-10 px-3 text-sm sm:px-4"
-                disabled={connecting || evmConnecting}
-                aria-busy={evmConnecting}
-                onClick={() => void connectEvm()}
-              >
-                {evmConnecting ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <BlocksIcon data-icon="inline-start" />
-                )}
-                {evmConnecting ? "Checking" : "Connect EVM wallet"}
-              </Button>
-            ) : null}
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="min-h-10 px-3 text-sm sm:px-4"
+              disabled={connecting || evmConnecting}
+              aria-busy={evmConnecting}
+              onClick={() => void connectEvm()}
+            >
+              {evmConnecting ? (
+                <Spinner data-icon="inline-start" />
+              ) : (
+                <BlocksIcon data-icon="inline-start" />
+              )}
+              {evmConnecting ? "Checking" : "Connect EVM wallet"}
+            </Button>
           </div>
         )}
       </div>

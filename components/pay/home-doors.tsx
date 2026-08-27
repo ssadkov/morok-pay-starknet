@@ -2,27 +2,19 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import {
-  ArrowUpRightIcon,
-  HeartIcon,
-  QrCodeIcon,
-  WalletIcon,
-} from "lucide-react";
+import { ArrowUpRightIcon, HeartIcon, QrCodeIcon } from "lucide-react";
 
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { useNetwork } from "@/components/network-provider";
-import { useTreasury } from "@/components/treasury/treasury-context";
-import { cn } from "@/lib/utils";
 
 export function HomeDoors() {
   const { network } = useNetwork();
-  const { connectEvm, evmConnecting } = useTreasury();
 
   return (
     <div className="relative isolate flex flex-col gap-8">
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-x-0 -top-20 -z-10 h-80 bg-[image:var(--gradient-hero)]"
+        className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[image:var(--gradient-hero)]"
       />
       <div className="flex flex-col gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
@@ -49,84 +41,37 @@ export function HomeDoors() {
           href="/sell"
           icon={<QrCodeIcon />}
           title="My QR"
-          body="Create one durable donation QR. Share it anywhere. Watch incoming USDC in Activity."
-        />
-        <Door
-          onClick={() => void connectEvm()}
-          busy={evmConnecting}
-          icon={<WalletIcon />}
-          title="Connect EVM wallet"
-          body={
-            network === "sepolia"
-              ? "Use MetaMask to create a deterministic Starknet account. MorokPay sponsors 20 STRK on Sepolia for the beta."
-              : "Use MetaMask to create a deterministic Starknet account - no Starknet wallet needed. You fund activation on mainnet."
-          }
-          eyebrow="No Starknet wallet needed"
-          wide
+          body="Create one durable donation QR. Share it anywhere. Receive private USDC in your donation wallet."
         />
       </div>
-      <p className="text-sm text-muted-foreground">
-        Need private USDC first?{" "}
-        <Link href="/treasury" className="underline underline-offset-4">
-          {network === "sepolia"
-            ? "Top up on Sepolia (faucet, then shield)"
-            : "Top up from Base"}
-        </Link>
-        .
-      </p>
     </div>
   );
 }
 
-function Door(
-  props: {
-    icon: ReactNode;
-    title: string;
-    body: string;
-    eyebrow?: string;
-    wide?: boolean;
-  } & ({ href: string; onClick?: never; busy?: never } | { href?: never; onClick: () => void; busy?: boolean }),
-) {
-  const { icon, title, body, eyebrow, wide = false, href, onClick, busy } = props;
-  const className = cn(
-    "group flex min-h-56 w-full flex-col gap-4 rounded-2xl border border-border/80 bg-card p-6 text-left shadow-[0_18px_50px_-36px_color-mix(in_oklch,var(--foreground)_45%,transparent)] transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-1 hover:border-primary/45 hover:shadow-[0_26px_60px_-34px_color-mix(in_oklch,var(--primary)_55%,transparent)] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:p-7",
-    wide && "sm:col-span-2 sm:min-h-48",
-    onClick && "disabled:cursor-not-allowed disabled:opacity-70",
-  );
-
-  const content = (
-    <>
-      <span className="flex items-start justify-between gap-4">
-        <span className="flex size-12 items-center justify-center rounded-xl bg-accent text-primary ring-1 ring-primary/15 [&_svg]:size-5">
-          {icon}
-        </span>
-        {eyebrow ? (
-          <span className="rounded-full border border-primary/25 bg-accent px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-primary">
-            {eyebrow}
-          </span>
-        ) : null}
+function Door({
+  href,
+  icon,
+  title,
+  body,
+}: {
+  href: string;
+  icon: ReactNode;
+  title: string;
+  body: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="group flex min-h-56 w-full flex-col gap-4 rounded-2xl border border-border/80 bg-card p-6 text-left shadow-[0_18px_50px_-36px_color-mix(in_oklch,var(--foreground)_45%,transparent)] transition-[color,background-color,border-color,box-shadow,transform] duration-200 ease-out hover:-translate-y-1 hover:border-primary/45 hover:shadow-[0_26px_60px_-34px_color-mix(in_oklch,var(--primary)_55%,transparent)] focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none motion-reduce:transition-none motion-reduce:hover:translate-y-0 sm:p-7"
+    >
+      <span className="flex size-12 items-center justify-center rounded-xl bg-accent text-primary ring-1 ring-primary/15 [&_svg]:size-5">
+        {icon}
       </span>
       <span className="flex items-center justify-between gap-4 text-xl font-semibold tracking-tight">
         {title}
         <ArrowUpRightIcon className="size-5 text-primary transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 motion-reduce:transition-none" />
       </span>
-      <span className="text-sm leading-6 text-muted-foreground">
-        {busy ? "Checking your account…" : body}
-      </span>
-    </>
-  );
-
-  if (onClick) {
-    return (
-      <button type="button" className={className} onClick={onClick} disabled={busy}>
-        {content}
-      </button>
-    );
-  }
-
-  return (
-    <Link href={href} className={className}>
-      {content}
+      <span className="text-sm leading-6 text-muted-foreground">{body}</span>
     </Link>
   );
 }

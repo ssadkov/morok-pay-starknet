@@ -92,9 +92,9 @@ One subtle, palette-derived radial gradient is exposed as `--gradient-hero`.
 
 ```css
 --gradient-hero: radial-gradient(
-  circle at 24% 8%,
+  90% 100% at 50% 0%,
   color-mix(in oklch, var(--primary) 22%, transparent) 0%,
-  transparent 68%
+  transparent 55%
 );
 ```
 
