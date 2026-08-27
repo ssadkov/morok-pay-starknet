@@ -43,6 +43,13 @@ export type Strk20Action =
   | { type: "transfer"; token: string; amount: string; recipient: string }
   | { type: "invoke"; contract: string; calldata?: string[] };
 
+/** Which wallet prompt is on screen, so the UI can explain the sequence. */
+export type SignatureProgress = {
+  step: number;
+  total: number;
+  label: string;
+};
+
 export type MorokPrivateAccount = {
   provider: RpcProvider;
   strk20Balances(tokens: string[]): Promise<{ token: string; balance: string }[]>;
@@ -89,6 +96,8 @@ export function createEvmStrk20Account(options: {
   evmChainId: number;
   network: AppNetwork;
   signTypedData: SignTypedData;
+  /** Called before each wallet prompt, then with null once the run ends. */
+  onSignatureProgress?: (progress: SignatureProgress | null) => void;
 }): MorokPrivateAccount {
   const sdk = privacySdkOf(options.network);
   const provider = new RpcProvider({
@@ -97,7 +106,36 @@ export function createEvmStrk20Account(options: {
   });
   let viewingKey: bigint | null = null;
 
+  /*
+   * One STRK20 action costs several wallet prompts - reading the private
+   * balance, authorising the private call set, then the Starknet transaction
+   * itself - and unexplained back-to-back prompts read as something being
+   * wrong. Announce which prompt is which and how many are coming. The total
+   * is what this code knows it will ask for; if anything asks for more, the
+   * count grows rather than reporting an impossible "4 of 3".
+   */
+  let run: { total: number; done: number } | null = null;
+  let phase = "";
+
+  function startRun(total: number, firstPhase: string) {
+    run = { total, done: 0 };
+    phase = firstPhase;
+  }
+
+  function endRun() {
+    run = null;
+    options.onSignatureProgress?.(null);
+  }
+
   async function checkedSignature(typedData: Record<string, unknown>) {
+    if (run) {
+      run.done += 1;
+      options.onSignatureProgress?.({
+        step: run.done,
+        total: Math.max(run.total, run.done),
+        label: phase,
+      });
+    }
     const signature = await options.signTypedData(typedData);
     const recovered = await recoverTypedDataAddress({
       ...(typedData as Parameters<typeof recoverTypedDataAddress>[0]),
@@ -166,15 +204,24 @@ export function createEvmStrk20Account(options: {
   return {
     provider,
     async strk20Balances(tokens) {
-      const discovered = await transfers.discoverNotes({
-        tokens: tokens.map(BigInt),
-      });
-      return tokens.map((token) => ({
-        token,
-        balance: (discovered.notes.get(BigInt(token)) ?? [])
-          .reduce((sum, note) => sum + note.amount, 0n)
-          .toString(),
-      }));
+      // Only prompts when the viewing key is not cached yet, but that first
+      // prompt arrives unannounced during a balance refresh otherwise.
+      if (viewingKey === null) {
+        startRun(1, "Approve reading your private balance");
+      }
+      try {
+        const discovered = await transfers.discoverNotes({
+          tokens: tokens.map(BigInt),
+        });
+        return tokens.map((token) => ({
+          token,
+          balance: (discovered.notes.get(BigInt(token)) ?? [])
+            .reduce((sum, note) => sum + note.amount, 0n)
+            .toString(),
+        }));
+      } finally {
+        endRun();
+      }
     },
     async strk20InvokeTransaction(actions) {
       if (actions.length !== 1) {
@@ -197,6 +244,13 @@ export function createEvmStrk20Account(options: {
           "Shield and unshield for an EVM wallet are available on Sepolia only for now. Use the EVM lab on mainnet.",
         );
       }
+      /* Always the call set and the Starknet transaction, plus the viewing
+         key when this session has not derived it yet. */
+      startRun(
+        viewingKey === null ? 3 : 2,
+        "Approve reading your private balance",
+      );
+      try {
       const amount = BigInt(action.amount);
       const token = validateAndParseAddress(action.token);
       const isStrk = BigInt(token) === BigInt(STRK_ADDRESS);
@@ -270,6 +324,7 @@ export function createEvmStrk20Account(options: {
           }
         })
         .surplusTo(options.starknetAddress);
+      phase = "Authorise the private transfer";
       const invocation = await builder.createProofInvocation({
         provingBlockId: provingBlock,
       });
@@ -318,6 +373,7 @@ export function createEvmStrk20Account(options: {
         transferAmount: strkSpend,
         maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
       });
+      phase = "Sign the Starknet transaction";
       const submission = await account.execute(calls, {
         nonce,
         resourceBounds,
@@ -325,6 +381,9 @@ export function createEvmStrk20Account(options: {
         ...proofDetails,
       });
       return { transaction_hash: String(submission.transaction_hash) };
+      } finally {
+        endRun();
+      }
     },
   };
 }

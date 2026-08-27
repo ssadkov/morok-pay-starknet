@@ -22,7 +22,8 @@ import { useUsdcMaturity } from "./use-usdc-maturity";
 
 export function UnshieldButton() {
   const { network, starknet } = useNetwork();
-  const { session, balances, refreshBalances } = useTreasury();
+  const { session, balances, refreshBalances, signatureProgress } =
+    useTreasury();
   const [amount, setAmount] = useState("");
   const [unshielding, setUnshielding] = useState(false);
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
@@ -160,7 +161,11 @@ export function UnshieldButton() {
         ) : (
           <EyeOffIcon data-icon="inline-start" />
         )}
-        {unshielding ? "Unshielding" : "Unshield USDC"}
+        {unshielding
+          ? signatureProgress
+            ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
+            : "Unshielding"
+          : "Unshield USDC"}
       </Button>
     </div>
   );

@@ -72,8 +72,14 @@ function isOpenAmount(kind?: string, amount?: string) {
 export function PayPanel() {
   const searchParams = useSearchParams();
   const { network, setNetwork, starknet } = useNetwork();
-  const { session, privateRaw, balancesLoading, balances, refreshBalances } =
-    useTreasury();
+  const {
+    session,
+    privateRaw,
+    balancesLoading,
+    balances,
+    refreshBalances,
+    signatureProgress,
+  } = useTreasury();
   const usdc = getShieldToken("usdc", network);
   const fromQuery = useMemo(
     () => parsePaymentRequest(searchParams, network),
@@ -669,6 +675,7 @@ export function PayPanel() {
           </CardContent>
           <CardFooter className="border-t">
             {session ? (
+              <div className="flex flex-col">
               <Button
                 type="button"
                 size="lg"
@@ -687,11 +694,22 @@ export function PayPanel() {
                 {paying
                   ? pendingDonationId
                     ? "Checking"
-                    : "Donating"
+                    : signatureProgress
+                      ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
+                      : "Donating"
                   : pendingDonationId
                     ? "Check pending donation"
                     : `Donate ${amountText || "…"} USDC`}
               </Button>
+              {/* One STRK20 action needs several prompts; naming the current
+                  one keeps a burst of wallet popups from looking like a
+                  malfunction. */}
+              {paying && signatureProgress ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {signatureProgress.label}
+                </p>
+              ) : null}
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">
                 Finish the steps above, then confirm in your wallet.

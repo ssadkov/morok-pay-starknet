@@ -30,6 +30,7 @@ import { privacySdkOf } from "@/lib/privacy/network";
 import {
   createEvmStrk20Account,
   type MorokPrivateAccount,
+  type SignatureProgress,
 } from "@/lib/privacy/evm-strk20-account";
 import { privateBalanceFromEntries } from "@/lib/starknet/actions";
 import { starknetOf, STRK_ADDRESS } from "@/lib/starknet/constants";
@@ -112,6 +113,8 @@ type TreasuryContextValue = {
   dismissEvmGate: () => void;
   disconnect: () => void;
   refreshBalances: (options?: RefreshBalancesOptions) => Promise<void>;
+  /** Which wallet prompt an EVM session is waiting on, null when idle. */
+  signatureProgress: SignatureProgress | null;
 };
 
 const TreasuryContext = createContext<TreasuryContextValue | null>(null);
@@ -168,6 +171,8 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [evmConnecting, setEvmConnecting] = useState(false);
   const [evmGate, setEvmGate] = useState<EvmOnboardingGate | null>(null);
+  const [signatureProgress, setSignatureProgress] =
+    useState<SignatureProgress | null>(null);
   const [balances, setBalances] = useState<TreasuryBalances | null>(null);
   const [balancesLoading, setBalancesLoading] = useState(false);
   const [tokenId, setTokenId] = useState<ShieldTokenId>("usdc");
@@ -474,6 +479,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         evmChainId,
         network,
         signTypedData: (typedData) => signTypedDataAsync(typedData as never),
+        onSignatureProgress: setSignatureProgress,
       });
       setSession({
         kind: "evm",
@@ -543,6 +549,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
               evmChainId: connectedEvmChainId!,
               network,
               signTypedData: (typedData) => signTypedDataAsync(typedData as never),
+              onSignatureProgress: setSignatureProgress,
             }),
             address: readiness.starknetAddress,
             chainId: sdk.snChainName,
@@ -601,6 +608,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       dismissEvmGate: () => setEvmGate(null),
       disconnect,
       refreshBalances,
+      signatureProgress,
     }),
     [
       wallets,
@@ -618,6 +626,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       connectEvm,
       disconnect,
       refreshBalances,
+      signatureProgress,
     ],
   );
 

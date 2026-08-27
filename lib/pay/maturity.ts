@@ -32,7 +32,12 @@ export function latestUsdcShieldAt(
     (item) =>
       (item.kind === "shield" || item.kind === "pay" || item.kind === "unshield") &&
       item.label !== "STRK" &&
-      item.source !== "private",
+      item.source !== "private" &&
+      /* A pay row is written the moment Donate is pressed, before the wallet
+         is even asked. Counting it would restart the countdown on click and
+         make the app look like it had reset its own wait. Only a settled
+         action has actually produced a new note. */
+      item.status !== "pending",
   );
   return hit?.at ?? null;
 }

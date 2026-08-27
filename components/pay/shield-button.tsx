@@ -28,7 +28,8 @@ export function ShieldButton({
   /** Lock the control to one asset. Onboarding uses this so the creator only sees STRK. */
   token?: "usdc" | "strk";
 } = {}) {
-  const { session, balances, refreshBalances } = useTreasury();
+  const { session, balances, refreshBalances, signatureProgress } =
+    useTreasury();
   const { network, starknet } = useNetwork();
   const [amount, setAmount] = useState("");
   const [shielding, setShielding] = useState(false);
@@ -264,7 +265,9 @@ export function ShieldButton({
           <ShieldIcon data-icon="inline-start" />
         )}
         {shielding
-          ? "Shielding"
+          ? signatureProgress
+            ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
+            : "Shielding"
           : needsFeeStrk
             ? "Shield STRK for fees"
             : "Shield USDC"}
