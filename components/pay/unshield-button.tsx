@@ -26,12 +26,13 @@ export function UnshieldButton() {
 
   if (!session) return null;
 
-  if (session.kind === "evm") {
+  if (session.kind === "evm" && network !== "sepolia") {
     return (
       <div className="flex flex-col gap-2">
         <p className="text-xs text-muted-foreground">
-          EVM unshield remains in the Sepolia lab so its public recipient, pool
-          fee, and proof can be reviewed before signing.
+          Unshield for an EVM wallet is live on Sepolia. Use EVM Lab here on
+          mainnet while that flow still shows the proof and fee review
+          explicitly.
         </p>
         <Button
           nativeButton={false}
@@ -100,7 +101,7 @@ export function UnshieldButton() {
   return (
     <div className="flex w-full flex-col gap-2">
       <p className="text-xs text-muted-foreground">
-        Withdraw to this Ready account. The amount, destination, and time become
+        Withdraw to this account. The amount, destination, and time become
         public. A new private note may need about 10 blocks before it can be
         spent.
       </p>

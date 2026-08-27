@@ -410,6 +410,28 @@ export function PayPanel() {
                       }}
                     />
                   </Field>
+                  {starknet.treasury ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="self-start text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setPasted("");
+                        setFromPaste({
+                          network,
+                          to: starknet.treasury,
+                          amount: "",
+                          invoice: "",
+                          label: "MorokPay",
+                          kind: "donation",
+                        });
+                        setError(null);
+                      }}
+                    >
+                      No link? Try a donation to MorokPay
+                    </Button>
+                  ) : null}
                 </FieldGroup>
               ) : null,
           },

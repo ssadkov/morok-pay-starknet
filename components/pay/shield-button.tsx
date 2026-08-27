@@ -45,13 +45,13 @@ export function ShieldButton({
 
   if (!session) return null;
 
-  if (session.kind === "evm") {
+  if (session.kind === "evm" && network !== "sepolia") {
     return (
       <div className="flex flex-col gap-2">
         <p className="text-xs text-muted-foreground">
-          The Sepolia EVM adapter can donate from an existing private balance.
-          Use EVM Lab for shield or unshield while that flow still shows the
-          proof and fee review explicitly.
+          Shield for an EVM wallet is live on Sepolia. Use EVM Lab here on
+          mainnet while that flow still shows the proof and fee review
+          explicitly.
         </p>
         <Button
           nativeButton={false}
@@ -64,7 +64,7 @@ export function ShieldButton({
     );
   }
 
-  if (registration !== "registered") {
+  if (session.kind === "ready" && registration !== "registered") {
     return (
       <p className="text-xs text-muted-foreground">
         {registration === "unknown"
@@ -195,7 +195,7 @@ export function ShieldButton({
     <div className="flex w-full flex-col gap-2">
       <p className="text-xs text-muted-foreground">
         {needsFeeStrk
-          ? `Shield more than ${formatStrk(poolFee)} STRK. The deposit pays that fee itself, then Ready registers this account in the pool.`
+          ? `Shield more than ${formatStrk(poolFee)} STRK. The deposit pays that fee itself and registers this account in the pool.`
           : `Moves public USDC into the private wallet. The pool fee comes out of the amount, worth ${formatStrk(poolFee)} STRK.`}
       </p>
       {token ? null : (

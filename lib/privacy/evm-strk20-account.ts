@@ -73,10 +73,10 @@ function normalizedCallSet(typedData: CallSetTypedData) {
   } as const;
 }
 
-function approvalCall(amount: bigint, poolAddress: string): Call {
+function approvalCall(token: string, amount: bigint, poolAddress: string): Call {
   const value = cairo.uint256(amount);
   return {
-    contractAddress: STRK_ADDRESS,
+    contractAddress: token,
     entrypoint: "approve",
     calldata: [poolAddress, value.low.toString(), value.high.toString()],
   };
@@ -176,22 +176,48 @@ export function createEvmStrk20Account(options: {
       }));
     },
     async strk20InvokeTransaction(actions) {
-      if (actions.length !== 1 || actions[0]?.type !== "transfer") {
+      if (actions.length !== 1) {
         throw new Error(
-          "This EVM session supports private transfers from Donate. Use the EVM lab for shield and unshield.",
+          "This EVM session can only submit one STRK20 action at a time.",
         );
       }
       const action = actions[0];
+      if (action.type !== "transfer" && action.type !== "deposit" && action.type !== "withdraw") {
+        throw new Error(
+          "This EVM session does not support this STRK20 action yet.",
+        );
+      }
+      /* Shield and unshield hand-roll the approvals and proof call that
+         Ready's extension normally does internally, so they stay Sepolia-only
+         until that path is proven out. Donate's transfer already runs on
+         both networks. */
+      if (action.type !== "transfer" && options.network !== "sepolia") {
+        throw new Error(
+          "Shield and unshield for an EVM wallet are available on Sepolia only for now. Use the EVM lab on mainnet.",
+        );
+      }
       const amount = BigInt(action.amount);
-      const recipient = validateAndParseAddress(action.recipient);
       const token = validateAndParseAddress(action.token);
+      const isStrk = BigInt(token) === BigInt(STRK_ADDRESS);
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
       const poolFee = await readPoolFee(options.network);
       const builder = transfers
         .build({ autoSetup: true })
         .with(token, (operations) => {
-          operations.transfer({ recipient, amount });
+          if (action.type === "deposit") {
+            operations.deposit({ amount });
+          } else if (action.type === "withdraw") {
+            operations.withdraw({
+              recipient: validateAndParseAddress(action.recipient),
+              amount,
+            });
+          } else {
+            operations.transfer({
+              recipient: validateAndParseAddress(action.recipient),
+              amount,
+            });
+          }
         })
         .surplusTo(options.starknetAddress);
       const invocation = await builder.createProofInvocation({
@@ -208,7 +234,19 @@ export function createEvmStrk20Account(options: {
       ) {
         throw new Error("The prover returned unsupported proof facts.");
       }
-      const calls = [approvalCall(poolFee, sdk.poolAddress), callAndProof.call];
+      /* Deposit pulls the deposited token out of the public balance, so it
+         needs its own approval unless the deposit is STRK itself - then one
+         approval covers the deposit and the fee together. Transfer and
+         withdraw only ever spend the pool fee out of public STRK. */
+      const strkSpend = action.type === "deposit" && isStrk ? amount + poolFee : poolFee;
+      const approvals: Call[] =
+        action.type === "deposit" && !isStrk
+          ? [
+              approvalCall(STRK_ADDRESS, poolFee, sdk.poolAddress),
+              approvalCall(token, amount, sdk.poolAddress),
+            ]
+          : [approvalCall(STRK_ADDRESS, strkSpend, sdk.poolAddress)];
+      const calls = [...approvals, callAndProof.call];
       const proofDetails = {
         proof: callAndProof.proof.data,
         proofFacts: callAndProof.proof.proofFacts,
@@ -227,7 +265,7 @@ export function createEvmStrk20Account(options: {
       const resourceBounds = eth712FundedResourceBounds({
         estimated: estimate.resourceBounds,
         publicBalance: snapshot.strkWei,
-        transferAmount: poolFee,
+        transferAmount: strkSpend,
         maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
       });
       const submission = await account.execute(calls, {
