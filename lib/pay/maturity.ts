@@ -5,12 +5,21 @@ import { readActivity } from "./activity";
 /** STRK20 notes mature after ~10 blocks. Use 12s/block so the wait is not short. */
 export const NOTE_MATURITY_MS = 10 * 12_000;
 
+/**
+ * Shield is not the only thing that leaves a fresh, unmatured USDC note: a
+ * donation or unshield that does not spend the whole note creates a new
+ * surplus note back to the sender, which needs the same ~10-block wait
+ * before it can move again. Track whichever private-USDC-touching activity
+ * this browser last recorded, not just shields.
+ */
 export function latestUsdcShieldAt(
   network: AppNetwork,
   address: string,
 ): number | null {
   const hit = readActivity(network, address).find(
-    (item) => item.kind === "shield" && item.label !== "STRK",
+    (item) =>
+      (item.kind === "shield" || item.kind === "pay" || item.kind === "unshield" || item.kind === "receive") &&
+      item.label !== "STRK",
   );
   return hit?.at ?? null;
 }
