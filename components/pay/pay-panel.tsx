@@ -382,7 +382,7 @@ export function PayPanel() {
 
       <OnboardingSteps
         title="Get ready to donate"
-        description="Use Ready or, on Sepolia, an onboarded EVM wallet. New notes take about ten blocks before they can move."
+        description="Use Ready or an onboarded EVM wallet. New notes take about ten blocks before they can move."
         doneLabel={`${walletName} · ${formatUsdc(privateRaw)} private USDC · notes mature`}
         steps={[
           {
@@ -437,7 +437,7 @@ export function PayPanel() {
           },
           {
             id: "ready",
-            title: "Connect Ready or MetaMask",
+            title: "Connect Ready or EVM wallet",
             body: "Use a supported private wallet on the same network as the header.",
             status: readyStatus,
             children: readyStatus === "current" ? <ConnectWalletChoices /> : null,
@@ -447,7 +447,7 @@ export function PayPanel() {
             title: "Shield USDC",
             body:
               publicUsdc <= BigInt(0)
-                ? "You need public USDC on this Ready, then shield it into the pool."
+                ? `You need public USDC on this ${walletName}, then shield it into the pool.`
                 : "Move USDC into the private wallet. The pool fee comes out of this amount.",
             status: shieldStatus,
             children:
@@ -495,7 +495,7 @@ export function PayPanel() {
             title: "Wait for the note",
             body: notes.ready
               ? "This USDC can move."
-              : `New notes mature in about ten blocks. Donate when this hits 0:00 — Ready will reject a spend before that.`,
+              : `New notes mature in about ten blocks. Donate when this hits 0:00 — the pool rejects a spend before that.`,
             status: waitStatus,
             children:
               waitStatus === "current" ? (
@@ -549,7 +549,7 @@ export function PayPanel() {
                 />
                 <FieldDescription>
                   This amount stays off the shared QR. Activity records your
-                  Ready as From and the creator as To.
+                  {" "}{walletName} as From and the creator as To.
                 </FieldDescription>
               </Field>
             ) : (
@@ -569,8 +569,8 @@ export function PayPanel() {
               <Alert>
                 <AlertTitle>This is your own QR</AlertTitle>
                 <AlertDescription>
-                  Paying it only costs the pool fee. Use a second Ready to see a
-                  real donation land.
+                  Paying it only costs the pool fee. Use a second wallet to see
+                  a real donation land.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -628,7 +628,7 @@ export function PayPanel() {
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Finish the steps above, then confirm in Ready.
+                Finish the steps above, then confirm in your wallet.
               </p>
             )}
           </CardFooter>

@@ -25,7 +25,7 @@ export function HomeDoors() {
         </h1>
         <p className="max-w-2xl text-base leading-7 text-muted-foreground">
           {network === "sepolia"
-            ? "Testnet: create a donation QR or open one, then pay with Ready on Starknet Sepolia. Switch the header to Mainnet for the contest."
+            ? "Testnet: create a donation QR or open one, then pay with Ready or an EVM wallet on Starknet Sepolia. Switch the header to Mainnet for the contest."
             : "One QR. The supporter chooses the amount. The transfer stays inside the STRK20 pool, so the shared link never shows how much was sent."}
         </p>
       </div>
@@ -35,7 +35,7 @@ export function HomeDoors() {
           href="/pay"
           icon={<HeartIcon />}
           title="Donate"
-          body="Open a donation link or scan a QR. Pick an amount. Confirm in Ready."
+          body="Open a donation link or scan a QR. Pick an amount. Confirm in Ready or an EVM wallet."
         />
         <Door
           href="/sell"

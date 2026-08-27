@@ -2,15 +2,27 @@ import type { AppNetwork } from "@/lib/network";
 
 import { readActivity } from "./activity";
 
-/** STRK20 notes mature after ~10 blocks. Use 12s/block so the wait is not short. */
-export const NOTE_MATURITY_MS = 10 * 12_000;
+/**
+ * STRK20 notes mature after ~10 blocks. Sepolia currently produces a block
+ * roughly every 1.5-2s (checked against starknet_getBlockNumber /
+ * starknet_getBlockWithTxHashes), so 10 blocks is closer to 15-20s, but
+ * testnets slow down unpredictably - keep a generous multiple of that as a
+ * safety margin rather than cutting it as close as the real chain allows.
+ */
+export const NOTE_MATURITY_MS = 45_000;
 
 /**
  * Shield is not the only thing that leaves a fresh, unmatured USDC note: a
  * donation or unshield that does not spend the whole note creates a new
  * surplus note back to the sender, which needs the same ~10-block wait
  * before it can move again. Track whichever private-USDC-touching activity
- * this browser last recorded, not just shields.
+ * this browser last recorded, not just shields - but only activity this app
+ * submitted directly (source "morok"). reconcilePrivateBalance also writes
+ * "receive"/"pay" rows with source "private" when it infers a balance change
+ * it cannot attribute to a recent local action; those are timestamped at
+ * whenever a refresh happened to notice the change, not at the real event,
+ * so using them here would restart the countdown on every unrelated refresh
+ * (e.g. clicking "Check pending donation").
  */
 export function latestUsdcShieldAt(
   network: AppNetwork,
@@ -18,8 +30,9 @@ export function latestUsdcShieldAt(
 ): number | null {
   const hit = readActivity(network, address).find(
     (item) =>
-      (item.kind === "shield" || item.kind === "pay" || item.kind === "unshield" || item.kind === "receive") &&
-      item.label !== "STRK",
+      (item.kind === "shield" || item.kind === "pay" || item.kind === "unshield") &&
+      item.label !== "STRK" &&
+      item.source !== "private",
   );
   return hit?.at ?? null;
 }

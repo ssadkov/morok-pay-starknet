@@ -71,6 +71,7 @@ export function BalanceSidebar() {
                 hint="STRK20 pool"
                 loading={loading}
                 amount={`${formatUsdc(privateUsdc)} USDC`}
+                secondaryAmount={`${formatStrk(balances?.privateStrk ?? BigInt(0))} STRK shielded`}
                 extra={
                   balances?.privateError
                     ? balances.privateError
@@ -92,6 +93,7 @@ function BalanceRow({
   label,
   hint,
   amount,
+  secondaryAmount,
   extra,
   loading,
   action,
@@ -99,6 +101,7 @@ function BalanceRow({
   label: string;
   hint: string;
   amount: string;
+  secondaryAmount?: string;
   extra: string;
   loading: boolean;
   action?: ReactNode;
@@ -116,6 +119,11 @@ function BalanceRow({
           {amount}
         </p>
       )}
+      {!loading && secondaryAmount ? (
+        <p className="mt-0.5 font-mono text-xs text-muted-foreground tabular-nums">
+          {secondaryAmount}
+        </p>
+      ) : null}
       <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{extra}</p>
       {action ? <div className="mt-3">{action}</div> : null}
