@@ -2,12 +2,12 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { CopyIcon, PencilIcon } from "lucide-react";
+import { CopyIcon, DownloadIcon, PencilIcon } from "lucide-react";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { DeployReadyButton } from "@/components/pay/deploy-ready-button";
 import { OnboardingSteps } from "@/components/pay/onboarding-steps";
-import { QrCode } from "@/components/pay/qr-code";
+import { MOROK_MARK_SVG, QrCode, useQrMatrix } from "@/components/pay/qr-code";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,6 +37,7 @@ import {
   type MerchantInvoice,
 } from "@/lib/pay/invoices";
 import { STARKNET_SEPOLIA_STRK_FAUCET_URL } from "@/lib/pay/testnet";
+import { qrFileName, renderQrCardPng } from "@/lib/pay/qr-png";
 import { paymentUrl, type PaymentRequest } from "@/lib/pay/request";
 import { formatStrk } from "@/lib/starknet/status";
 
@@ -71,6 +72,7 @@ export function SellPanel() {
   const invoices = useInvoices(network);
   const [label, setLabel] = useState("");
   const [editing, setEditing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [created, setCreated] = useState<PaymentRequest | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,6 +141,37 @@ export function SellPanel() {
      "keep whatever is stored" - otherwise a rename could never clear one. */
   function handleRename() {
     return persist(label.trim() || DEFAULT_LABEL);
+  }
+
+  const qr = useQrMatrix(payUrl);
+
+  async function downloadPng() {
+    if (!payUrl || !request) return;
+    setDownloading(true);
+    try {
+      const label = request.label || DEFAULT_LABEL;
+      const blob = await renderQrCardPng({
+        matrix: qr.data,
+        modules: qr.size,
+        label,
+        url: payUrl,
+        logoSvg: MOROK_MARK_SVG,
+        network: request.network === "sepolia" ? "Sepolia" : "Mainnet",
+      });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = qrFileName(label);
+      anchor.click();
+      URL.revokeObjectURL(href);
+      toast.success("QR image saved");
+    } catch (caught) {
+      toast.error(
+        caught instanceof Error ? caught.message : "Could not build the PNG",
+      );
+    } finally {
+      setDownloading(false);
+    }
   }
 
   async function copyUrl() {
@@ -435,14 +468,29 @@ export function SellPanel() {
               value={payUrl}
               label={`Private donation to ${request.label || DEFAULT_LABEL}`}
             />
-            <p className="break-all font-mono text-xs text-muted-foreground">
-              {payUrl}
-            </p>
+            <div className="flex w-full items-start gap-2 rounded-xl bg-muted/40 p-3 ring-1 ring-foreground/10">
+              <p className="min-w-0 flex-1 break-all font-mono text-xs text-muted-foreground">
+                {payUrl}
+              </p>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Copy donation link"
+                title="Copy link"
+                className="shrink-0"
+                onClick={() => {
+                  void copyUrl();
+                }}
+              >
+                <CopyIcon />
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">
               First 10 contest: post this link. Amount never appears on the QR.
             </p>
           </CardContent>
-          <CardFooter className="border-t">
+          <CardFooter className="flex-wrap gap-2 border-t">
             <Button
               type="button"
               size="lg"
@@ -453,6 +501,20 @@ export function SellPanel() {
             >
               <CopyIcon data-icon="inline-start" />
               Copy link
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="min-h-12"
+              disabled={downloading}
+              aria-busy={downloading}
+              onClick={() => {
+                void downloadPng();
+              }}
+            >
+              <DownloadIcon data-icon="inline-start" />
+              {downloading ? "Preparing" : "Download PNG"}
             </Button>
           </CardFooter>
         </Card>
