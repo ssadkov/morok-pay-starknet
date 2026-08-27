@@ -1,6 +1,6 @@
 /**
  * Renders the shareable donation card - label, QR with the mark in the middle,
- * and the MorokPay footer - to a PNG the creator can post anywhere.
+ * and a small MorokPay footer - to a PNG the creator can post anywhere.
  *
  * Drawn on a canvas rather than exported from the on-screen SVG so the file
  * has print-worthy resolution and the surrounding text, instead of being a
@@ -21,7 +21,6 @@ export type QrCardOptions = {
   /** Module count including the quiet border. */
   modules: number;
   label: string;
-  url: string;
   logoSvg: string;
   network: string;
 };
@@ -65,7 +64,8 @@ export async function renderQrCardPng(
   options: QrCardOptions,
 ): Promise<Blob> {
   const headerHeight = 200;
-  const footerHeight = 232;
+  // Leaves the same breathing room under the footer as above the eyebrow.
+  const footerHeight = 234;
   const height = headerHeight + QR_SIZE + footerHeight;
 
   const canvas = document.createElement("canvas");
@@ -124,21 +124,27 @@ export async function renderQrCardPng(
     logo,
   );
 
+  /* The link is deliberately absent: it is far too long to set at a legible
+     size, and it is already encoded in the code above it. */
   const footerTop = headerHeight + QR_SIZE;
+
+  /* What the pool actually hides, and nothing more - the receiving account is
+     public on Starknet, so the promise is kept to the amount and the sender. */
+  ctx.fillStyle = TEAL;
+  ctx.font = "500 30px Inter, system-ui, sans-serif";
+  ctx.fillText("Amount and sender stay private", WIDTH / 2, footerTop + 58);
+
   ctx.fillStyle = INK;
-  ctx.font = "600 46px Inter, system-ui, sans-serif";
-  ctx.fillText("MorokPay", WIDTH / 2, footerTop + 78);
+  ctx.font = "600 34px Inter, system-ui, sans-serif";
+  ctx.fillText("MorokPay", WIDTH / 2, footerTop + 118);
 
   ctx.fillStyle = MUTED;
-  ctx.font = "400 30px Inter, system-ui, sans-serif";
+  ctx.font = "400 26px Inter, system-ui, sans-serif";
   ctx.fillText(
     `Private donations on Starknet ${options.network}`,
     WIDTH / 2,
-    footerTop + 126,
+    footerTop + 158,
   );
-
-  ctx.font = "400 24px ui-monospace, SFMono-Regular, Menlo, monospace";
-  ctx.fillText(options.url, WIDTH / 2, footerTop + 180);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {

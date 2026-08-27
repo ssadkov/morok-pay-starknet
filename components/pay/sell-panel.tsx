@@ -154,7 +154,6 @@ export function SellPanel() {
         matrix: qr.data,
         modules: qr.size,
         label,
-        url: payUrl,
         logoSvg: MOROK_MARK_SVG,
         network: request.network === "sepolia" ? "Sepolia" : "Mainnet",
       });
