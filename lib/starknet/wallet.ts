@@ -67,6 +67,65 @@ export async function connectReadyWallet(
   };
 }
 
+const LAST_WALLET_KEY = "morokpay:last-ready-wallet";
+
+/** Remember which wallet was connected so a reload can restore it silently. */
+export function rememberReadyWallet(name: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LAST_WALLET_KEY, name);
+  } catch {
+    // A blocked localStorage only costs the restore, not the session.
+  }
+}
+
+export function forgetReadyWallet() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LAST_WALLET_KEY);
+  } catch {
+    // Same: losing the hint is harmless.
+  }
+}
+
+export function lastReadyWalletName(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(LAST_WALLET_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Restore a previously authorized wallet without prompting. Returns null
+ * rather than throwing whenever the wallet would need user interaction -
+ * a page load must never pop a wallet dialog on its own.
+ */
+export async function reconnectReadyWalletSilently(
+  wallet: WalletWithStarknetFeatures,
+  network: AppNetwork = defaultAppNetwork(),
+) {
+  try {
+    const account = await WalletAccountV6.connectSilent(
+      createProvider(network),
+      wallet,
+    );
+    if (!account.address) return null;
+    const chainId = String(await walletV6.requestChainId(wallet));
+    // Switching chains needs a prompt, so leave that to an explicit connect.
+    if (chainId !== expectedChainId(network)) return null;
+    return {
+      account,
+      address: validateAndParseAddress(account.address),
+      chainId,
+      wallet,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function watchWallets(
   onChange: (wallets: WalletWithStarknetFeatures[]) => void,
 ) {

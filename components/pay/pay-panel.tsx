@@ -85,6 +85,9 @@ export function PayPanel() {
   );
   const [paying, setPaying] = useState(false);
   const payingRef = useRef(false);
+  // Pending rows this page instance still has an open wallet promise for.
+  // A reload empties it, which is exactly how a stranded row is recognised.
+  const awaitingSubmission = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [donationAmount, setDonationAmount] = useState("");
 
@@ -125,10 +128,6 @@ export function PayPanel() {
     !!request &&
     recipientPresence === "deployed" &&
     recipientRegistration === "registered";
-  const creatorBlocked =
-    !!request &&
-    (recipientPresence === "undeployed" ||
-      recipientRegistration === "unregistered");
   const canDonate =
     !!session &&
     !!request &&
@@ -197,6 +196,21 @@ export function PayPanel() {
       toast.success("Donation confirmed from the private balance change");
       return;
     }
+    /*
+     * Still pending after the refresh means the private balance never dropped
+     * by this amount. With no transaction hash either, nothing was ever
+     * submitted - and if this page instance is not awaiting the wallet call,
+     * the promise that could still produce a hash died with the previous page
+     * load. Releasing the row is what lets the donation be retried; leaving it
+     * stranded blocked every later donation to the same creator.
+     */
+    if (!pending.txHash && !awaitingSubmission.current.has(pending.id)) {
+      updateActivity(pending.id, { status: "failed" });
+      setError(
+        `${walletName} never returned a transaction for this donation, and the private balance is unchanged. Nothing was sent - you can donate again.`,
+      );
+      return;
+    }
     setError(
       `The wallet submission is still pending. MorokPay will not send it again; check again after ${walletName} finishes syncing.`,
     );
@@ -259,6 +273,7 @@ export function PayPanel() {
       address: session.address,
       balanceBeforeRaw: privateRaw.toString(),
     });
+    awaitingSubmission.current.add(pending.id);
     const confirm = async (
       txHash: string | undefined,
       confirmation: "receipt" | "balance" | "wallet",
@@ -322,21 +337,28 @@ export function PayPanel() {
       );
       const result = await bounded(submission, WALLET_SUBMISSION_TIMEOUT_MS);
       if (result.status === "settled") {
+        awaitingSubmission.current.delete(pending.id);
         await settleResponse(result.value);
       } else {
         setError(
           `${walletName} has not returned yet. The donation stays pending; use Check pending donation instead of sending it again.`,
         );
-        void submission.then(settleResponse).catch((caught) => {
-          const txHash = extractTxHash(caught);
-          if (txHash) {
-            void settleResponse({ transaction_hash: txHash });
-          } else {
-            giveUp(caught);
-          }
-        });
+        // Still genuinely open: keep the id marked so a check does not
+        // release a row this promise may yet resolve.
+        void submission
+          .then(settleResponse)
+          .catch((caught) => {
+            const txHash = extractTxHash(caught);
+            if (txHash) {
+              void settleResponse({ transaction_hash: txHash });
+            } else {
+              giveUp(caught);
+            }
+          })
+          .finally(() => awaitingSubmission.current.delete(pending.id));
       }
     } catch (caught) {
+      awaitingSubmission.current.delete(pending.id);
       const txHash = extractTxHash(caught);
       if (txHash) {
         updateActivity(pending.id, { txHash });
@@ -507,7 +529,11 @@ export function PayPanel() {
         ]}
       />
 
-      {request && session && (canDonate || creatorBlocked) ? (
+      {/* Kept visible even while the note matures or the recipient is still
+          being checked: hiding it left the page with a countdown and no sign
+          of who the donation is even for. The button below stays disabled
+          until canDonate, and the alerts explain what is missing. */}
+      {request && session ? (
         <Card>
           <CardHeader>
             <CardTitle>{request.label || "Private donation"}</CardTitle>
@@ -564,6 +590,15 @@ export function PayPanel() {
                   ? "…"
                   : formatUsdc(privateRaw)}
               </p>
+            ) : null}
+            {privateRaw > BigInt(0) && !notes.ready ? (
+              <Alert>
+                <AlertTitle>Waiting for the note to mature</AlertTitle>
+                <AlertDescription>
+                  Ready in {notes.remainingLabel}. New notes need about ten
+                  blocks before the pool will let them move.
+                </AlertDescription>
+              </Alert>
             ) : null}
             {session && request && sameAddress(request.to, session.address) ? (
               <Alert>

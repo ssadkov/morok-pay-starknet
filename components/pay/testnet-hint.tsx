@@ -17,11 +17,18 @@ export function TestnetHint() {
 
   if (network !== "sepolia") return null;
 
-  async function copyReady() {
+  // An EVM session never has a Ready account: its Starknet address is derived
+  // from the EVM key, so calling it "Ready" points at the wrong wallet.
+  const isEvm = session?.kind === "evm";
+  const addressLabel = isEvm ? "derived Starknet address" : "Ready address";
+
+  async function copyAddress() {
     if (!session) return;
     try {
       await navigator.clipboard.writeText(session.address);
-      toast.success("Ready address copied");
+      toast.success(
+        isEvm ? "Derived Starknet address copied" : "Ready address copied",
+      );
     } catch {
       toast.error("Could not copy address");
     }
@@ -32,18 +39,18 @@ export function TestnetHint() {
       <AlertTitle>Sepolia testnet</AlertTitle>
       <AlertDescription className="flex flex-col gap-3">
         <p>
-          Dry-run the QR loop here. Switch Ready to Starknet Sepolia. Pool fee
-          is 2 STRK. Sprint evidence still has to be mainnet.
+          Dry-run the QR loop here. Point your wallet at Starknet Sepolia. Pool
+          fee is 2 STRK. Sprint evidence still has to be mainnet.
         </p>
         <p>
-          Fast path: get test STRK, make one outgoing Ready transaction to
-          deploy the account, then shield more than 2 STRK for the pool fee.
-          Circle USDC is only needed when testing fixed-amount payments.
+          {isEvm
+            ? "Fast path: get test STRK to the derived address below, then shield more than 2 STRK for the pool fee. Circle USDC is only needed when testing fixed-amount payments."
+            : "Fast path: get test STRK, make one outgoing Ready transaction to deploy the account, then shield more than 2 STRK for the pool fee. Circle USDC is only needed when testing fixed-amount payments."}
         </p>
         <div className="flex flex-wrap gap-2">
           {session ? (
-            <Button type="button" variant="outline" size="sm" onClick={() => void copyReady()}>
-              Copy Ready address
+            <Button type="button" variant="outline" size="sm" onClick={() => void copyAddress()}>
+              Copy {addressLabel}
             </Button>
           ) : null}
           <Button

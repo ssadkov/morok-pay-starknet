@@ -42,11 +42,18 @@ export function BalanceSidebar() {
                 variant="ghost"
                 aria-label="Refresh public and private balances"
                 title="Refresh balances"
+                disabled={balancesLoading}
+                aria-busy={balancesLoading}
                 onClick={() => {
                   void refreshBalances();
                 }}
               >
-                <RefreshCwIcon />
+                {/* Balances are usually already on screen, so the skeletons
+                    below stay hidden on a refresh - without this the click
+                    looks like it did nothing. */}
+                <RefreshCwIcon
+                  className={balancesLoading ? "animate-spin" : undefined}
+                />
               </Button>
             ) : null}
           </div>
