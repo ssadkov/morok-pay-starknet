@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { CopyIcon } from "lucide-react";
+import { CopyIcon, PencilIcon } from "lucide-react";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { DeployReadyButton } from "@/components/pay/deploy-ready-button";
@@ -14,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -69,6 +70,7 @@ export function SellPanel() {
   const { session, balances } = useTreasury();
   const invoices = useInvoices(network);
   const [label, setLabel] = useState("");
+  const [editing, setEditing] = useState(false);
   const [created, setCreated] = useState<PaymentRequest | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +95,12 @@ export function SellPanel() {
     return paymentUrl(window.location.origin, request);
   }, [request]);
 
-  async function handleCreate() {
+  /*
+   * Renaming reuses this: saveInvoice replaces by invoice id, and the id and
+   * createdAt are carried over from the stored donation, so the QR keeps its
+   * identity and payment history instead of becoming a second one.
+   */
+  async function persist(nextLabel: string) {
     if (!session) return;
     setError(null);
     setCreating(true);
@@ -106,7 +113,7 @@ export function SellPanel() {
         to: session.address,
         amount: "",
         invoice: stored?.invoice || nextInvoiceId("TIP"),
-        label: label.trim() || stored?.label || DEFAULT_LABEL,
+        label: nextLabel,
         kind: "donation",
       };
       saveInvoice({
@@ -116,11 +123,22 @@ export function SellPanel() {
       });
       setCreated(next);
       setLabel("");
+      setEditing(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create QR");
     } finally {
       setCreating(false);
     }
+  }
+
+  function handleCreate() {
+    return persist(label.trim() || stored?.label || DEFAULT_LABEL);
+  }
+
+  /* Blank means "back to the default" here, rather than the create path's
+     "keep whatever is stored" - otherwise a rename could never clear one. */
+  function handleRename() {
+    return persist(label.trim() || DEFAULT_LABEL);
   }
 
   async function copyUrl() {
@@ -167,12 +185,12 @@ export function SellPanel() {
 
       <OnboardingSteps
         title="Get ready to receive"
-        description="Connect Ready, or MetaMask with no Starknet wallet at all. MorokPay verifies deployment and privacy activation before creating a QR."
+        description="Connect Ready, or an EVM wallet with no Starknet wallet at all. MorokPay verifies deployment and privacy activation before creating a QR."
         doneLabel={`${session?.kind === "evm" ? "EVM wallet" : "Ready"} · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
         steps={[
           {
             id: "ready",
-            title: "Connect Ready or MetaMask",
+            title: "Connect Ready or EVM wallet",
             body: "The connected wallet must control the signing key and its private viewing key.",
             status: session ? "done" : "current",
             children: session ? null : <ConnectWalletChoices />,
@@ -360,8 +378,59 @@ export function SellPanel() {
               Open amount · supporters pick how much
               {request.network === "sepolia" ? " · Sepolia" : ""}
             </CardDescription>
+            <CardAction>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={creating}
+                onClick={() => {
+                  setLabel(editing ? "" : request.label || DEFAULT_LABEL);
+                  setEditing(!editing);
+                  setError(null);
+                }}
+              >
+                <PencilIcon data-icon="inline-start" />
+                {editing ? "Cancel" : "Rename"}
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col items-start gap-4">
+            {editing ? (
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="rename-label">Label</FieldLabel>
+                  <Input
+                    id="rename-label"
+                    value={label}
+                    placeholder={DEFAULT_LABEL}
+                    onChange={(event) => setLabel(event.target.value)}
+                  />
+                  <FieldDescription>
+                    The label travels inside the link, so renaming produces a
+                    new link and QR. Ones you already shared keep the old label
+                    and still pay this account.
+                  </FieldDescription>
+                </Field>
+                <Button
+                  type="button"
+                  className="self-start"
+                  disabled={creating}
+                  aria-busy={creating}
+                  onClick={() => {
+                    void handleRename();
+                  }}
+                >
+                  Save label
+                </Button>
+              </FieldGroup>
+            ) : null}
+            {error && editing ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not rename</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
             <QrCode
               value={payUrl}
               label={`Private donation to ${request.label || DEFAULT_LABEL}`}
