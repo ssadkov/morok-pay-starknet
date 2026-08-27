@@ -105,7 +105,7 @@ export function formatStrk20Error(
     return "Ready blocked this action because it would leak privacy.";
   }
   if (/Insufficient balance for token/i.test(message) && (action === "payout" || action === "pay")) {
-    return "This private note is too new. Notes need about 10 blocks (roughly two minutes on Sepolia) after shielding before they can move — wait a moment and try again.";
+    return `The pool's proving block does not see this balance yet (${message}). New notes need about 10 blocks after shielding before they can move — wait a moment and try again. If this persists well after that wait, the note may not have been discovered at all.`;
   }
   if (/USER_REFUSED/i.test(message) && action === "balance") {
     return "Ready did not share private balances. Click refresh and approve once.";

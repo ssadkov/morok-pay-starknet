@@ -17,6 +17,7 @@ import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
+import { pollTransactionReceipt } from "@/lib/starknet/transaction-confirmation";
 
 import { usePoolFee } from "./use-pool-fee";
 import { usePoolRegistration } from "./use-pool-registration";
@@ -91,6 +92,7 @@ export function ShieldButton({
   async function handleShield() {
     if (!session) return;
     setShielding(true);
+    let txHash: string | undefined;
     try {
       if (needsFeeStrk) {
         const parsed = amount.trim()
@@ -111,6 +113,7 @@ export function ShieldButton({
           STRK_ADDRESS,
           parsed,
         );
+        txHash = response.transaction_hash;
         recordActivity({
           network,
           kind: "shield",
@@ -149,6 +152,7 @@ export function ShieldButton({
           );
         }
         const response = await shieldToken(session.account, usdc, parsed);
+        txHash = response.transaction_hash;
         recordActivity({
           network,
           kind: "shield",
@@ -174,6 +178,11 @@ export function ShieldButton({
         });
       }
       setAmount("");
+      if (txHash) {
+        await pollTransactionReceipt({
+          read: () => session.account.provider.getTransactionReceipt(txHash!),
+        });
+      }
       await refreshBalances();
     } catch (caught) {
       toast.error(formatStrk20Error(caught, "shield"));

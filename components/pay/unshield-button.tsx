@@ -16,6 +16,7 @@ import { payoutToken } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
+import { pollTransactionReceipt } from "@/lib/starknet/transaction-confirmation";
 
 import { useUsdcMaturity } from "./use-usdc-maturity";
 
@@ -91,6 +92,9 @@ export function UnshieldButton() {
         },
       });
       setAmount("");
+      await pollTransactionReceipt({
+        read: () => session.account.provider.getTransactionReceipt(response.transaction_hash),
+      });
       await refreshBalances();
     } catch (caught) {
       toast.error(formatStrk20Error(caught, "payout"));
