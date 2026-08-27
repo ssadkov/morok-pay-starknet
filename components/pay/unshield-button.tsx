@@ -17,12 +17,15 @@ import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 
+import { useUsdcMaturity } from "./use-usdc-maturity";
+
 export function UnshieldButton() {
   const { network, starknet } = useNetwork();
   const { session, balances, refreshBalances } = useTreasury();
   const [amount, setAmount] = useState("");
   const [unshielding, setUnshielding] = useState(false);
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
+  const notes = useUsdcMaturity(session?.address, privateUsdc);
 
   if (!session) return null;
 
@@ -96,7 +99,7 @@ export function UnshieldButton() {
     }
   }
 
-  const canUnshield = privateUsdc > BigInt(0);
+  const canUnshield = privateUsdc > BigInt(0) && notes.ready;
 
   return (
     <div className="flex w-full flex-col gap-2">
@@ -105,6 +108,11 @@ export function UnshieldButton() {
         public. A new private note may need about 10 blocks before it can be
         spent.
       </p>
+      {privateUsdc > BigInt(0) && !notes.ready ? (
+        <p className="font-mono text-sm font-semibold tabular-nums">
+          Matures in {notes.remainingLabel}
+        </p>
+      ) : null}
       <div className="flex gap-2">
         <Input
           id="unshield-amount"
