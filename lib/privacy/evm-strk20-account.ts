@@ -14,6 +14,7 @@ import {
 import {
   createPrivateTransfers,
   type CallAndProof,
+  type Note,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { deriveViewingKey } from "@starkware-libs/starknet-privacy-client";
 import {
@@ -202,12 +203,61 @@ export function createEvmStrk20Account(options: {
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
       const poolFee = await readPoolFee(options.network);
+
+      /*
+       * Spending needs its input notes named explicitly. The builder only
+       * picks notes on its own when ExecuteOptions.autoSelectNotes is set,
+       * so without either the proof is built over an empty input set and the
+       * pool rejects it as "total available: 0" no matter how much is in the
+       * account. Notes are discovered at the proving block because that is
+       * the state the proof is checked against - a note the latest block can
+       * see but the proving block cannot is not yet spendable.
+       */
+      let inputs: Note[] = [];
+      if (action.type !== "deposit") {
+        const discovered = await transfers.discoverNotes({
+          tokens: [BigInt(token)],
+          blockIdentifier: provingBlock,
+        });
+        const notes = discovered.notes.get(BigInt(token)) ?? [];
+        const selected: Note[] = [];
+        let total = BigInt(0);
+        // Smallest first, so small notes get consolidated instead of stranded.
+        for (const note of [...notes].sort((left, right) =>
+          left.amount < right.amount ? -1 : left.amount > right.amount ? 1 : 0,
+        )) {
+          selected.push(note);
+          total += note.amount;
+          if (total >= amount) break;
+        }
+        if (total < amount) {
+          /* Separate the two failures: being short of funds is not something
+             waiting fixes, while a note the proving block cannot see yet is. */
+          const latest = await transfers.discoverNotes({
+            tokens: [BigInt(token)],
+          });
+          const latestTotal = (latest.notes.get(BigInt(token)) ?? []).reduce(
+            (sum, note) => sum + note.amount,
+            BigInt(0),
+          );
+          throw new Error(
+            latestTotal < amount
+              ? `This account holds ${latestTotal} of the ${amount} needed for this ${action.type}.`
+              : `The balance is there, but proving block ${provingBlock} still sees only ${total}. Wait until the note is at least ${PROVING_BLOCK_DEPTH} blocks old, then try again.`,
+          );
+        }
+        inputs = selected;
+      }
+
       const builder = transfers
         .build({ autoSetup: true })
         .with(token, (operations) => {
           if (action.type === "deposit") {
             operations.deposit({ amount });
-          } else if (action.type === "withdraw") {
+            return;
+          }
+          operations.inputs(...inputs);
+          if (action.type === "withdraw") {
             operations.withdraw({
               recipient: validateAndParseAddress(action.recipient),
               amount,

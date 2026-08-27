@@ -150,6 +150,22 @@ export function PayPanel() {
     });
   }
 
+  /*
+   * extractTxHash scans error text for a felt, and a token address is the
+   * same shape as a transaction hash - a pool error naming the token can
+   * therefore be mistaken for a submission. Ask the node whether the hash is
+   * a transaction at all before a pending row is built around it.
+   */
+  async function transactionKnown(txHash: string) {
+    if (!session) return false;
+    try {
+      await session.account.provider.getTransaction(txHash);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function refreshPrivateSafely() {
     try {
       await refreshBalances({ private: true });
@@ -198,16 +214,21 @@ export function PayPanel() {
     }
     /*
      * Still pending after the refresh means the private balance never dropped
-     * by this amount. With no transaction hash either, nothing was ever
-     * submitted - and if this page instance is not awaiting the wallet call,
-     * the promise that could still produce a hash died with the previous page
-     * load. Releasing the row is what lets the donation be retried; leaving it
-     * stranded blocked every later donation to the same creator.
+     * by this amount. If the row also has no transaction the node recognises,
+     * nothing was ever submitted - either the wallet returned no hash, or the
+     * recorded one was a felt scraped out of an error message rather than a
+     * real submission. With no open wallet promise on this page either (a
+     * reload empties that set), the row is provably dead. Releasing it is what
+     * lets the donation be retried; leaving it stranded blocked every later
+     * donation to the same creator.
      */
-    if (!pending.txHash && !awaitingSubmission.current.has(pending.id)) {
+    const submitted = pending.txHash
+      ? await transactionKnown(pending.txHash)
+      : false;
+    if (!submitted && !awaitingSubmission.current.has(pending.id)) {
       updateActivity(pending.id, { status: "failed" });
       setError(
-        `${walletName} never returned a transaction for this donation, and the private balance is unchanged. Nothing was sent - you can donate again.`,
+        `${walletName} never submitted this donation, and the private balance is unchanged. Nothing was sent - you can donate again.`,
       );
       return;
     }
@@ -359,14 +380,24 @@ export function PayPanel() {
       }
     } catch (caught) {
       awaitingSubmission.current.delete(pending.id);
-      const txHash = extractTxHash(caught);
+      const scanned = extractTxHash(caught);
+      const txHash =
+        scanned && (await transactionKnown(scanned)) ? scanned : undefined;
       if (txHash) {
         updateActivity(pending.id, { txHash });
         const status = await receiptStatus(txHash);
         if (status === "confirmed") await confirm(txHash, "receipt");
+        // A receipt that never turns final leaves the row pending on purpose,
+        // so "Check pending donation" can settle it rather than double-sending.
         else if (status === "failed") giveUp(caught);
+        else {
+          setError(
+            `${walletName} submitted this donation but it has not confirmed yet. Use Check pending donation instead of sending it again.`,
+          );
+        }
+      } else {
+        giveUp(caught);
       }
-      else giveUp(caught);
     } finally {
       payingRef.current = false;
       setPaying(false);
