@@ -7,10 +7,8 @@ import {
 import {
   Account,
   cairo,
-  num,
   RpcProvider,
   validateAndParseAddress,
-  type BigNumberish,
   type Call,
 } from "starknet";
 import {
@@ -31,6 +29,11 @@ import {
   eth712FundedResourceBounds,
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
+import {
+  namesRecipient,
+  normalizeCall,
+  relaySubmission,
+} from "@/lib/privacy/relay-client";
 import { privacySdkOf } from "@/lib/privacy/network";
 import type { AppNetwork } from "@/lib/network";
 import { readPoolFee } from "@/lib/starknet/pool-fee";
@@ -39,53 +42,6 @@ import { getAccountSnapshot } from "@/lib/starknet/status";
 
 const PROVING_BLOCK_DEPTH = 10;
 const PROOF1_VERSION = BigInt("0x50524f4f4631");
-
-/**
- * Hands a proven action set to MorokPay to submit and pay for.
- *
- * The point is what is *not* sent: no address, no signature, nothing that
- * names the donor. The pool authorizes on the proof alone, so the relayer can
- * send it without knowing whose it is - and the chain then records MorokPay as
- * the sender rather than the donor.
- *
- * There is deliberately no fallback to submitting it ourselves. Falling back
- * would quietly publish the very link the relay exists to break, and a donor
- * who was told the donation was unlinkable would never see it happen.
- */
-async function relaySubmission(args: {
-  network: AppNetwork;
-  callAndProof: CallAndProof;
-}): Promise<{ transaction_hash: string }> {
-  const response = await fetch("/api/privacy/relay", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      network: args.network,
-      call: {
-        contractAddress: validateAndParseAddress(
-          String(args.callAndProof.call.contractAddress),
-        ),
-        entrypoint: args.callAndProof.call.entrypoint,
-        calldata: (
-          (args.callAndProof.call.calldata ?? []) as BigNumberish[]
-        ).map((value) => num.toHex(value)),
-      },
-      proof: args.callAndProof.proof.data,
-      proofFacts: args.callAndProof.proof.proofFacts,
-    }),
-  });
-  const payload = (await response.json().catch(() => null)) as {
-    error?: string;
-    transactionHash?: string;
-  } | null;
-  if (!response.ok || !payload?.transactionHash) {
-    throw new Error(
-      payload?.error ??
-        "MorokPay could not relay this donation, and it was not submitted. Nothing was published.",
-    );
-  }
-  return { transaction_hash: payload.transactionHash };
-}
 
 export type Strk20Action =
   | { type: "deposit"; token: string; amount: string }
@@ -419,14 +375,31 @@ export function createEvmStrk20Account(options: {
       ) {
         throw new Error("The prover returned unsupported proof facts.");
       }
+      const relayable = normalizeCall(
+        callAndProof.call as Parameters<typeof normalizeCall>[0],
+      );
       if (relayed) {
         /* MorokPay approves the fee from its own balance, because the pool
            charges get_caller_address(). Nothing else about this account goes
            with the proof. */
         return relaySubmission({
           network: options.network,
-          callAndProof,
+          call: relayable,
+          proof: callAndProof.proof.data,
+          proofFacts: callAndProof.proof.proofFacts.map(String),
         });
+      }
+      /* The decision above came from the SDK's view of whether a channel is
+         missing. This checks the assembled call instead, and refuses rather
+         than publishing a link the prediction did not see coming - an
+         unexpected subchannel setup, say. */
+      if (
+        action.type === "transfer" &&
+        namesRecipient(relayable, action.recipient)
+      ) {
+        throw new Error(
+          "This donation would publish the creator's address next to yours, and MorokPay was not asked to relay it. Nothing was submitted.",
+        );
       }
       /* Deposit pulls the deposited token out of the public balance, so it
          needs its own approval unless the deposit is STRK itself - then one

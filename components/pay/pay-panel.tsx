@@ -45,7 +45,7 @@ import {
 } from "@/lib/pay/activity";
 import { CIRCLE_FAUCET_URL } from "@/lib/pay/testnet";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
-import { transferPrivate } from "@/lib/starknet/actions";
+import { PublicLinkError, transferPrivate } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import {
   bounded,
@@ -96,6 +96,9 @@ export function PayPanel() {
   // A reload empties it, which is exactly how a stranded row is recognised.
   const awaitingSubmission = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
+  /* Held apart from `error`: this one is a decision for the donor, not a
+     failure, and it is the only place the app admits the link can go public. */
+  const [publicLink, setPublicLink] = useState<string | null>(null);
   const [donationAmount, setDonationAmount] = useState("");
 
   const request = fromQuery ?? fromPaste;
@@ -156,6 +159,7 @@ export function PayPanel() {
     setFromPaste(parsePaymentLink("", network));
     setDonationAmount("");
     setError(null);
+    setPublicLink(null);
   }
 
   useEffect(() => {
@@ -259,8 +263,9 @@ export function PayPanel() {
     );
   }
 
-  async function handlePay() {
+  async function handlePay(allowPublicLink = false) {
     if (!session || !request) return;
+    setPublicLink(null);
     if (payingRef.current) return;
     if (pendingDonationId) {
       payingRef.current = true;
@@ -345,6 +350,13 @@ export function PayPanel() {
       );
       if (current?.status === "confirmed") return;
       updateActivity(pending.id, { status: "failed" });
+      /* Nothing was sent, so this is a question rather than a failure. Saying
+         it in the error slot would read as "it broke", and the donor would
+         retry blind into the very disclosure being warned about. */
+      if (caught instanceof PublicLinkError) {
+        setPublicLink(caught.message);
+        return;
+      }
       setError(formatStrk20Error(caught, "pay"));
     };
 
@@ -377,6 +389,7 @@ export function PayPanel() {
         usdc,
         amount,
         request.to,
+        { network, allowPublicLink },
       );
       const result = await bounded(submission, WALLET_SUBMISSION_TIMEOUT_MS);
       if (result.status === "settled") {
@@ -689,6 +702,29 @@ export function PayPanel() {
                 <AlertTitle>Creator has not activated STRK20</AlertTitle>
                 <AlertDescription>
                   Ask them to shield STRK once on My QR before you donate.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {publicLink ? (
+              <Alert>
+                <AlertTitle>This donation would be public</AlertTitle>
+                <AlertDescription>
+                  <p>{publicLink}</p>
+                  <p>
+                    The amount stays hidden either way, and any later donation
+                    to this creator is private whatever you choose now.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 self-start"
+                    onClick={() => {
+                      void handlePay(true);
+                    }}
+                  >
+                    Donate anyway
+                  </Button>
                 </AlertDescription>
               </Alert>
             ) : null}

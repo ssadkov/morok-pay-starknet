@@ -4,7 +4,15 @@ import {
   type WalletAccountV6,
 } from "starknet";
 
-import { STRK_ADDRESS } from "./constants";
+import type { AppNetwork } from "@/lib/network";
+import {
+  namesRecipient,
+  normalizeCall,
+  relaySubmission,
+} from "@/lib/privacy/relay-client";
+
+import { STRK_ADDRESS, starknetOf } from "./constants";
+import { readPoolFee } from "./pool-fee";
 import type { ShieldToken } from "./tokens";
 import { WalletTimeoutError } from "./errors";
 import { WALLET_SUBMISSION_TIMEOUT_MS } from "./transaction-confirmation";
@@ -143,12 +151,79 @@ export async function payoutToken(
   );
 }
 
+/**
+ * A donation MorokPay will not send as-is, because sending it would put the
+ * donor and the creator in one public transaction. Carries no blame: the
+ * caller decides whether the donor accepts that and retries.
+ */
+export class PublicLinkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "PublicLinkError";
+  }
+}
+
+/** Whether this wallet can hand over a proof instead of submitting it. */
+function canPrepareInvoke(
+  account: PrivateWalletAccount,
+): account is WalletAccountV6 {
+  return (
+    typeof (account as WalletAccountV6).strk20PrepareInvoke === "function" &&
+    typeof (account as WalletAccountV6).executeWithProof === "function"
+  );
+}
+
+/**
+ * A wallet that has never heard of the method, as opposed to one that tried
+ * and failed. Only the first justifies falling back to a plain submission.
+ */
+function looksUnsupported(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /not supported|unsupported|not implemented|unknown method|method not found|-32601|API_VERSION_NOT_SUPPORTED/i.test(
+    message,
+  );
+}
+
+function poolApprovalCall(poolAddress: string, amount: bigint): Call {
+  return {
+    contractAddress: STRK_ADDRESS,
+    entrypoint: "approve",
+    calldata: [
+      validateAndParseAddress(poolAddress),
+      toCalldataFelt(amount),
+      "0x0",
+    ],
+  };
+}
+
+/**
+ * Sends a private transfer, and keeps the donor out of it when the transfer
+ * would otherwise name them.
+ *
+ * A channel exists per sender-recipient pair, so only the first transfer to a
+ * given creator carries the channel-opening `Append` with their address in
+ * plaintext. Submitted by the donor, that one transaction ties the two
+ * together on chain forever; every later donation to the same creator names
+ * nobody and is safe to send normally.
+ *
+ * Ready builds the proof inside the extension. `wallet_strk20PrepareInvoke`
+ * hands it over without submitting, which is the whole reason relaying works
+ * on this rail too: the pool authorizes on the proof, not on the sender, so
+ * MorokPay can send it instead. A wallet that lacks the method leaves us
+ * unable to even tell whether this donation opens a channel - hence
+ * PublicLinkError rather than a guess.
+ */
 export async function transferPrivate(
   account: PrivateWalletAccount,
   token: ShieldToken,
   amount: bigint,
   recipient: string,
-  invoke?: { contract: string; calldata?: string[] },
+  options: {
+    network: AppNetwork;
+    /** Set once the donor has been told the link becomes public and said yes. */
+    allowPublicLink?: boolean;
+    invoke?: { contract: string; calldata?: string[] };
+  },
 ) {
   const actions: Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0] = [
     {
@@ -158,17 +233,63 @@ export async function transferPrivate(
       recipient: validateAndParseAddress(recipient),
     },
   ];
-  if (invoke?.contract) {
+  if (options.invoke?.contract) {
     actions.push({
       type: "invoke",
-      contract: validateAndParseAddress(invoke.contract),
-      calldata: invokeCalldata(invoke.calldata ?? []),
+      contract: validateAndParseAddress(options.invoke.contract),
+      calldata: invokeCalldata(options.invoke.calldata ?? []),
     });
   }
+
+  const submitThroughWallet = () =>
+    withWalletTimeout(
+      account.strk20InvokeTransaction(
+        actions as Strk20Action[] &
+          Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
+      ),
+    );
+
+  /* The EVM rail decides for itself inside MorokPrivateAccount, where the SDK
+     and the proof already live. */
+  if (!canPrepareInvoke(account)) return submitThroughWallet();
+
+  let prepared;
+  try {
+    prepared = await withWalletTimeout(
+      account.strk20PrepareInvoke(
+        actions as Parameters<WalletAccountV6["strk20PrepareInvoke"]>[0],
+      ),
+    );
+  } catch (error) {
+    if (!looksUnsupported(error)) throw error;
+    if (!options.allowPublicLink) {
+      throw new PublicLinkError(
+        "This wallet will not hand over the donation for MorokPay to send, so if this is your first donation to this creator the two addresses land in one public transaction. Nothing was submitted.",
+      );
+    }
+    return submitThroughWallet();
+  }
+
+  const call = normalizeCall(
+    prepared.call as Parameters<typeof normalizeCall>[0],
+  );
+  if (namesRecipient(call, recipient)) {
+    return relaySubmission({
+      network: options.network,
+      call,
+      proof: prepared.proof.data,
+      proofFacts: prepared.proof.proof_facts.map(String),
+    });
+  }
+
+  /* Names nobody, so there is nothing to hide behind a relay and no reason to
+     spend MorokPay's fee. The donor submits the proof they just built, with
+     the pool's fee approval in front of it. */
+  const poolFee = await readPoolFee(options.network);
   return withWalletTimeout(
-    account.strk20InvokeTransaction(
-      actions as Strk20Action[] &
-        Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
+    account.executeWithProof(
+      [poolApprovalCall(starknetOf(options.network).pool, poolFee), call],
+      prepared.proof,
     ),
   );
 }
