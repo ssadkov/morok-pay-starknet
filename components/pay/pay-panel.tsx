@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
@@ -71,6 +71,7 @@ function isOpenAmount(kind?: string, amount?: string) {
 
 export function PayPanel() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { network, setNetwork, starknet } = useNetwork();
   const {
     session,
@@ -141,6 +142,21 @@ export function PayPanel() {
     notes.ready &&
     privateRaw > BigInt(0);
   const walletName = session?.kind === "evm" ? "EVM wallet" : "Ready";
+
+  /*
+   * A donation link arrives in the URL, and once it does the "open a link"
+   * step collapses to done and takes its input with it - which left the page
+   * with no way back to a different creator short of editing the address bar.
+   * The request can come from either the query or the pasted field, so both
+   * have to be cleared for the step to reopen.
+   */
+  function chooseAnotherCreator() {
+    router.replace("/pay");
+    setPasted("");
+    setFromPaste(parsePaymentLink("", network));
+    setDonationAmount("");
+    setError(null);
+  }
 
   useEffect(() => {
     if (fromQuery && fromQuery.network !== network) {
@@ -577,6 +593,16 @@ export function PayPanel() {
             <CardDescription>
               To {shortenAddress(request.to)} on Starknet {request.network}
             </CardDescription>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={paying}
+              className="mt-1 self-start px-0 text-muted-foreground hover:text-foreground"
+              onClick={chooseAnotherCreator}
+            >
+              Donate to someone else
+            </Button>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {openAmount ? (
