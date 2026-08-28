@@ -18,6 +18,8 @@ import {
   type Signature,
 } from "starknet";
 
+import { formatStrk } from "@/lib/starknet/status";
+
 const MASK_128 = (BigInt(1) << BigInt(128)) - BigInt(1);
 
 export const ETH712_TEST_MAXIMUM_GAS_FEE = BigInt(12) * BigInt(10) ** BigInt(18);
@@ -141,6 +143,22 @@ function resourceCost(bounds: ResourceBoundsBN) {
   );
 }
 
+/**
+ * "Insufficient public STRK" on its own left no way to tell how short the
+ * account actually was, so every gas failure looked the same as a bug. Name
+ * the balance, what the action needs, and the gap.
+ */
+function shortOfStrk(args: {
+  publicBalance: bigint;
+  required: bigint;
+  transferAmount: bigint;
+}) {
+  const gap = args.required - args.publicBalance;
+  return new Error(
+    `Not enough public STRK for gas. This account holds ${formatStrk(args.publicBalance)} STRK but needs about ${formatStrk(args.required)} - ${formatStrk(args.transferAmount)} goes to the pool and the rest pays gas. Send at least ${formatStrk(gap > BigInt(0) ? gap : BigInt(0))} more STRK to this address and try again.`,
+  );
+}
+
 export function eth712FundedResourceBounds(args: {
   estimated: ResourceBoundsBN;
   publicBalance: bigint;
@@ -154,7 +172,11 @@ export function eth712FundedResourceBounds(args: {
       args.estimated.l1_data_gas.max_price_per_unit;
   const available = args.publicBalance - args.transferAmount - nonL2Fee;
   if (available <= BigInt(0)) {
-    throw new Error("Insufficient public STRK for Eth712 validation");
+    throw shortOfStrk({
+      publicBalance: args.publicBalance,
+      required: args.transferAmount + resourceCost(args.estimated),
+      transferAmount: args.transferAmount,
+    });
   }
 
   const l2Price = args.estimated.l2_gas.max_price_per_unit;
@@ -174,7 +196,11 @@ export function eth712FundedResourceBounds(args: {
     balanceL2Budget < cappedL2Budget ? balanceL2Budget : cappedL2Budget;
   const maxAmount = l2Budget / l2Price;
   if (maxAmount <= args.estimated.l2_gas.max_amount) {
-    throw new Error("Insufficient public STRK for Eth712 account validation");
+    throw shortOfStrk({
+      publicBalance: args.publicBalance,
+      required: args.transferAmount + resourceCost(args.estimated),
+      transferAmount: args.transferAmount,
+    });
   }
 
   const provisional = {
@@ -185,7 +211,11 @@ export function eth712FundedResourceBounds(args: {
     },
   };
   if (resourceCost(provisional) + args.transferAmount > args.publicBalance) {
-    throw new Error("Validation resource cap exceeds the public STRK balance");
+    throw shortOfStrk({
+      publicBalance: args.publicBalance,
+      required: args.transferAmount + resourceCost(provisional),
+      transferAmount: args.transferAmount,
+    });
   }
   if (
     args.maximumFeeCap !== undefined &&

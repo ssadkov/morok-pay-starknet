@@ -16,22 +16,28 @@ import { payoutToken } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
+import { pollTransactionReceipt } from "@/lib/starknet/transaction-confirmation";
+
+import { useUsdcMaturity } from "./use-usdc-maturity";
 
 export function UnshieldButton() {
   const { network, starknet } = useNetwork();
-  const { session, balances, refreshBalances } = useTreasury();
+  const { session, balances, refreshBalances, signatureProgress } =
+    useTreasury();
   const [amount, setAmount] = useState("");
   const [unshielding, setUnshielding] = useState(false);
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
+  const notes = useUsdcMaturity(session?.address, privateUsdc);
 
   if (!session) return null;
 
-  if (session.kind === "evm") {
+  if (session.kind === "evm" && network !== "sepolia") {
     return (
       <div className="flex flex-col gap-2">
         <p className="text-xs text-muted-foreground">
-          EVM unshield remains in the Sepolia lab so its public recipient, pool
-          fee, and proof can be reviewed before signing.
+          Unshield for an EVM wallet is live on Sepolia. Use EVM Lab here on
+          mainnet while that flow still shows the proof and fee review
+          explicitly.
         </p>
         <Button
           nativeButton={false}
@@ -87,6 +93,9 @@ export function UnshieldButton() {
         },
       });
       setAmount("");
+      await pollTransactionReceipt({
+        read: () => session.account.provider.getTransactionReceipt(response.transaction_hash),
+      });
       await refreshBalances();
     } catch (caught) {
       toast.error(formatStrk20Error(caught, "payout"));
@@ -95,15 +104,20 @@ export function UnshieldButton() {
     }
   }
 
-  const canUnshield = privateUsdc > BigInt(0);
+  const canUnshield = privateUsdc > BigInt(0) && notes.ready;
 
   return (
     <div className="flex w-full flex-col gap-2">
       <p className="text-xs text-muted-foreground">
-        Withdraw to this Ready account. The amount, destination, and time become
+        Withdraw to this account. The amount, destination, and time become
         public. A new private note may need about 10 blocks before it can be
         spent.
       </p>
+      {privateUsdc > BigInt(0) && !notes.ready ? (
+        <p className="font-mono text-sm font-semibold tabular-nums">
+          Matures in {notes.remainingLabel}
+        </p>
+      ) : null}
       <div className="flex gap-2">
         <Input
           id="unshield-amount"
@@ -114,6 +128,15 @@ export function UnshieldButton() {
           disabled={unshielding || !canUnshield}
           onChange={(event) => setAmount(event.target.value)}
         />
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={unshielding || !canUnshield}
+          onClick={() => setAmount(formatUsdc(privateUsdc / BigInt(2)))}
+        >
+          50%
+        </Button>
         <Button
           type="button"
           size="sm"
@@ -138,7 +161,11 @@ export function UnshieldButton() {
         ) : (
           <EyeOffIcon data-icon="inline-start" />
         )}
-        {unshielding ? "Unshielding" : "Unshield USDC"}
+        {unshielding
+          ? signatureProgress
+            ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
+            : "Unshielding"
+          : "Unshield USDC"}
       </Button>
     </div>
   );

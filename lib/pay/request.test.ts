@@ -33,14 +33,21 @@ describe("payment request", () => {
     expect(parsePaymentLink(paymentPath(request), "mainnet")).toEqual(request);
   });
 
-  it("round-trips a private drop request", () => {
+  /*
+   * An open-amount link drops the invoice id: nothing can match a payment to
+   * it without an amount, so carrying it only made the QR denser.
+   */
+  it("round-trips a private drop request without the invoice id", () => {
     const drop = {
       ...request,
       amount: "",
       kind: "drop" as const,
       label: "MorokPay Private Drop",
     };
-    expect(parsePaymentLink(paymentPath(drop), "mainnet")).toEqual(drop);
+    expect(parsePaymentLink(paymentPath(drop), "mainnet")).toEqual({
+      ...drop,
+      invoice: "",
+    });
   });
 
   it("round-trips a reusable donation request without a fixed amount", () => {
@@ -50,7 +57,14 @@ describe("payment request", () => {
       kind: "donation" as const,
       label: "Support my channel",
     };
-    expect(parsePaymentLink(paymentPath(donation), "mainnet")).toEqual(donation);
+    expect(parsePaymentLink(paymentPath(donation), "mainnet")).toEqual({
+      ...donation,
+      invoice: "",
+    });
+  });
+
+  it("keeps the invoice id on a fixed-amount link, where it can be matched", () => {
+    expect(paymentPath(request)).toContain("inv=INV-9K2M");
   });
 
   it("rejects missing amount or address", () => {

@@ -6,10 +6,36 @@ import {
 
 import { STRK_ADDRESS } from "./constants";
 import type { ShieldToken } from "./tokens";
+import { WalletTimeoutError } from "./errors";
+import { WALLET_SUBMISSION_TIMEOUT_MS } from "./transaction-confirmation";
 import type {
   MorokPrivateAccount,
   Strk20Action,
 } from "../privacy/evm-strk20-account";
+
+/**
+ * Ready sometimes drops the response when the user rejects the
+ * strk20InvokeTransaction popup, so the wallet promise never settles and the
+ * caller's spinner would otherwise never stop. Bound every wallet prompt so
+ * the UI can recover and let the user retry.
+ */
+function withWalletTimeout<T>(promise: Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new WalletTimeoutError());
+    }, WALLET_SUBMISSION_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 type PrivateWalletAccount =
   | Pick<WalletAccountV6, "strk20InvokeTransaction">
@@ -72,7 +98,7 @@ export async function transferPublicStrk(
   recipient: string,
   amount: bigint,
 ) {
-  return account.execute(publicStrkTransferCall(recipient, amount));
+  return withWalletTimeout(account.execute(publicStrkTransferCall(recipient, amount)));
 }
 
 export async function shieldToken(
@@ -88,13 +114,15 @@ export async function shieldAsset(
   token: string,
   amount: bigint,
 ) {
-  return account.strk20InvokeTransaction([
-    {
-      type: "deposit",
-      token,
-      amount: toFelt(amount),
-    },
-  ] as Strk20Action[] & Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0]);
+  return withWalletTimeout(
+    account.strk20InvokeTransaction([
+      {
+        type: "deposit",
+        token,
+        amount: toFelt(amount),
+      },
+    ] as Strk20Action[] & Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0]),
+  );
 }
 
 export async function payoutToken(
@@ -103,14 +131,16 @@ export async function payoutToken(
   amount: bigint,
   recipient: string,
 ) {
-  return account.strk20InvokeTransaction([
-    {
-      type: "withdraw",
-      token: token.address,
-      amount: toFelt(amount),
-      recipient: validateAndParseAddress(recipient),
-    },
-  ] as Strk20Action[] & Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0]);
+  return withWalletTimeout(
+    account.strk20InvokeTransaction([
+      {
+        type: "withdraw",
+        token: token.address,
+        amount: toFelt(amount),
+        recipient: validateAndParseAddress(recipient),
+      },
+    ] as Strk20Action[] & Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0]),
+  );
 }
 
 export async function transferPrivate(
@@ -135,9 +165,11 @@ export async function transferPrivate(
       calldata: invokeCalldata(invoke.calldata ?? []),
     });
   }
-  return account.strk20InvokeTransaction(
-    actions as Strk20Action[] &
-      Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
+  return withWalletTimeout(
+    account.strk20InvokeTransaction(
+      actions as Strk20Action[] &
+        Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
+    ),
   );
 }
 
@@ -151,26 +183,28 @@ export async function depositToEscrow(
 ) {
   const contract = validateAndParseAddress(escrow);
   const tokenAddress = validateAndParseAddress(token.address);
-  return account.strk20InvokeTransaction([
-    {
-      type: "withdraw",
-      token: tokenAddress,
-      amount: toFelt(amount),
-      recipient: contract,
-    },
-    {
-      type: "invoke",
-      contract,
-      calldata: invokeCalldata([
-        "0x0",
-        commitment,
-        tokenAddress,
-        toFelt(amount),
-        "0x0",
-        "0x0",
-      ]),
-    },
-  ]);
+  return withWalletTimeout(
+    account.strk20InvokeTransaction([
+      {
+        type: "withdraw",
+        token: tokenAddress,
+        amount: toFelt(amount),
+        recipient: contract,
+      },
+      {
+        type: "invoke",
+        contract,
+        calldata: invokeCalldata([
+          "0x0",
+          commitment,
+          tokenAddress,
+          toFelt(amount),
+          "0x0",
+          "0x0",
+        ]),
+      },
+    ]),
+  );
 }
 
 /**
@@ -185,24 +219,26 @@ export async function claimFromEscrow(
   secret: string,
 ) {
   const contract = validateAndParseAddress(escrow);
-  return account.strk20InvokeTransaction([
-    {
-      type: "transfer",
-      token: token.address,
-      amount: "OPEN",
-      recipient: validateAndParseAddress(recipient),
-    },
-    {
-      type: "invoke",
-      contract,
-      calldata: invokeCalldata([
-        "0x1",
-        "0x0",
-        "0x0",
-        "0x0",
-        secret,
-        "${openNoteIds[0]}",
-      ]),
-    },
-  ]);
+  return withWalletTimeout(
+    account.strk20InvokeTransaction([
+      {
+        type: "transfer",
+        token: token.address,
+        amount: "OPEN",
+        recipient: validateAndParseAddress(recipient),
+      },
+      {
+        type: "invoke",
+        contract,
+        calldata: invokeCalldata([
+          "0x1",
+          "0x0",
+          "0x0",
+          "0x0",
+          secret,
+          "${openNoteIds[0]}",
+        ]),
+      },
+    ]),
+  );
 }

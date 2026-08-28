@@ -54,6 +54,22 @@ describe("extractTxHash", () => {
   it("pulls a hash out of an error message", () => {
     expect(extractTxHash(new Error(`timeout ${hash}`))).toBe(hash);
   });
+
+  /*
+   * A token address is the same shape as a transaction hash, so scanning
+   * error text cannot tell them apart. Callers that turn the result into a
+   * pending transaction must confirm the node knows it - pay-panel does this
+   * through transactionKnown. Pinned so the trap stays visible.
+   */
+  it("cannot tell a token address in an error apart from a hash", () => {
+    const token =
+      "0x0512feac6339ff7889822cb5aa2a86c848e9d392bb0e3e237c008674feed8343";
+    expect(
+      extractTxHash(
+        new Error(`Insufficient balance for token ${token}: need 500000 more`),
+      ),
+    ).toBe(token);
+  });
 });
 
 describe("isUserRefused", () => {

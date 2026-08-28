@@ -72,8 +72,14 @@ function isOpenAmount(kind?: string, amount?: string) {
 export function PayPanel() {
   const searchParams = useSearchParams();
   const { network, setNetwork, starknet } = useNetwork();
-  const { session, privateRaw, balancesLoading, balances, refreshBalances } =
-    useTreasury();
+  const {
+    session,
+    privateRaw,
+    balancesLoading,
+    balances,
+    refreshBalances,
+    signatureProgress,
+  } = useTreasury();
   const usdc = getShieldToken("usdc", network);
   const fromQuery = useMemo(
     () => parsePaymentRequest(searchParams, network),
@@ -85,6 +91,9 @@ export function PayPanel() {
   );
   const [paying, setPaying] = useState(false);
   const payingRef = useRef(false);
+  // Pending rows this page instance still has an open wallet promise for.
+  // A reload empties it, which is exactly how a stranded row is recognised.
+  const awaitingSubmission = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
   const [donationAmount, setDonationAmount] = useState("");
 
@@ -125,10 +134,6 @@ export function PayPanel() {
     !!request &&
     recipientPresence === "deployed" &&
     recipientRegistration === "registered";
-  const creatorBlocked =
-    !!request &&
-    (recipientPresence === "undeployed" ||
-      recipientRegistration === "unregistered");
   const canDonate =
     !!session &&
     !!request &&
@@ -149,6 +154,22 @@ export function PayPanel() {
       read: () => session.account.provider.getTransactionReceipt(txHash),
       timeoutMs,
     });
+  }
+
+  /*
+   * extractTxHash scans error text for a felt, and a token address is the
+   * same shape as a transaction hash - a pool error naming the token can
+   * therefore be mistaken for a submission. Ask the node whether the hash is
+   * a transaction at all before a pending row is built around it.
+   */
+  async function transactionKnown(txHash: string) {
+    if (!session) return false;
+    try {
+      await session.account.provider.getTransaction(txHash);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function refreshPrivateSafely() {
@@ -195,6 +216,26 @@ export function PayPanel() {
     });
     if (!stillPending) {
       toast.success("Donation confirmed from the private balance change");
+      return;
+    }
+    /*
+     * Still pending after the refresh means the private balance never dropped
+     * by this amount. If the row also has no transaction the node recognises,
+     * nothing was ever submitted - either the wallet returned no hash, or the
+     * recorded one was a felt scraped out of an error message rather than a
+     * real submission. With no open wallet promise on this page either (a
+     * reload empties that set), the row is provably dead. Releasing it is what
+     * lets the donation be retried; leaving it stranded blocked every later
+     * donation to the same creator.
+     */
+    const submitted = pending.txHash
+      ? await transactionKnown(pending.txHash)
+      : false;
+    if (!submitted && !awaitingSubmission.current.has(pending.id)) {
+      updateActivity(pending.id, { status: "failed" });
+      setError(
+        `${walletName} never submitted this donation, and the private balance is unchanged. Nothing was sent - you can donate again.`,
+      );
       return;
     }
     setError(
@@ -259,6 +300,7 @@ export function PayPanel() {
       address: session.address,
       balanceBeforeRaw: privateRaw.toString(),
     });
+    awaitingSubmission.current.add(pending.id);
     const confirm = async (
       txHash: string | undefined,
       confirmation: "receipt" | "balance" | "wallet",
@@ -322,29 +364,46 @@ export function PayPanel() {
       );
       const result = await bounded(submission, WALLET_SUBMISSION_TIMEOUT_MS);
       if (result.status === "settled") {
+        awaitingSubmission.current.delete(pending.id);
         await settleResponse(result.value);
       } else {
         setError(
           `${walletName} has not returned yet. The donation stays pending; use Check pending donation instead of sending it again.`,
         );
-        void submission.then(settleResponse).catch((caught) => {
-          const txHash = extractTxHash(caught);
-          if (txHash) {
-            void settleResponse({ transaction_hash: txHash });
-          } else {
-            giveUp(caught);
-          }
-        });
+        // Still genuinely open: keep the id marked so a check does not
+        // release a row this promise may yet resolve.
+        void submission
+          .then(settleResponse)
+          .catch((caught) => {
+            const txHash = extractTxHash(caught);
+            if (txHash) {
+              void settleResponse({ transaction_hash: txHash });
+            } else {
+              giveUp(caught);
+            }
+          })
+          .finally(() => awaitingSubmission.current.delete(pending.id));
       }
     } catch (caught) {
-      const txHash = extractTxHash(caught);
+      awaitingSubmission.current.delete(pending.id);
+      const scanned = extractTxHash(caught);
+      const txHash =
+        scanned && (await transactionKnown(scanned)) ? scanned : undefined;
       if (txHash) {
         updateActivity(pending.id, { txHash });
         const status = await receiptStatus(txHash);
         if (status === "confirmed") await confirm(txHash, "receipt");
+        // A receipt that never turns final leaves the row pending on purpose,
+        // so "Check pending donation" can settle it rather than double-sending.
         else if (status === "failed") giveUp(caught);
+        else {
+          setError(
+            `${walletName} submitted this donation but it has not confirmed yet. Use Check pending donation instead of sending it again.`,
+          );
+        }
+      } else {
+        giveUp(caught);
       }
-      else giveUp(caught);
     } finally {
       payingRef.current = false;
       setPaying(false);
@@ -382,7 +441,7 @@ export function PayPanel() {
 
       <OnboardingSteps
         title="Get ready to donate"
-        description="Use Ready or, on Sepolia, an onboarded EVM wallet. New notes take about ten blocks before they can move."
+        description="Use Ready or an onboarded EVM wallet. New notes take about ten blocks before they can move."
         doneLabel={`${walletName} · ${formatUsdc(privateRaw)} private USDC · notes mature`}
         steps={[
           {
@@ -410,12 +469,34 @@ export function PayPanel() {
                       }}
                     />
                   </Field>
+                  {starknet.treasury ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="self-start text-muted-foreground hover:text-foreground"
+                      onClick={() => {
+                        setPasted("");
+                        setFromPaste({
+                          network,
+                          to: starknet.treasury,
+                          amount: "",
+                          invoice: "",
+                          label: "MorokPay",
+                          kind: "donation",
+                        });
+                        setError(null);
+                      }}
+                    >
+                      No link? Try a donation to MorokPay
+                    </Button>
+                  ) : null}
                 </FieldGroup>
               ) : null,
           },
           {
             id: "ready",
-            title: "Connect Ready or MetaMask",
+            title: "Connect Ready or EVM wallet",
             body: "Use a supported private wallet on the same network as the header.",
             status: readyStatus,
             children: readyStatus === "current" ? <ConnectWalletChoices /> : null,
@@ -425,7 +506,7 @@ export function PayPanel() {
             title: "Shield USDC",
             body:
               publicUsdc <= BigInt(0)
-                ? "You need public USDC on this Ready, then shield it into the pool."
+                ? `You need public USDC on this ${walletName}, then shield it into the pool.`
                 : "Move USDC into the private wallet. The pool fee comes out of this amount.",
             status: shieldStatus,
             children:
@@ -473,7 +554,7 @@ export function PayPanel() {
             title: "Wait for the note",
             body: notes.ready
               ? "This USDC can move."
-              : `New notes mature in about ten blocks. Donate when this hits 0:00 — Ready will reject a spend before that.`,
+              : `New notes mature in about ten blocks. Donate when this hits 0:00 — the pool rejects a spend before that.`,
             status: waitStatus,
             children:
               waitStatus === "current" ? (
@@ -485,7 +566,11 @@ export function PayPanel() {
         ]}
       />
 
-      {request && session && (canDonate || creatorBlocked) ? (
+      {/* Kept visible even while the note matures or the recipient is still
+          being checked: hiding it left the page with a countdown and no sign
+          of who the donation is even for. The button below stays disabled
+          until canDonate, and the alerts explain what is missing. */}
+      {request && session ? (
         <Card>
           <CardHeader>
             <CardTitle>{request.label || "Private donation"}</CardTitle>
@@ -527,7 +612,7 @@ export function PayPanel() {
                 />
                 <FieldDescription>
                   This amount stays off the shared QR. Activity records your
-                  Ready as From and the creator as To.
+                  {" "}{walletName} as From and the creator as To.
                 </FieldDescription>
               </Field>
             ) : (
@@ -543,12 +628,21 @@ export function PayPanel() {
                   : formatUsdc(privateRaw)}
               </p>
             ) : null}
+            {privateRaw > BigInt(0) && !notes.ready ? (
+              <Alert>
+                <AlertTitle>Waiting for the note to mature</AlertTitle>
+                <AlertDescription>
+                  Ready in {notes.remainingLabel}. New notes need about ten
+                  blocks before the pool will let them move.
+                </AlertDescription>
+              </Alert>
+            ) : null}
             {session && request && sameAddress(request.to, session.address) ? (
               <Alert>
                 <AlertTitle>This is your own QR</AlertTitle>
                 <AlertDescription>
-                  Paying it only costs the pool fee. Use a second Ready to see a
-                  real donation land.
+                  Paying it only costs the pool fee. Use a second wallet to see
+                  a real donation land.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -581,6 +675,7 @@ export function PayPanel() {
           </CardContent>
           <CardFooter className="border-t">
             {session ? (
+              <div className="flex flex-col">
               <Button
                 type="button"
                 size="lg"
@@ -599,14 +694,25 @@ export function PayPanel() {
                 {paying
                   ? pendingDonationId
                     ? "Checking"
-                    : "Donating"
+                    : signatureProgress
+                      ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
+                      : "Donating"
                   : pendingDonationId
                     ? "Check pending donation"
                     : `Donate ${amountText || "…"} USDC`}
               </Button>
+              {/* One STRK20 action needs several prompts; naming the current
+                  one keeps a burst of wallet popups from looking like a
+                  malfunction. */}
+              {paying && signatureProgress ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {signatureProgress.label}
+                </p>
+              ) : null}
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Finish the steps above, then confirm in Ready.
+                Finish the steps above, then confirm in your wallet.
               </p>
             )}
           </CardFooter>

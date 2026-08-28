@@ -58,7 +58,13 @@ export function serializePaymentRequest(request: PaymentRequest): URLSearchParam
   params.set("n", request.network);
   params.set("to", request.to);
   if (request.amount) params.set("amount", request.amount);
-  if (request.invoice) params.set("inv", request.invoice);
+  /*
+   * An invoice id is only ever matched back to a payment by its exact amount
+   * (findIncomingInvoice), so on an open-amount donation it can do nothing -
+   * it just makes the QR denser to scan. The id still identifies the record
+   * in local storage; it simply stays out of the shared link.
+   */
+  if (request.invoice && request.amount) params.set("inv", request.invoice);
   if (request.label) params.set("label", request.label);
   if (request.kind && request.kind !== "invoice") {
     params.set("kind", request.kind);

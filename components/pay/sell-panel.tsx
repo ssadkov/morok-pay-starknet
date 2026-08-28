@@ -2,18 +2,19 @@
 
 import { useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
-import { CopyIcon } from "lucide-react";
+import { CopyIcon, DownloadIcon, PencilIcon } from "lucide-react";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { DeployReadyButton } from "@/components/pay/deploy-ready-button";
 import { OnboardingSteps } from "@/components/pay/onboarding-steps";
-import { QrCode } from "@/components/pay/qr-code";
+import { MOROK_MARK_SVG, QrCode, useQrMatrix } from "@/components/pay/qr-code";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
+  CardAction,
   CardContent,
   CardDescription,
   CardFooter,
@@ -36,6 +37,7 @@ import {
   type MerchantInvoice,
 } from "@/lib/pay/invoices";
 import { STARKNET_SEPOLIA_STRK_FAUCET_URL } from "@/lib/pay/testnet";
+import { qrFileName, renderQrCardPng } from "@/lib/pay/qr-png";
 import { paymentUrl, type PaymentRequest } from "@/lib/pay/request";
 import { formatStrk } from "@/lib/starknet/status";
 
@@ -69,6 +71,8 @@ export function SellPanel() {
   const { session, balances } = useTreasury();
   const invoices = useInvoices(network);
   const [label, setLabel] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [created, setCreated] = useState<PaymentRequest | null>(null);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,7 +97,12 @@ export function SellPanel() {
     return paymentUrl(window.location.origin, request);
   }, [request]);
 
-  async function handleCreate() {
+  /*
+   * Renaming reuses this: saveInvoice replaces by invoice id, and the id and
+   * createdAt are carried over from the stored donation, so the QR keeps its
+   * identity and payment history instead of becoming a second one.
+   */
+  async function persist(nextLabel: string) {
     if (!session) return;
     setError(null);
     setCreating(true);
@@ -106,7 +115,7 @@ export function SellPanel() {
         to: session.address,
         amount: "",
         invoice: stored?.invoice || nextInvoiceId("TIP"),
-        label: label.trim() || stored?.label || DEFAULT_LABEL,
+        label: nextLabel,
         kind: "donation",
       };
       saveInvoice({
@@ -116,10 +125,51 @@ export function SellPanel() {
       });
       setCreated(next);
       setLabel("");
+      setEditing(false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not create QR");
     } finally {
       setCreating(false);
+    }
+  }
+
+  function handleCreate() {
+    return persist(label.trim() || stored?.label || DEFAULT_LABEL);
+  }
+
+  /* Blank means "back to the default" here, rather than the create path's
+     "keep whatever is stored" - otherwise a rename could never clear one. */
+  function handleRename() {
+    return persist(label.trim() || DEFAULT_LABEL);
+  }
+
+  const qr = useQrMatrix(payUrl);
+
+  async function downloadPng() {
+    if (!payUrl || !request) return;
+    setDownloading(true);
+    try {
+      const label = request.label || DEFAULT_LABEL;
+      const blob = await renderQrCardPng({
+        matrix: qr.data,
+        modules: qr.size,
+        label,
+        logoSvg: MOROK_MARK_SVG,
+        network: request.network === "sepolia" ? "Sepolia" : "Mainnet",
+      });
+      const href = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = href;
+      anchor.download = qrFileName(label);
+      anchor.click();
+      URL.revokeObjectURL(href);
+      toast.success("QR image saved");
+    } catch (caught) {
+      toast.error(
+        caught instanceof Error ? caught.message : "Could not build the PNG",
+      );
+    } finally {
+      setDownloading(false);
     }
   }
 
@@ -167,12 +217,12 @@ export function SellPanel() {
 
       <OnboardingSteps
         title="Get ready to receive"
-        description="Connect Ready, or MetaMask with no Starknet wallet at all. MorokPay verifies deployment and privacy activation before creating a QR."
+        description="Connect Ready, or an EVM wallet with no Starknet wallet at all. MorokPay verifies deployment and privacy activation before creating a QR."
         doneLabel={`${session?.kind === "evm" ? "EVM wallet" : "Ready"} · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
         steps={[
           {
             id: "ready",
-            title: "Connect Ready or MetaMask",
+            title: "Connect Ready or EVM wallet",
             body: "The connected wallet must control the signing key and its private viewing key.",
             status: session ? "done" : "current",
             children: session ? null : <ConnectWalletChoices />,
@@ -360,20 +410,86 @@ export function SellPanel() {
               Open amount · supporters pick how much
               {request.network === "sepolia" ? " · Sepolia" : ""}
             </CardDescription>
+            <CardAction>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={creating}
+                onClick={() => {
+                  setLabel(editing ? "" : request.label || DEFAULT_LABEL);
+                  setEditing(!editing);
+                  setError(null);
+                }}
+              >
+                <PencilIcon data-icon="inline-start" />
+                {editing ? "Cancel" : "Rename"}
+              </Button>
+            </CardAction>
           </CardHeader>
           <CardContent className="flex flex-col items-start gap-4">
+            {editing ? (
+              <FieldGroup>
+                <Field>
+                  <FieldLabel htmlFor="rename-label">Label</FieldLabel>
+                  <Input
+                    id="rename-label"
+                    value={label}
+                    placeholder={DEFAULT_LABEL}
+                    onChange={(event) => setLabel(event.target.value)}
+                  />
+                  <FieldDescription>
+                    The label travels inside the link, so renaming produces a
+                    new link and QR. Ones you already shared keep the old label
+                    and still pay this account.
+                  </FieldDescription>
+                </Field>
+                <Button
+                  type="button"
+                  className="self-start"
+                  disabled={creating}
+                  aria-busy={creating}
+                  onClick={() => {
+                    void handleRename();
+                  }}
+                >
+                  Save label
+                </Button>
+              </FieldGroup>
+            ) : null}
+            {error && editing ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not rename</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
             <QrCode
               value={payUrl}
               label={`Private donation to ${request.label || DEFAULT_LABEL}`}
             />
-            <p className="break-all font-mono text-xs text-muted-foreground">
-              {payUrl}
-            </p>
+            <div className="flex w-full items-start gap-2 rounded-xl bg-muted/40 p-3 ring-1 ring-foreground/10">
+              <p className="min-w-0 flex-1 break-all font-mono text-xs text-muted-foreground">
+                {payUrl}
+              </p>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Copy donation link"
+                title="Copy link"
+                className="shrink-0"
+                onClick={() => {
+                  void copyUrl();
+                }}
+              >
+                <CopyIcon />
+              </Button>
+            </div>
             <p className="text-sm text-muted-foreground">
               First 10 contest: post this link. Amount never appears on the QR.
             </p>
           </CardContent>
-          <CardFooter className="border-t">
+          <CardFooter className="flex-wrap gap-2 border-t">
             <Button
               type="button"
               size="lg"
@@ -384,6 +500,20 @@ export function SellPanel() {
             >
               <CopyIcon data-icon="inline-start" />
               Copy link
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="min-h-12"
+              disabled={downloading}
+              aria-busy={downloading}
+              onClick={() => {
+                void downloadPng();
+              }}
+            >
+              <DownloadIcon data-icon="inline-start" />
+              {downloading ? "Preparing" : "Download PNG"}
             </Button>
           </CardFooter>
         </Card>
