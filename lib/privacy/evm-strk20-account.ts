@@ -288,7 +288,6 @@ export function createEvmStrk20Account(options: {
        * later transfers name nobody and the donor may as well pay their own
        * fee.
        */
-      let relayed = false;
       if (action.type === "transfer") {
         const requirement = await transfers.discoverRequirement(
           validateAndParseAddress(action.recipient),
@@ -299,8 +298,6 @@ export function createEvmStrk20Account(options: {
             "This recipient has no viewing key in the STRK20 pool yet, so nothing can be sent to them privately.",
           );
         }
-        relayed = requirement !== SetupRequirement.Ready;
-        if (relayed) reviseRunTotal(1);
       }
 
       let inputs: Note[] = [];
@@ -378,28 +375,24 @@ export function createEvmStrk20Account(options: {
       const relayable = normalizeCall(
         callAndProof.call as Parameters<typeof normalizeCall>[0],
       );
-      if (relayed) {
+      /* Decided from the proven call rather than from the SDK's view of
+         whether a channel is missing: the address either is in this calldata
+         or it is not, and that is the leak itself rather than a prediction of
+         it. The proof is built either way, so knowing later costs nothing. */
+      if (
+        action.type === "transfer" &&
+        namesRecipient(relayable, action.recipient)
+      ) {
         /* MorokPay approves the fee from its own balance, because the pool
            charges get_caller_address(). Nothing else about this account goes
-           with the proof. */
+           with the proof - and no Starknet signature is asked of the donor. */
+        reviseRunTotal(0);
         return relaySubmission({
           network: options.network,
           call: relayable,
           proof: callAndProof.proof.data,
           proofFacts: callAndProof.proof.proofFacts.map(String),
         });
-      }
-      /* The decision above came from the SDK's view of whether a channel is
-         missing. This checks the assembled call instead, and refuses rather
-         than publishing a link the prediction did not see coming - an
-         unexpected subchannel setup, say. */
-      if (
-        action.type === "transfer" &&
-        namesRecipient(relayable, action.recipient)
-      ) {
-        throw new Error(
-          "This donation would publish the creator's address next to yours, and MorokPay was not asked to relay it. Nothing was submitted.",
-        );
       }
       /* Deposit pulls the deposited token out of the public balance, so it
          needs its own approval unless the deposit is STRK itself - then one
