@@ -21,8 +21,17 @@ STRK20 hides the transfer amount and sender-to-recipient relationship on-chain. 
 
 - a published QR contains the creator's Ready address and label;
 - deposits, withdrawals, timing, and open-note amounts can remain public;
+- the first private transfer to a new recipient opens a channel, which
+  publishes that recipient's address; the number of distinct senders who ever
+  opened one is a public view;
+- the proving service receives the sender's address, viewing key, and actions
+  in the clear - OHTTP hides the client's IP, not the content - and the pool's
+  auditor can decrypt a withdrawal's address and an open note's owner;
 - Ready exposes private balances, but not private transfer history, to the dapp;
 - MorokPay activity and received status are local to the current browser.
+
+What follows from this, and what closes each gap, is specified in
+[docs/private-donation-requirements.md](docs/private-donation-requirements.md).
 
 ## STRK20 without a Starknet wallet
 
