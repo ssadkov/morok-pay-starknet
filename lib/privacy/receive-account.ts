@@ -17,6 +17,13 @@ import { privacySdkOf } from "@/lib/privacy/network";
  * `A`, deterministically: the same wallet on any device reproduces the same
  * account, and losing this app loses nothing.
  *
+ * One `B` serves every QR a creator publishes, and its shielded notes are one
+ * balance - nothing in a note says which QR brought it, so per-QR totals do
+ * not exist and cannot be added later by reading the chain differently. A
+ * creator who wants them needs a separate account per QR, which is what
+ * `index` is for: index 0 is the account every creator gets, and higher ones
+ * are free to add without moving it.
+ *
  * What keeps `A` and `B` apart on chain is that `A` never pays for anything
  * `B` does. A single STRK top-up from `A` would tie them together in public
  * and permanently - which is why the relayer deploys `B` and registers it,
@@ -43,6 +50,8 @@ export function receiveAccountTypedData(args: {
   evmAddress: Address;
   evmChainId: number;
   network: AppNetwork;
+  /** 0 is the creator's account. Reserved so per-QR accounts stay possible. */
+  index?: number;
 }) {
   const sdk = privacySdkOf(args.network);
   return {
@@ -57,6 +66,7 @@ export function receiveAccountTypedData(args: {
         { name: "evmAccount", type: "address" },
         { name: "starknetChain", type: "string" },
         { name: "privacyPool", type: "uint256" },
+        { name: "index", type: "uint256" },
       ],
     },
     primaryType: "ReceiveAccount" as const,
@@ -65,6 +75,7 @@ export function receiveAccountTypedData(args: {
       evmAccount: args.evmAddress,
       starknetChain: sdk.snChainName,
       privacyPool: BigInt(sdk.poolAddress),
+      index: BigInt(args.index ?? 0),
     },
   } as const;
 }

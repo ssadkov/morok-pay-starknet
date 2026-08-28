@@ -88,6 +88,7 @@ function receiveAccountTypedData(evmAddress) {
         { name: "evmAccount", type: "address" },
         { name: "starknetChain", type: "string" },
         { name: "privacyPool", type: "uint256" },
+        { name: "index", type: "uint256" },
       ],
     },
     primaryType: "ReceiveAccount",
@@ -96,6 +97,7 @@ function receiveAccountTypedData(evmAddress) {
       evmAccount: evmAddress,
       starknetChain: "SN_SEPOLIA",
       privacyPool: BigInt(network.pool),
+      index: BigInt(0),
     },
   };
 }

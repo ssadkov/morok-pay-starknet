@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { toast } from "sonner";
 import { CopyIcon, DownloadIcon, PencilIcon } from "lucide-react";
 
@@ -39,10 +39,12 @@ import {
 import { STARKNET_SEPOLIA_STRK_FAUCET_URL } from "@/lib/pay/testnet";
 import { qrFileName, renderQrCardPng } from "@/lib/pay/qr-png";
 import { paymentUrl, type PaymentRequest } from "@/lib/pay/request";
-import { formatStrk } from "@/lib/starknet/status";
+import { formatStrk, formatUsdc } from "@/lib/starknet/status";
+import { getShieldToken } from "@/lib/starknet/tokens";
 
 import { useAccountPresence } from "./use-account-presence";
 import { usePoolRegistration } from "./use-pool-registration";
+import { useReceiveAccount } from "./use-receive-account";
 
 const EMPTY: MerchantInvoice[] = [];
 const DEFAULT_LABEL = "Support the channel";
@@ -86,9 +88,70 @@ export function SellPanel() {
     !canReceive &&
     (presence === "unknown" || registration === "unknown");
 
-  const stored = session
-    ? donationFor(invoices, session.address)
-    : undefined;
+  const receive = useReceiveAccount();
+  /*
+   * The QR carries the receive account when there is one. Whatever address
+   * goes on a QR becomes public the first time somebody pays it, so the
+   * creator's main account only ends up there when this wallet cannot derive
+   * a separate one.
+   */
+  const publishTo =
+    receive.status === "ready" && receive.address
+      ? receive.address
+      : session?.address;
+
+  const stored = publishTo ? donationFor(invoices, publishTo) : undefined;
+
+  const usdc = getShieldToken("usdc", network);
+  const [receiveBalance, setReceiveBalance] = useState<bigint | null>(null);
+  const [sweeping, setSweeping] = useState(false);
+  const receiveSession = receive.session;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!receiveSession) {
+        if (!cancelled) setReceiveBalance(null);
+        return;
+      }
+      try {
+        const [entry] = await receiveSession.balances([usdc.address]);
+        if (!cancelled) setReceiveBalance(BigInt(entry?.balance ?? 0));
+      } catch {
+        // A balance that will not read is shown as unknown, not as zero.
+        if (!cancelled) setReceiveBalance(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [receiveSession, usdc.address]);
+
+  /* Everything the receive account does is relayed, so the sweep costs the
+     creator nothing and never puts the QR's address beside their own. */
+  async function sweepToMainAccount() {
+    if (!receiveSession || !session || !receiveBalance) return;
+    setSweeping(true);
+    setError(null);
+    try {
+      const result = await receiveSession.sweep({
+        token: usdc.address,
+        amount: receiveBalance,
+        to: session.address,
+      });
+      toast.success("Sent to your main account", {
+        description: result.transaction_hash,
+      });
+      const [entry] = await receiveSession.balances([usdc.address]);
+      setReceiveBalance(BigInt(entry?.balance ?? 0));
+    } catch (caught) {
+      setError(
+        caught instanceof Error ? caught.message : "Could not send the donations",
+      );
+    } finally {
+      setSweeping(false);
+    }
+  }
   const request =
     created?.network === network ? created : stored ?? null;
 
@@ -107,12 +170,15 @@ export function SellPanel() {
     setError(null);
     setCreating(true);
     try {
-      if (!canReceive) {
+      if (!publishTo) {
+        throw new Error("Connect a wallet before creating a QR");
+      }
+      if (publishTo === session.address && !canReceive) {
         throw new Error("Activate STRK20 on this network before creating a QR");
       }
       const next: PaymentRequest = {
         network,
-        to: session.address,
+        to: publishTo,
         amount: "",
         invoice: stored?.invoice || nextInvoiceId("TIP"),
         label: nextLabel,
@@ -353,6 +419,74 @@ export function SellPanel() {
           },
         ]}
       />
+
+      {session ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Anonymous receiving</CardTitle>
+            <CardDescription>
+              {receive.status === "unavailable"
+                ? "Ready cannot derive a separate receive account yet, so a QR made here publishes your own address."
+                : "Your QR publishes a separate account, so sharing it never points at the wallet holding everything else. MorokPay pays to create and register it - a top-up from your own account is the one thing that would link them in public."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {receive.address ? (
+              <p className="break-all font-mono text-xs text-muted-foreground">
+                {receive.address}
+              </p>
+            ) : null}
+            {receive.note ? (
+              <p className="text-sm text-muted-foreground">{receive.note}</p>
+            ) : null}
+            {receive.error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not set it up</AlertTitle>
+                <AlertDescription>{receive.error}</AlertDescription>
+              </Alert>
+            ) : null}
+            {receive.status === "ready" ? (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm tabular-nums">
+                  Donations held here:{" "}
+                  {receiveBalance === null ? "…" : formatUsdc(receiveBalance)}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  disabled={sweeping || !receiveBalance}
+                  onClick={() => {
+                    void sweepToMainAccount();
+                  }}
+                >
+                  {sweeping ? "Sending…" : "Send to my main account"}
+                </Button>
+                <FieldDescription>
+                  A private transfer, relayed like everything else this account
+                  does. Your main account appears in it, this one does not.
+                </FieldDescription>
+              </div>
+            ) : null}
+          </CardContent>
+          {receive.status !== "ready" && receive.status !== "unavailable" ? (
+            <CardFooter className="border-t">
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-12"
+                disabled={receive.busy}
+                onClick={() => {
+                  void receive.activate();
+                }}
+              >
+                {receive.busy ? "Setting up…" : "Set up anonymous receiving"}
+              </Button>
+            </CardFooter>
+          ) : null}
+        </Card>
+      ) : null}
 
       {canReceive && !request ? (
         <Card>
