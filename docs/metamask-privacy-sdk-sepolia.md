@@ -139,7 +139,11 @@ construct the Starknet and STRK20 operations.
   seed or private key.
 - A repeatable EIP-712 signature deterministically derives the viewing key. In
   the current lab it exists only in memory in the browser tab and is discarded
-  on reload or disconnect.
+  on reload or disconnect. It is never sent to a MorokPay server - but it *is*
+  sent to the proving service: the invocation being proved is
+  `compile_actions(user_address, viewing_key, client_actions)`. `ohttp: true`
+  hides the client's IP from that service, not the payload. Treat the prover as
+  a party that can read the sender, the recipients, and the amounts.
 - Public deployment, upgrade, STRK transfer, shield, and unshield transactions
   expose their normal Starknet edges. A relayer address is a public gas payer,
   not evidence of the private user or recipient.

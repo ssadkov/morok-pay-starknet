@@ -20,7 +20,7 @@ the product promise is a fully private tip (hidden who **and** amount).
 
 | | Private donation | DonationPot |
 |---|---|---|
-| Who | hidden | hidden (tx is relayed) |
+| Who | hidden | hidden only if every tx is relayed |
 | Amount | hidden | public: pool → jar |
 | Live total | no (viewing key only) | yes (jar ERC-20 balance) |
 | Auto gift, match, split, lend the pot | no | yes: the helper sees `amount` |
@@ -41,7 +41,14 @@ On `Sweep` / `Claim`:
 - Hidden: **who owns that note**. Observers cannot point at a Ready address and
   say "that is the blogger's money".
 
-The Starknet transaction is submitted by the relayer, not the creator.
+The Starknet transaction is submitted by the relayer, not the creator. That
+is a requirement, not a detail: `apply_actions` runs no caller check and
+`collect_fee` charges `get_caller_address()`, so a relayer can submit the sweep
+and pays the pool fee itself - but a creator who submits their own sweep names
+themselves in the one transaction that empties the jar. The same holds on the
+donate side: without a relayer, a donation to the pot links the donor, the
+amount, and the campaign in a single public transaction. Verified against the
+pool source in [docs/relayed-submission.md](relayed-submission.md).
 
 This breaks if the creator then **unshields** to a public address, an exchange,
 or CCTP. That edge is public (recipient, token, amount). While the funds stay
@@ -62,11 +69,19 @@ donor private tx (relayed)
   → pool credits the creator's open note   // owner hidden, amount public
 ```
 
-Access control cannot be `get_caller_address() == blogger`. The caller is
-always the pool. "Only I can empty the jar" is a one-time secret or a pot
-admin key, same class of problem as `MorokEscrow`. A reusable secret in
-`privacy_invoke` calldata would leak on the first sweep (the pool → helper
-call is public). One full sweep of a pot is the simple case.
+Access control cannot be `get_caller_address() == blogger`: the caller is
+always the pool. It does not have to be a secret either.
+`privacy_invoke_with_computation` has the pool call the helper's
+`privacy_compute` with a derived identity key,
+`hash(IDENTITY_KEY_TAG, user_addr, viewing_key, helper_address)` - a pseudonym
+for the sweeper that the helper cannot invert and that no other contract sees. Store the owner's identity key when the pot is created and
+compare against it on `Sweep`. Nothing secret travels in calldata, so nothing
+leaks on the first sweep.
+
+Note the constraint this brings with it: a pool built from current upstream
+`main` screens the helper's own address on any open-note deposit unless the
+pool's app governor sets a policy for it. See
+[docs/relayed-submission.md](relayed-submission.md).
 
 Do not emit a `Tipped` event and call it proof of a hidden transfer. That is
 the failed `MorokInvoices` pattern.
