@@ -51,11 +51,29 @@ address to pay its own fee.
 | Pool registration | `ViewingKeySet.user_addr` and its public viewing key |
 | Helper invoke | `ExternalContractInvoked.contract_address` and selector; calldata is not emitted |
 | Open note (helper rail) | `OpenNoteDeposited.depositor`, token, note id, amount |
-| Private transfer | `EncNoteCreated { note_id, packed_value }` and `NoteUsed { nullifier }` - no address, no plaintext amount |
+| Channel setup (first transfer to a given recipient) | `Append.recipient_addr` in plaintext calldata |
+| Private transfer over an existing channel | `EncNoteCreated { note_id, packed_value }` and `NoteUsed { nullifier }` - no address, no plaintext amount |
 
-A private transfer is therefore the only operation that names nobody. Every
-helper-based flow publishes its amounts, because the pool moves plain ERC-20 to
-and from the helper.
+A private transfer over an existing channel is therefore the only operation
+that names nobody. Every helper-based flow publishes its amounts, because the
+pool moves plain ERC-20 to and from the helper.
+
+## Channel setup names the recipient
+
+`AppendInput` carries `recipient_addr` as a plain `ContractAddress`, and
+`_apply_append` pushes into `recipient_channels: Map<ContractAddress,
+Vec<EncChannelInfo>>`. A channel exists per sender-recipient pair, so the
+**first** transfer from a given payer to a given recipient puts the recipient's
+address, in the clear, into a transaction the payer usually submits themselves.
+Later transfers over that channel name nobody.
+
+Two consequences for a published receive address:
+
+- An unrelayed first payment publicly links that payer to that address. Relay
+  the first payment to a recipient, or accept the link.
+- `get_num_of_channels(recipient)` is a public view, so the number of distinct
+  senders who ever opened a channel to an address is public - a donor count
+  without amounts, and without a contract.
 
 ## The auditor sees more than the public
 
