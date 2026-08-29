@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
@@ -45,7 +45,7 @@ import {
 } from "@/lib/pay/activity";
 import { CIRCLE_FAUCET_URL } from "@/lib/pay/testnet";
 import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
-import { transferPrivate } from "@/lib/starknet/actions";
+import { PublicLinkError, transferPrivate } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import {
   bounded,
@@ -71,6 +71,7 @@ function isOpenAmount(kind?: string, amount?: string) {
 
 export function PayPanel() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { network, setNetwork, starknet } = useNetwork();
   const {
     session,
@@ -95,6 +96,9 @@ export function PayPanel() {
   // A reload empties it, which is exactly how a stranded row is recognised.
   const awaitingSubmission = useRef(new Set<string>());
   const [error, setError] = useState<string | null>(null);
+  /* Held apart from `error`: this one is a decision for the donor, not a
+     failure, and it is the only place the app admits the link can go public. */
+  const [publicLink, setPublicLink] = useState<string | null>(null);
   const [donationAmount, setDonationAmount] = useState("");
 
   const request = fromQuery ?? fromPaste;
@@ -141,6 +145,22 @@ export function PayPanel() {
     notes.ready &&
     privateRaw > BigInt(0);
   const walletName = session?.kind === "evm" ? "EVM wallet" : "Ready";
+
+  /*
+   * A donation link arrives in the URL, and once it does the "open a link"
+   * step collapses to done and takes its input with it - which left the page
+   * with no way back to a different creator short of editing the address bar.
+   * The request can come from either the query or the pasted field, so both
+   * have to be cleared for the step to reopen.
+   */
+  function chooseAnotherCreator() {
+    router.replace("/pay");
+    setPasted("");
+    setFromPaste(parsePaymentLink("", network));
+    setDonationAmount("");
+    setError(null);
+    setPublicLink(null);
+  }
 
   useEffect(() => {
     if (fromQuery && fromQuery.network !== network) {
@@ -243,8 +263,9 @@ export function PayPanel() {
     );
   }
 
-  async function handlePay() {
+  async function handlePay(allowPublicLink = false) {
     if (!session || !request) return;
+    setPublicLink(null);
     if (payingRef.current) return;
     if (pendingDonationId) {
       payingRef.current = true;
@@ -329,6 +350,13 @@ export function PayPanel() {
       );
       if (current?.status === "confirmed") return;
       updateActivity(pending.id, { status: "failed" });
+      /* Nothing was sent, so this is a question rather than a failure. Saying
+         it in the error slot would read as "it broke", and the donor would
+         retry blind into the very disclosure being warned about. */
+      if (caught instanceof PublicLinkError) {
+        setPublicLink(caught.message);
+        return;
+      }
       setError(formatStrk20Error(caught, "pay"));
     };
 
@@ -361,6 +389,7 @@ export function PayPanel() {
         usdc,
         amount,
         request.to,
+        { network, allowPublicLink },
       );
       const result = await bounded(submission, WALLET_SUBMISSION_TIMEOUT_MS);
       if (result.status === "settled") {
@@ -577,6 +606,16 @@ export function PayPanel() {
             <CardDescription>
               To {shortenAddress(request.to)} on Starknet {request.network}
             </CardDescription>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={paying}
+              className="mt-1 self-start px-0 text-muted-foreground hover:text-foreground"
+              onClick={chooseAnotherCreator}
+            >
+              Donate to someone else
+            </Button>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {openAmount ? (
@@ -663,6 +702,29 @@ export function PayPanel() {
                 <AlertTitle>Creator has not activated STRK20</AlertTitle>
                 <AlertDescription>
                   Ask them to shield STRK once on My QR before you donate.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {publicLink ? (
+              <Alert>
+                <AlertTitle>This donation would be public</AlertTitle>
+                <AlertDescription>
+                  <p>{publicLink}</p>
+                  <p>
+                    The amount stays hidden either way, and any later donation
+                    to this creator is private whatever you choose now.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="mt-2 self-start"
+                    onClick={() => {
+                      void handlePay(true);
+                    }}
+                  >
+                    Donate anyway
+                  </Button>
                 </AlertDescription>
               </Alert>
             ) : null}

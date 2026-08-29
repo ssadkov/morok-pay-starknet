@@ -56,7 +56,7 @@ export function AppHeader() {
   return (
     <header className="border-b border-border/80 bg-background/90 backdrop-blur-xl">
       <div className="mx-auto grid min-h-16 max-w-6xl grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 px-4 py-3 sm:flex sm:gap-4 md:px-6">
-        <div className="flex min-w-0 items-center gap-3 sm:flex-1">
+        <div className="col-span-2 flex min-w-0 items-center gap-3 sm:col-auto sm:flex-1">
           <Link
             href="/"
             aria-label="MorokPay home"
@@ -104,6 +104,14 @@ export function AppHeader() {
           <ToggleGroupItem value="mainnet">Mainnet</ToggleGroupItem>
           <ToggleGroupItem value="sepolia">Sepolia</ToggleGroupItem>
         </ToggleGroup>
+        {/* Neither the dropdown nor the connect buttons have a grid
+            position, so on mobile they land wherever auto-placement finds
+            room - which turned out to be the same cell as the logo, an
+            "auto" column sized to the buttons' full content width squeezing
+            the logo's 1fr column to 0. Row 3 gives them a row of their own;
+            sm:contents removes this wrapper at the flex breakpoint so it
+            never affects the desktop layout. */}
+        <div className="col-span-2 row-start-3 flex flex-wrap items-center gap-2 sm:col-auto sm:row-auto sm:contents">
         {session ? (
           <DropdownMenu>
             <DropdownMenuTrigger
@@ -152,7 +160,7 @@ export function AppHeader() {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <div className="flex items-center gap-2">
+          <div className="flex flex-1 flex-wrap items-center gap-2">
             <Button
               type="button"
               size="lg"
@@ -188,6 +196,7 @@ export function AppHeader() {
             </Button>
           </div>
         )}
+        </div>
       </div>
       <nav
         aria-label="Primary"

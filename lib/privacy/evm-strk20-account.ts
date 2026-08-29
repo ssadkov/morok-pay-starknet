@@ -13,6 +13,7 @@ import {
 } from "starknet";
 import {
   createPrivateTransfers,
+  SetupRequirement,
   type CallAndProof,
   type Note,
 } from "@starkware-libs/starknet-privacy-sdk";
@@ -28,6 +29,11 @@ import {
   eth712FundedResourceBounds,
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
+import {
+  namesRecipient,
+  normalizeCall,
+  relaySubmission,
+} from "@/lib/privacy/relay-client";
 import { privacySdkOf } from "@/lib/privacy/network";
 import type { AppNetwork } from "@/lib/network";
 import { readPoolFee } from "@/lib/starknet/pool-fee";
@@ -125,6 +131,13 @@ export function createEvmStrk20Account(options: {
   function endRun() {
     run = null;
     options.onSignatureProgress?.(null);
+  }
+
+  /* A relayed donation never asks for the Starknet transaction signature -
+     MorokPay signs that one - so the count announced up front shrinks once the
+     flow knows it is relaying. */
+  function reviseRunTotal(remaining: number) {
+    if (run) run.total = run.done + remaining;
   }
 
   async function checkedSignature(typedData: Record<string, unknown>) {
@@ -267,6 +280,26 @@ export function createEvmStrk20Account(options: {
        * the state the proof is checked against - a note the latest block can
        * see but the proving block cannot is not yet spendable.
        */
+      /*
+       * Only the first transfer to a given recipient publishes anything about
+       * who is involved: it carries `Append { recipient_addr }` in plaintext
+       * calldata, and if the donor sends it themselves, the chain has the pair.
+       * That one goes through MorokPay's relayer. Once the channel exists,
+       * later transfers name nobody and the donor may as well pay their own
+       * fee.
+       */
+      if (action.type === "transfer") {
+        const requirement = await transfers.discoverRequirement(
+          validateAndParseAddress(action.recipient),
+          token,
+        );
+        if (requirement === SetupRequirement.Register) {
+          throw new Error(
+            "This recipient has no viewing key in the STRK20 pool yet, so nothing can be sent to them privately.",
+          );
+        }
+      }
+
       let inputs: Note[] = [];
       if (action.type !== "deposit") {
         const discovered = await transfers.discoverNotes({
@@ -338,6 +371,28 @@ export function createEvmStrk20Account(options: {
         BigInt(callAndProof.proof.proofFacts[0]) !== PROOF1_VERSION
       ) {
         throw new Error("The prover returned unsupported proof facts.");
+      }
+      const relayable = normalizeCall(
+        callAndProof.call as Parameters<typeof normalizeCall>[0],
+      );
+      /* Decided from the proven call rather than from the SDK's view of
+         whether a channel is missing: the address either is in this calldata
+         or it is not, and that is the leak itself rather than a prediction of
+         it. The proof is built either way, so knowing later costs nothing. */
+      if (
+        action.type === "transfer" &&
+        namesRecipient(relayable, action.recipient)
+      ) {
+        /* MorokPay approves the fee from its own balance, because the pool
+           charges get_caller_address(). Nothing else about this account goes
+           with the proof - and no Starknet signature is asked of the donor. */
+        reviseRunTotal(0);
+        return relaySubmission({
+          network: options.network,
+          call: relayable,
+          proof: callAndProof.proof.data,
+          proofFacts: callAndProof.proof.proofFacts.map(String),
+        });
       }
       /* Deposit pulls the deposited token out of the public balance, so it
          needs its own approval unless the deposit is STRK itself - then one
