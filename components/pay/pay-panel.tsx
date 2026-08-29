@@ -8,7 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CopyIcon } from "lucide-react";
+import { ClipboardPasteIcon, CopyIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
@@ -176,6 +176,17 @@ export function PayPanel() {
       toast.success("Donation link copied");
     } catch {
       toast.error("Could not copy link");
+    }
+  }
+
+  async function pasteDonationLink() {
+    try {
+      const value = await navigator.clipboard.readText();
+      setPasted(value);
+      setFromPaste(parsePaymentLink(value, network));
+      setError(null);
+    } catch {
+      toast.error("Could not read the clipboard. Paste the link in by hand.");
     }
   }
 
@@ -502,18 +513,32 @@ export function PayPanel() {
                 <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="pay-link">Donation link</FieldLabel>
-                    <Input
-                      id="pay-link"
-                      value={pasted}
-                      inputMode="url"
-                      placeholder="/pay?to=0x…&kind=donation"
-                      onChange={(event) => {
-                        const value = event.target.value;
-                        setPasted(value);
-                        setFromPaste(parsePaymentLink(value, network));
-                        setError(null);
-                      }}
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="pay-link"
+                        value={pasted}
+                        inputMode="url"
+                        placeholder="/pay?to=0x…&kind=donation"
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setPasted(value);
+                          setFromPaste(parsePaymentLink(value, network));
+                          setError(null);
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label="Paste from clipboard"
+                        className="shrink-0"
+                        onClick={() => {
+                          void pasteDonationLink();
+                        }}
+                      >
+                        <ClipboardPasteIcon />
+                      </Button>
+                    </div>
                   </Field>
                   {starknet.treasury ? (
                     <Button
