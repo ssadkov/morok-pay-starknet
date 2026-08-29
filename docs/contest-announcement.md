@@ -72,15 +72,15 @@ One post, not a thread, for the author's own subscribers - they already know
 him, so it can be first-person in a way the X thread cannot. The video carries
 the walkthrough, so the post frames it and gives the action.
 
-Entries are accepted **both** as replies in the X thread and as comments under
-this post; both get merged into `entries.txt` at the close. Splitting the
-audience across two platforms and then only counting one of them would throw
-away the entrants who need the least convincing. The follow-and-repost
-requirement stays on X only - imposing it on subscribers who are already
-subscribed is friction where conversion matters most.
+Entries are collected in **one place only: the X thread**. Telegram readers are
+sent there, so there is a single frozen list at the close and the same
+follow-and-repost condition applies to everyone. Two link slots are left for
+the thread URL, which does not exist until post 1 is up.
 
-Close time in the post is given as Moscow time with UTC in brackets:
-31 August, 18:00 MSK = 15:00 UTC = 20:00 Almaty.
+Addressed as "вы", not "ты".
+
+Close time is given as Moscow time with UTC in brackets: 31 August, 18:00 MSK
+= 15:00 UTC = 20:00 Almaty.
 
 ---
 
@@ -90,30 +90,32 @@ Close time in the post is given as Moscow time with UTC in brackets:
 угодно донатит по нему, а в блокчейне не остаётся ни адреса донатера, ни
 суммы. Автор видит, что деньги пришли; никто не видит, откуда.
 
-Сегодня проверил это на реальной мейннет-транзакции, где я знаю обе стороны:
-адреса отправителя нет ни в конверте транзакции, ни в calldata. Пусто.
+Сегодня проверил это на реальной мейннет-транзакции, где обе стороны мне
+известны: адреса отправителя нет ни в конверте транзакции, ни в calldata.
+Пусто.
 
 Работает на двух рельсах: Ready X - или вообще на голом MetaMask, без
 Starknet-кошелька.
 
-**Теперь мне нужны живые люди, чтобы это погонять.**
+**Теперь нужны живые люди, чтобы это погонять.**
 
 $20 в USDC, первые 7 заявок. Приём до 31 августа, 18:00 МСК (15:00 UTC).
 
-Ты в роли автора: публикуешь свой донат-QR так, как это сделал бы блогер, а я
+Вы в роли автора: публикуете свой донат-QR так, как это сделал бы блогер, а я
 реально донатю по нему USDC.
 
 Как участвовать:
 
-1. Открыть MorokPay, подключить Ready X - или MetaMask. На MetaMask
-   приложение само сгенерирует Starknet-аккаунт: закинь на него немного STRK,
-   с него пойдёт шаг 2
-2. Один раз включить Private (~6 STRK - это комиссия пула STRK20, не моя)
-3. Создать донат-QR, сумму оставить пустой
-4. Скачать PNG
-5. Прислать его в комментарии под этим постом - или реплаем в тред в X
+1. Подписаться на меня в X и репостнуть тред - все заявки собираются там,
+   ссылка внизу
+2. Открыть MorokPay, подключить Ready X - или MetaMask. На MetaMask приложение
+   само сгенерирует Starknet-аккаунт: переведите на него немного STRK, с него
+   пойдёт шаг 3
+3. Один раз включить Private (~6 STRK - это комиссия пула STRK20, не моя)
+4. Создать донат-QR, сумму оставить пустой
+5. Скачать PNG и прислать его реплаем в тот же тред
 
-Куда придёт приз: в твой приватный STRK20-баланс, обычным приватным переводом.
+Куда придёт приз: в ваш приватный STRK20-баланс, обычным приватным переводом.
 Не на публичный адрес, без всякого клейма. Поэтому Private обязательно должен
 быть включён - иначе призу просто некуда лечь.
 
@@ -123,9 +125,9 @@ $20 разойдутся случайно между всеми, кто дойд
 каждому. Кто дошёл - без приза не останется.
 
 И честно про одну вещь: QR-ссылка публикует адрес, который принимает деньги, и
-выкладываешь её ты сам. На MetaMask это одноразовый аккаунт, который приложение
-создаёт под это, основной кошелёк нигде не светится. На Ready X это твой
-реальный адрес Ready X - заходи с того, который не жалко показать.
+выкладываете её вы сами. На MetaMask это одноразовый аккаунт, который
+приложение создаёт под это, основной кошелёк нигде не светится. На Ready X это
+ваш реальный адрес Ready X - заходите с того, который не жалко показать.
 
+Тред с заявками: [ссылка]
 Приложение: https://morok-pay-starknet.vercel.app
-Тред в X: [ссылка]
