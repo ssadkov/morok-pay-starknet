@@ -1,5 +1,9 @@
 # MorokPay First 10 Donation Contest
 
+> **Superseded** by [private-contest.md](private-contest.md) on 2026-08-30.
+> The live campaign is the 7-entry / $20 mechanic, not the 10-entry / $30 one
+> described below. Kept for the record.
+
 Status: Donation UI is shipped. Dry-run the full ten-entry allocation and
 payment loop before announcing the campaign.
 
