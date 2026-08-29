@@ -1,8 +1,8 @@
 # Handoff
 
 MorokPay is a private donation product on Starknet. This handoff picks up
-right where the previous chat stopped - read the "Open next" section first,
-it names the one thing worth checking before anything else.
+right where the previous chat stopped. The previous session's "Open next"
+question is answered - see "Answered 2026-08-30" - so start at "Also open".
 
 ## Done (2026-08-29 session, PRs #7-15, merged to `master` at `a62fcd0`)
 
@@ -45,9 +45,13 @@ shipped and verified on-chain, not just read from source:
   - `0x6bf4c95c...` - Bemused Bee's Enable Private: registration **bundles a
     6 STRK shield in the same transaction**, gas sponsored by a Ready X
     paymaster.
-  - `0x72a1ff15...` - a real mainnet donation to Bemused Bee's real address
-    (not yet `B` - see below), relayed by MorokPay: sender is MorokPay's
-    relayer `0x34d43acc...`, donor absent from calldata and events.
+  - `0x72a1ff15861611e7d307c67a77dd817603136c818853fd606fbf9660ee05708` -
+    a real mainnet donation to Bemused Bee's real address (not yet `B` - see
+    below), relayed by MorokPay: sender is MorokPay's relayer
+    `0x34d43acc...`, donor absent from calldata and events, and the
+    recipient's address is the one thing the calldata does name. Re-measured
+    2026-08-30; this is the mainnet ground truth for what a Ready X-built
+    transfer publishes.
   - `0x49199f62...` - Bemused Bee's unshield: **fully paymaster-sponsored**
     (pool fee + gas both paid by Ready X's own infrastructure), which takes
     its own ~15-18% cut directly out of the withdrawn USDC instead of
@@ -76,51 +80,63 @@ shipped and verified on-chain, not just read from source:
   people actually finish - fewer finishers means each gets more, never a
   guessed headcount left unspent.
 
-## Open next - check this first
+## Answered 2026-08-30: Ready X does relay plain transfers, and what leaks
 
-**Does Ready X's own infrastructure already relay plain private transfers,
-the same way it relays registration, shield, and unshield?**
+The previous session's open question - does Ready X's own paymaster sponsor
+ordinary private transfers, or only its first-party flows - is settled, and
+the answer reframes what this project's relay is actually for.
 
-Every mainnet transaction examined this session where a *real* Ready X
-wallet did something pool-related - `0x6bf4c95c...` (register+shield),
-`0x49199f62...` (unshield), `0x713ffeeb...` (a second wallet's
-register+shield) - had a **Ready X paymaster address as the transaction's
-own sender**, not the wallet's own address. The user's wallet (`0x367903f...`
-/ `0x00e5887f...`) never submitted any of these itself; only plain public
-STRK transfers were ever self-submitted (checked all 9 of `0x00e5887f...`'s
-outgoing transfers - none call `apply_actions`).
+Measured with [scripts/calldata-leak-probe.mjs](../scripts/calldata-leak-probe.mjs),
+which takes every felt in a transaction's `__execute__` calldata that could be
+an address and asks the pool `get_public_key` about it. A nonzero answer means
+that felt is a registered STRK20 account lying in public calldata, not a proof
+word that happens to look like an address.
 
-That raises the live question: when a Ready X wallet does a plain
-**`transfer`** action (a donation) *without* going through MorokPay's
-`/api/privacy/relay` - i.e. Ready X calls `wallet_strk20InvokeTransaction`
-and submits it itself, the way the app's code does when `namesRecipient`
-says relaying isn't needed - does Ready X *also* route that through its own
-paymaster, making the donor invisible as sender **for free, natively**,
-independent of anything this project built? Or does Ready X only sponsor
-gas for its *own* first-party flows (Enable Private, Unshield) and submit
-plain transfers as the wallet itself, the way the Sepolia
-`unrelayed-demo.mjs` shows?
+**Ground truth, mainnet, both sides known.** Our own relayed donation
+`0x72a1ff15861611e7d307c67a77dd817603136c818853fd606fbf9660ee05708`
+(donor: the sprint wallet `0x00e5887f...`; recipient: Bemused Bee
+`0x0367903f...`; submitted by the relayer `0x34d43acc...`):
 
-This is not yet tested either way. Every mainnet donation observed so far
-went through *our* relay deliberately, so it proves our relay works - it
-says nothing about what Ready X would have done on its own.
+- transaction sender is the relayer - the donor is nowhere in the envelope;
+- calldata names **exactly one** registered address, `0x0367903f...` - the
+  **recipient**;
+- the donor's address is absent from the calldata entirely.
 
-**How to check:** get a Ready X wallet to submit a first-time private
-transfer to a brand-new recipient it has never paid before, and prevent
-MorokPay's relay from touching it (e.g. temporarily set
-`MOROKPAY_MAINNET_RELAY_ENABLED=false`, or just donate to an address the
-`namesRecipient` check won't catch is safe to skip - actually don't try to
-route around the app's own logic; simplest is a throwaway *outside* the app
-entirely, straight from Ready X's own send UI to a fresh registered address,
-mirroring `unrelayed-demo.mjs` but with a live wallet). Then read the
-resulting transaction's `sender_address` the same way this session did for
-every other example.
+So on the Ready X rail a channel-opening transfer publishes *who is paid*,
+never *who paid*.
 
-If Ready X does sponsor plain transfers too, this project's relay is still
-correct to keep (Ready X's sponsorship is not something MorokPay controls or
-can rely on - it could change, and the EVM rail has no equivalent at all),
-but it changes how urgent/novel the mainnet donor-privacy story is for
-messaging purposes, which is exactly what prompted the question.
+**Ground truth, Sepolia, EVM rail.** `unrelayed-demo.mjs`'s transaction
+`0x5ad40cbb69bde37be33367445a973b446644e4e227ce4ea8623410b1cab5807`
+(sender `0x9294eb78...` = `spare`, recipient `0x1f7c1a12...` = the throwaway)
+names **both** addresses in calldata, and the donor is the transaction sender
+too. The SDK-built action set embeds the sender; the Ready X-built one does
+not. That difference is why the two rails need different treatment, and it is
+measured, not assumed.
+
+**The other sprint projects.** Of the 25 verified mainnet transactions in the
+hub's `hackathon-projects.json`, 8 projects have any; 7 of them show the
+confirmed Ready X signature above - exactly one registered address in
+calldata, never the transaction sender, constant across that project's
+transactions (philoxenia `0x04912f27...`, Morrow `0x04598aca...`, Airlock
+`0x03be3741...`, Aperture `0x065ef5b1...`, Cutout two addresses, Redpocket
+`0x02cf3864...`). Every one of their senders is a fresh account with class
+hash `0x1a736d6e...` - **the same class as the documented Ready X paymaster
+`0x4455355f...`**, and none registered in the pool, so none is a user wallet.
+The exception is offbook, which submits `apply_actions` from its own
+registered account `0x018e8c72...` and publishes its sender outright.
+
+Caveat worth keeping: a self-shield is a self-channel and would also name
+exactly one address. The seven were not separated from that case by decoding
+the router's action list, only by matching the confirmed transfer signature.
+
+**What this changes.** Ready X's paymaster sponsors ordinary pool actions, not
+just Enable Private and Unshield, so donor-side invisibility on the Ready X
+rail is native and MorokPay's relay is not what provides it there. The relay
+still earns its place on the EVM rail, which has no paymaster at all - our own
+three EVM transactions are self-submitted with the sender in the open. And the
+thing nobody else addresses is the other half: receive account `B` is the only
+mechanism here that keeps the *creator's* real address out of that calldata.
+Messaging should lead with the recipient, not the donor.
 
 ## Also open
 
