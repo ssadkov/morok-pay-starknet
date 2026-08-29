@@ -63,3 +63,69 @@ you, and your own wallet never appears. On Ready X it's your Ready X address,
 so enter with one you don't mind posting.
 
 Closes Aug 31, 15:00 UTC.
+
+---
+
+# Telegram post (Russian, video attached)
+
+One post, not a thread, for the author's own subscribers - they already know
+him, so it can be first-person in a way the X thread cannot. The video carries
+the walkthrough, so the post frames it and gives the action.
+
+Entries are accepted **both** as replies in the X thread and as comments under
+this post; both get merged into `entries.txt` at the close. Splitting the
+audience across two platforms and then only counting one of them would throw
+away the entrants who need the least convincing. The follow-and-repost
+requirement stays on X only - imposing it on subscribers who are already
+subscribed is friction where conversion matters most.
+
+Close time in the post is given as Moscow time with UTC in brackets:
+31 August, 18:00 MSK = 15:00 UTC = 20:00 Almaty.
+
+---
+
+**MorokPay - приватные донаты на Starknet**
+
+Собрал за спринт STRK20 и выкатил в мейннет. Автор публикует один QR - кто
+угодно донатит по нему, а в блокчейне не остаётся ни адреса донатера, ни
+суммы. Автор видит, что деньги пришли; никто не видит, откуда.
+
+Сегодня проверил это на реальной мейннет-транзакции, где я знаю обе стороны:
+адреса отправителя нет ни в конверте транзакции, ни в calldata. Пусто.
+
+Работает на двух рельсах: Ready X - или вообще на голом MetaMask, без
+Starknet-кошелька.
+
+**Теперь мне нужны живые люди, чтобы это погонять.**
+
+$20 в USDC, первые 7 заявок. Приём до 31 августа, 18:00 МСК (15:00 UTC).
+
+Ты в роли автора: публикуешь свой донат-QR так, как это сделал бы блогер, а я
+реально донатю по нему USDC.
+
+Как участвовать:
+
+1. Открыть MorokPay, подключить Ready X - или MetaMask. На MetaMask
+   приложение само сгенерирует Starknet-аккаунт: закинь на него немного STRK,
+   с него пойдёт шаг 2
+2. Один раз включить Private (~6 STRK - это комиссия пула STRK20, не моя)
+3. Создать донат-QR, сумму оставить пустой
+4. Скачать PNG
+5. Прислать его в комментарии под этим постом - или реплаем в тред в X
+
+Куда придёт приз: в твой приватный STRK20-баланс, обычным приватным переводом.
+Не на публичный адрес, без всякого клейма. Поэтому Private обязательно должен
+быть включён - иначе призу просто некуда лечь.
+
+$20 разойдутся случайно между всеми, кто дойдёт до конца, максимум на 7
+человек. Место определяет хеш блока Starknet, который появится уже после
+закрытия приёма - заранее его знать нельзя. Чем меньше дойдёт, тем больше
+каждому. Кто дошёл - без приза не останется.
+
+И честно про одну вещь: QR-ссылка публикует адрес, который принимает деньги, и
+выкладываешь её ты сам. На MetaMask это одноразовый аккаунт, который приложение
+создаёт под это, основной кошелёк нигде не светится. На Ready X это твой
+реальный адрес Ready X - заходи с того, который не жалко показать.
+
+Приложение: https://morok-pay-starknet.vercel.app
+Тред в X: [ссылка]
