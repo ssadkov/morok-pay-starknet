@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { CopyIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
@@ -44,7 +45,11 @@ import {
   type ActivityItem,
 } from "@/lib/pay/activity";
 import { CIRCLE_FAUCET_URL } from "@/lib/pay/testnet";
-import { parsePaymentLink, parsePaymentRequest } from "@/lib/pay/request";
+import {
+  parsePaymentLink,
+  parsePaymentRequest,
+  paymentUrl,
+} from "@/lib/pay/request";
 import { PublicLinkError, transferPrivate } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import {
@@ -160,6 +165,18 @@ export function PayPanel() {
     setDonationAmount("");
     setError(null);
     setPublicLink(null);
+  }
+
+  async function copyDonationLink() {
+    if (!request || typeof window === "undefined") return;
+    try {
+      await navigator.clipboard.writeText(
+        paymentUrl(window.location.origin, request),
+      );
+      toast.success("Donation link copied");
+    } catch {
+      toast.error("Could not copy link");
+    }
   }
 
   useEffect(() => {
@@ -606,16 +623,31 @@ export function PayPanel() {
             <CardDescription>
               To {shortenAddress(request.to)} on Starknet {request.network}
             </CardDescription>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={paying}
-              className="mt-1 self-start px-0 text-muted-foreground hover:text-foreground"
-              onClick={chooseAnotherCreator}
-            >
-              Donate to someone else
-            </Button>
+            <div className="mt-1 flex flex-wrap items-center gap-x-1 gap-y-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="self-start px-0 text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  void copyDonationLink();
+                }}
+              >
+                <CopyIcon data-icon="inline-start" />
+                Copy this link
+              </Button>
+              <span className="text-muted-foreground">·</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={paying}
+                className="self-start px-0 text-muted-foreground hover:text-foreground"
+                onClick={chooseAnotherCreator}
+              >
+                Donate to someone else
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
             {openAmount ? (
