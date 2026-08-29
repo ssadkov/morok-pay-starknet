@@ -80,11 +80,13 @@ shipped and verified on-chain, not just read from source:
   people actually finish - fewer finishers means each gets more, never a
   guessed headcount left unspent.
 
-## Answered 2026-08-30: Ready X does relay plain transfers, and what leaks
+## Measured 2026-08-30: what a private transfer publishes, and what is still open
 
 The previous session's open question - does Ready X's own paymaster sponsor
-ordinary private transfers, or only its first-party flows - is settled, and
-the answer reframes what this project's relay is actually for.
+ordinary private transfers, or only its first-party flows - is **still open**.
+What did get settled is a different and narrower thing: which addresses a
+private transfer writes into public calldata. Keep the two apart; an earlier
+draft of this section ran them together and overclaimed.
 
 Measured with [scripts/calldata-leak-probe.mjs](../scripts/calldata-leak-probe.mjs),
 which takes every felt in a transaction's `__execute__` calldata that could be
@@ -125,18 +127,37 @@ hash `0x1a736d6e...` - **the same class as the documented Ready X paymaster
 The exception is offbook, which submits `apply_actions` from its own
 registered account `0x018e8c72...` and publishes its sender outright.
 
-Caveat worth keeping: a self-shield is a self-channel and would also name
-exactly one address. The seven were not separated from that case by decoding
-the router's action list, only by matching the confirmed transfer signature.
+**This does not show that Ready X sponsors plain transfers.** A self-shield
+is a self-channel and names exactly one address too, so the seven cannot be
+told apart from shields without decoding the router's action list, which was
+not done. Every transaction we *know* to be paymaster-submitted is a
+first-party flow: our own register+shield (`0x713ffeeb...`, `0x6bf4c95c...`)
+and unshield (`0x49199f62...`). No mainnet transaction is known to be a plain
+Ready X transfer to a third party submitted by Ready X's own paymaster.
 
-**What this changes.** Ready X's paymaster sponsors ordinary pool actions, not
-just Enable Private and Unshield, so donor-side invisibility on the Ready X
-rail is native and MorokPay's relay is not what provides it there. The relay
-still earns its place on the EVM rail, which has no paymaster at all - our own
-three EVM transactions are self-submitted with the sender in the open. And the
-thing nobody else addresses is the other half: receive account `B` is the only
-mechanism here that keeps the *creator's* real address out of that calldata.
-Messaging should lead with the recipient, not the donor.
+**What is settled.** The donor's address is not in the calldata of a Ready
+X-built transfer, whoever submits it - that half of donor privacy costs
+nothing and is not what our relay provides. What the relay decides is the
+transaction's `sender_address`, and only on the one transaction that opens a
+channel: `transferPrivate` in [lib/starknet/actions.ts](../lib/starknet/actions.ts)
+relays only when `namesRecipient` is true, and otherwise has the donor submit
+its own `executeWithProof`. Every later donation to the same creator is
+already unrelayed today.
+
+**Still open, and it decides whether the relay earns its cost on Ready X.**
+Does Ready X put a plain first transfer through its paymaster, or through the
+donor's own account? The test from the previous handoff still stands and is
+about twenty minutes: from Ready X's own send UI, outside MorokPay entirely,
+make a first private transfer to a freshly registered address, then read that
+transaction's `sender_address`. If Ready X sponsors it, relaying on this rail
+buys nothing and costs ~9 STRK per first donation. If it does not, the relay
+is the only thing keeping the donor out of the envelope. On the EVM rail the
+question does not arise - there is no paymaster, our three EVM transactions
+are self-submitted with the sender in the open, and the relay is mandatory.
+
+Either way, receive account `B` remains the only mechanism here that keeps the
+*creator's* address out of that calldata, and that is the half worth leading
+the messaging with.
 
 ## Also open
 
