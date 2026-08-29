@@ -22,7 +22,7 @@ import type {
 } from "../privacy/evm-strk20-account";
 
 /**
- * Ready sometimes drops the response when the user rejects the
+ * Ready X sometimes drops the response when the user rejects the
  * strk20InvokeTransaction popup, so the wallet promise never settles and the
  * caller's spinner would otherwise never stop. Bound every wallet prompt so
  * the UI can recover and let the user retry.
@@ -49,7 +49,7 @@ type PrivateWalletAccount =
   | Pick<WalletAccountV6, "strk20InvokeTransaction">
   | MorokPrivateAccount;
 
-/** Ready's Wallet API rejects padded felts in invoke calldata. */
+/** Ready X's Wallet API rejects padded felts in invoke calldata. */
 const CALLDATA_FELT_RE =
   /^0x(0|[a-fA-F1-9]{1}[a-fA-F0-9]{0,62})$/;
 
@@ -206,7 +206,7 @@ function poolApprovalCall(poolAddress: string, amount: bigint): Call {
  * together on chain forever; every later donation to the same creator names
  * nobody and is safe to send normally.
  *
- * Ready builds the proof inside the extension. `wallet_strk20PrepareInvoke`
+ * Ready X builds the proof inside the extension. `wallet_strk20PrepareInvoke`
  * hands it over without submitting, which is the whole reason relaying works
  * on this rail too: the pool authorizes on the proof, not on the sender, so
  * MorokPay can send it instead. A wallet that lacks the method leaves us

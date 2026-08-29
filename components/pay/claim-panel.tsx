@@ -124,7 +124,7 @@ export function ClaimPanel() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Claim privately</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          The link holds a secret, not an address. Connect Ready, let it
+          The link holds a secret, not an address. Connect Ready X, let it
           register you in the pool, then pull the parked USDC into your own
           note.
         </p>
@@ -183,7 +183,7 @@ export function ClaimPanel() {
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Connect Ready above to claim.
+                Connect Ready X above to claim.
               </p>
             )}
           </CardFooter>

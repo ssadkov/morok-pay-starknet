@@ -346,7 +346,7 @@ export function PublicStrkTransferLab({
         <CardTitle>5. Send public STRK with MetaMask</CardTitle>
         <CardDescription>
           This is an ordinary Starknet InvokeV3 paid by the generated account.
-          Ready and STRK20 are not involved. Preparation reads current gas
+          Ready X and STRK20 are not involved. Preparation reads current gas
           prices without a wallet signature. MetaMask signs only the
           transaction itself.
         </CardDescription>

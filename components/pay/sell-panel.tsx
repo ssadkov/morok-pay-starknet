@@ -285,12 +285,12 @@ export function SellPanel() {
 
       <OnboardingSteps
         title="Get ready to receive"
-        description="Connect Ready, or an EVM wallet with no Starknet wallet at all. MorokPay verifies deployment and privacy activation before creating a QR."
-        doneLabel={`${session?.kind === "evm" ? "EVM wallet" : "Ready"} · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
+        description="Connect Ready X, or an EVM wallet with no Starknet wallet at all. MorokPay verifies deployment and privacy activation before creating a QR."
+        doneLabel={`${session?.kind === "evm" ? "EVM wallet" : "Ready X"} · ${network === "sepolia" ? "Sepolia" : "Mainnet"} · private donations on`}
         steps={[
           {
             id: "ready",
-            title: "Connect Ready or EVM wallet",
+            title: "Connect Ready X or EVM wallet",
             body: "The connected wallet must control the signing key and its private viewing key.",
             status: session ? "done" : "current",
             children: session ? null : <ConnectWalletChoices />,
@@ -300,8 +300,8 @@ export function SellPanel() {
             title: `Deploy the Starknet account on ${network === "sepolia" ? "Sepolia" : "Mainnet"}`,
             body:
               presence === "unknown"
-                ? "Checking whether this Ready account is deployed…"
-                : "Funding and deployment are separate. In Ready, send one small outgoing transaction to another account on this network. Ready deploys itself with that first transaction.",
+                ? "Checking whether this Ready X account is deployed…"
+                : "Funding and deployment are separate. In Ready X, send one small outgoing transaction to another account on this network. Ready X deploys itself with that first transaction.",
             status: deployStatus,
             children:
               deployStatus === "current" &&
@@ -362,18 +362,18 @@ export function SellPanel() {
             id: "activate",
             title: "Enable STRK20 Private",
             body: registration === "unknown" && presence === "deployed"
-              ? "Checking this Ready on the pool…"
-              : "This account has no viewing key in the STRK20 pool yet. Ready must create and register it once before apps can shield or read private balances.",
+              ? "Checking this Ready X on the pool…"
+              : "This account has no viewing key in the STRK20 pool yet. Ready X must create and register it once before apps can shield or read private balances.",
             status: activateStatus,
             children:
               activateStatus === "current" && !checking ? (
                 <>
                   <ol className="list-decimal space-y-1 pl-5 text-sm text-muted-foreground">
                     <li>
-                      In Ready Settings, enable Smart Account. The current
-                      Ready privacy backend requires it for a new account.
+                      In Ready X Settings, enable Smart Account. The current
+                      Ready X privacy backend requires it for a new account.
                     </li>
-                    <li>Open the Protected tokens section in Ready.</li>
+                    <li>Open the Protected tokens section in Ready X.</li>
                     <li>Select a token and start Shield.</li>
                     <li>Confirm the one-time Activate privacy prompt.</li>
                   </ol>
@@ -423,7 +423,7 @@ export function SellPanel() {
       />
 
       {/* Gated on canReceive, not just session: shown any earlier, this and
-          the Ready card below land before "Deploy" and "Enable STRK20" are
+          the Ready X card below land before "Deploy" and "Enable STRK20" are
           even done, reading as two paragraphs of privacy architecture ahead
           of the checklist that actually gets someone to a QR. */}
       {session && canReceive ? (
@@ -432,7 +432,7 @@ export function SellPanel() {
             <CardTitle>Anonymous receiving</CardTitle>
             <CardDescription>
               {receive.status === "unavailable"
-                ? "Ready cannot derive a separate receive account yet, so a QR made here publishes your own address."
+                ? "Ready X cannot derive a separate receive account yet, so a QR made here publishes your own address."
                 : "Your QR publishes a separate account, so sharing it never points at the wallet holding everything else. MorokPay pays to create and register it - a top-up from your own account is the one thing that would link them in public."}
             </CardDescription>
           </CardHeader>
@@ -495,7 +495,7 @@ export function SellPanel() {
       ) : null}
 
       {/* Separate card, separate button, on purpose: unlike the EVM path,
-          nothing here is known to work yet. Ready's SNIP-12 signature has
+          nothing here is known to work yet. Ready X's SNIP-12 signature has
           never been checked for the one property this depends on - that it
           returns the same bytes for the same message every time - and a wrong
           guess here would be a QR that publishes an account nobody can get
@@ -504,9 +504,9 @@ export function SellPanel() {
       {session?.kind === "ready" && canReceive ? (
         <Card>
           <CardHeader>
-            <CardTitle>Anonymous receiving on Ready (experimental)</CardTitle>
+            <CardTitle>Anonymous receiving on Ready X (experimental)</CardTitle>
             <CardDescription>
-              Checks whether Ready signs the same way twice, which is what an
+              Checks whether Ready X signs the same way twice, which is what an
               anonymous receive account here would depend on. Two signature
               prompts, nothing deployed, nothing spent.
             </CardDescription>
@@ -515,7 +515,7 @@ export function SellPanel() {
             {readyCheck.status === "deterministic" ? (
               <>
                 <p className="text-sm text-muted-foreground">
-                  Ready signed the same way twice. This account is
+                  Ready X signed the same way twice. This account is
                   reproducible from the wallet alone:
                 </p>
                 <p className="break-all font-mono text-xs text-muted-foreground">
@@ -531,9 +531,9 @@ export function SellPanel() {
               <Alert variant="destructive">
                 <AlertTitle>Not safe to use</AlertTitle>
                 <AlertDescription>
-                  Ready signed the same message differently each time. An
+                  Ready X signed the same message differently each time. An
                   account derived from it could not be recovered reliably, so
-                  MorokPay will not build one on Ready until this changes.
+                  MorokPay will not build one on Ready X until this changes.
                 </AlertDescription>
               </Alert>
             ) : null}
@@ -557,7 +557,7 @@ export function SellPanel() {
             >
               {readyCheck.status === "checking"
                 ? "Signing twice…"
-                : "Check if Ready can do this"}
+                : "Check if Ready X can do this"}
             </Button>
           </CardFooter>
         </Card>

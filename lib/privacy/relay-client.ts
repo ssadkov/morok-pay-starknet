@@ -7,7 +7,7 @@ import type { AppNetwork } from "@/lib/network";
  * MorokPay to send and pay for, and deciding when that is even needed.
  *
  * Shared by both wallet rails. The EVM rail builds the proof with the SDK in
- * page context; Ready builds it inside the extension and hands it over through
+ * page context; Ready X builds it inside the extension and hands it over through
  * `wallet_strk20PrepareInvoke`. Past that point the two are the same thing: a
  * call plus a proof that authorizes itself, which anybody can submit.
  */

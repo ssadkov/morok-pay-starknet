@@ -276,7 +276,7 @@ export function EvmOnboardingGate() {
 
         {phase.kind === "done" ? (
           <Alert className="mt-4">
-            <AlertTitle>Ready</AlertTitle>
+            <AlertTitle>Ready X</AlertTitle>
             <AlertDescription>{phase.message}</AlertDescription>
           </Alert>
         ) : null}

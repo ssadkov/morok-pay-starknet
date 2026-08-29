@@ -249,7 +249,7 @@ export function createEvmStrk20Account(options: {
         );
       }
       /* Shield and unshield hand-roll the approvals and proof call that
-         Ready's extension normally does internally, so they stay Sepolia-only
+         Ready X's extension normally does internally, so they stay Sepolia-only
          until that path is proven out. Donate's transfer already runs on
          both networks. */
       if (action.type !== "transfer" && options.network !== "sepolia") {

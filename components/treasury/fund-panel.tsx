@@ -61,8 +61,8 @@ const STEP_LABEL: Record<FundStep, string> = {
   approving: "Approve USDC on Base",
   burning: "Burn USDC on Base",
   attesting: "Waiting for Circle attestation",
-  minting: "Mint USDC on Starknet with Ready",
-  done: "USDC arrived on Ready",
+  minting: "Mint USDC on Starknet with Ready X",
+  done: "USDC arrived on Ready X",
 };
 
 export function FundPanel() {
@@ -145,7 +145,7 @@ export function FundPanel() {
       if (!isConnected || !address) {
         if (!connector) throw new Error("Install MetaMask to fund from Base");
         connect({ connector, chainId: baseChain.id });
-        throw new Error("Connect MetaMask, then tap Fund Ready again");
+        throw new Error("Connect MetaMask, then tap Fund Ready X again");
       }
       if (chainId !== baseChain.id) {
         await switchChainAsync({ chainId: baseChain.id });
@@ -238,8 +238,8 @@ export function FundPanel() {
         </CardTitle>
         <CardDescription>
           {network === "sepolia"
-            ? "Burn test USDC on Base Sepolia. Circle sandbox attests, then Ready mints on Starknet Sepolia. Get USDC from faucet.circle.com."
-            : "Burn USDC on Base with MetaMask. Circle attests the message, then Ready mints native USDC on Starknet."}
+            ? "Burn test USDC on Base Sepolia. Circle sandbox attests, then Ready X mints on Starknet Sepolia. Get USDC from faucet.circle.com."
+            : "Burn USDC on Base with MetaMask. Circle attests the message, then Ready X mints native USDC on Starknet."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -266,7 +266,7 @@ export function FundPanel() {
           </p>
         ) : (
           <p className="text-sm text-muted-foreground">
-            MetaMask is only used for the Base burn. Ready stays the Starknet
+            MetaMask is only used for the Base burn. Ready X stays the Starknet
             wallet.
           </p>
         )}
@@ -328,7 +328,7 @@ export function FundPanel() {
           ) : (
             <ArrowDownToLineIcon data-icon="inline-start" />
           )}
-          {busy ? STEP_LABEL[step] : "Fund Ready"}
+          {busy ? STEP_LABEL[step] : "Fund Ready X"}
         </Button>
         {pendingMint ? (
           <Button

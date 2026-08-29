@@ -61,7 +61,7 @@ export function BalanceSidebar() {
         <CardContent className="flex flex-col gap-3">
           {!session ? (
             <p className="text-sm text-muted-foreground">
-              Connect Ready or an EVM wallet to see balances.
+              Connect Ready X or an EVM wallet to see balances.
             </p>
           ) : (
             <>
@@ -84,7 +84,7 @@ export function BalanceSidebar() {
                     ? balances.privateError
                     : session.kind === "evm"
                       ? "Viewing key derived in this browser session"
-                      : "Ready holds the viewing key"
+                      : "Ready X holds the viewing key"
                 }
                 action={<UnshieldButton />}
               />

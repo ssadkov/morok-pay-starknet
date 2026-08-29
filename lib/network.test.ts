@@ -19,11 +19,11 @@ describe("parseAppNetwork", () => {
 });
 
 describe("defaultAppNetwork", () => {
-  it("starts on Sepolia unless env forces mainnet", () => {
+  it("starts on Mainnet unless env pins Sepolia", () => {
     expect(defaultAppNetwork()).toBe(
-      process.env.NEXT_PUBLIC_STARKNET_NETWORK === "mainnet"
-        ? "mainnet"
-        : "sepolia",
+      process.env.NEXT_PUBLIC_STARKNET_NETWORK === "sepolia"
+        ? "sepolia"
+        : "mainnet",
     );
   });
 });

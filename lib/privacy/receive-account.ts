@@ -89,7 +89,7 @@ export function receiveAccountTypedData(args: {
 }
 
 /**
- * The Ready-side attempt at the same signature.
+ * The Ready X-side attempt at the same signature.
  *
  * MetaMask's EIP-712 signing is known deterministic - the current viewing-key
  * derivation depends on it, and would break on every reconnect if it weren't.

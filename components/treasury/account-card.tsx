@@ -42,7 +42,7 @@ export function AccountCard() {
   async function copyAddress() {
     try {
       await navigator.clipboard.writeText(ready.address);
-      toast.success("Ready address copied");
+      toast.success("Ready X address copied");
     } catch {
       toast.error("Could not copy address");
     }
@@ -52,9 +52,9 @@ export function AccountCard() {
     <div className="flex flex-col gap-8">
       <Card>
         <CardHeader className="border-b">
-          <CardTitle>Ready treasury</CardTitle>
+          <CardTitle>Ready X treasury</CardTitle>
           <CardDescription>
-            Ready address on Starknet {network}. Wallet and payment-wallet
+            Ready X address on Starknet {network}. Wallet and payment-wallet
             balances stay in the sidebar.
           </CardDescription>
           <CardAction>
@@ -69,7 +69,7 @@ export function AccountCard() {
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
-            <p className="text-xs text-muted-foreground">Ready address</p>
+            <p className="text-xs text-muted-foreground">Ready X address</p>
             <p className="break-all font-mono text-sm tabular-nums">
               {ready.address}
             </p>

@@ -3,10 +3,17 @@ export type AppNetwork = "mainnet" | "sepolia";
 export const NETWORK_STORAGE_KEY = "morokpay.network.v2";
 export const NETWORK_CHANGE_EVENT = "morokpay-network";
 
+/**
+ * Mainnet by default, not Sepolia - this is where the contest and real
+ * donations live now. `NEXT_PUBLIC_STARKNET_NETWORK=sepolia` opts a
+ * deployment (or a local .env.local) back into testnet explicitly; anything
+ * else, including the variable being unset, falls through to mainnet rather
+ * than depending on every environment having it configured correctly.
+ */
 export function defaultAppNetwork(): AppNetwork {
-  return process.env.NEXT_PUBLIC_STARKNET_NETWORK === "mainnet"
-    ? "mainnet"
-    : "sepolia";
+  return process.env.NEXT_PUBLIC_STARKNET_NETWORK === "sepolia"
+    ? "sepolia"
+    : "mainnet";
 }
 
 export function parseAppNetwork(

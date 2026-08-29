@@ -36,8 +36,8 @@ export function TreasuryApp() {
         <h1 className="text-3xl font-semibold tracking-tight">Top up</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
-            ? "Testnet: mint USDC to this Ready from the Circle faucet (Starknet Sepolia), or bridge from Base Sepolia, then shield. Pool fee is 2 STRK."
-            : "Fund Ready from Base, shield into the STRK20 pool, then pay privately or cash out to Base."}
+            ? "Testnet: mint USDC to this Ready X from the Circle faucet (Starknet Sepolia), or bridge from Base Sepolia, then shield. Pool fee is 2 STRK."
+            : "Fund Ready X from Base, shield into the STRK20 pool, then pay privately or cash out to Base."}
         </p>
       </div>
       <TestnetHint />

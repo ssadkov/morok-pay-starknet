@@ -13,14 +13,14 @@ import {
 } from "@/lib/privacy/receive-account";
 
 /**
- * Whether Ready can safely stand up an anonymous `B`, checked rather than
+ * Whether Ready X can safely stand up an anonymous `B`, checked rather than
  * assumed.
  *
  * `B`'s address has to be reproducible from the wallet alone - the same
  * signature every time, on any device - or donations land on an account
  * nobody can get back to. MetaMask's determinism is load-bearing elsewhere in
- * this app already; Ready's has never been exercised for this. So this asks
- * the connected Ready wallet to sign the exact same message twice and
+ * this app already; Ready X's has never been exercised for this. So this asks
+ * the connected Ready X wallet to sign the exact same message twice and
  * compares the results, before anything is deployed or a single wei of
  * relayer STRK is spent.
  *
@@ -74,7 +74,7 @@ export function useReadyAnonymityCheck(): ReadyAnonymityCheckState & {
       setError(
         caught instanceof Error
           ? caught.message
-          : "Could not ask Ready to sign the check message.",
+          : "Could not ask Ready X to sign the check message.",
       );
       setStatus("error");
     }

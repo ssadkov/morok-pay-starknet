@@ -1,11 +1,11 @@
 /**
- * Ready sometimes never replies once the strk20InvokeTransaction popup is
+ * Ready X sometimes never replies once the strk20InvokeTransaction popup is
  * rejected or closed, so the wallet call is bounded and rejects with this
  * instead of hanging forever.
  */
 export class WalletTimeoutError extends Error {
   constructor() {
-    super("Ready did not respond in time");
+    super("Ready X did not respond in time");
     this.name = "WalletTimeoutError";
   }
 }
@@ -23,7 +23,7 @@ function errorText(error: unknown): string {
 const TX_HASH_RE = /0x[0-9a-fA-F]{49,}/;
 
 /**
- * Ready collapses helper failures into "An error occurred (UNKNOWN_ERROR)".
+ * Ready X collapses helper failures into "An error occurred (UNKNOWN_ERROR)".
  * Walk the nested payload so the UI can show something actionable.
  */
 export function describeError(error: unknown, depth = 0): string {
@@ -87,14 +87,14 @@ export function formatStrk20Error(
   action: "shield" | "payout" | "pay" | "balance",
 ): string {
   if (error instanceof WalletTimeoutError) {
-    return "Ready did not respond. If you closed or rejected the popup, try again.";
+    return "Ready X did not respond. If you closed or rejected the popup, try again.";
   }
   const message = errorText(error);
   if (/Account not found on the privacy backend/i.test(message)) {
-    return "Ready privacy could not find this account. In the current Ready X, enable Smart Account in Settings and retry Shield.";
+    return "Ready X privacy could not find this account. In the current Ready X, enable Smart Account in Settings and retry Shield.";
   }
   if (/NOT_REGISTERED/i.test(message)) {
-    return "This Ready account is not registered in the STRK20 pool yet. Open Protected tokens in Ready and confirm the one-time privacy activation first.";
+    return "This Ready X account is not registered in the STRK20 pool yet. Open Protected tokens in Ready X and confirm the one-time privacy activation first.";
   }
   if (/INSUFFICIENT_PRIVATE_BALANCE/i.test(message)) {
     return action === "pay"
@@ -102,23 +102,23 @@ export function formatStrk20Error(
       : "Private balance is too low for this payout.";
   }
   if (/PRIVACY_LEAK/i.test(message)) {
-    return "Ready blocked this action because it would leak privacy.";
+    return "Ready X blocked this action because it would leak privacy.";
   }
   if (/Insufficient balance for token/i.test(message) && (action === "payout" || action === "pay")) {
     return `The pool's proving block does not see this balance yet (${message}). New notes need about 10 blocks after shielding before they can move — wait a moment and try again. If this persists well after that wait, the note may not have been discovered at all.`;
   }
   if (/USER_REFUSED/i.test(message) && action === "balance") {
-    return "Ready did not share private balances. Click refresh and approve once.";
+    return "Ready X did not share private balances. Click refresh and approve once.";
   }
   if (/UNKNOWN_ERROR/i.test(message)) {
     return action === "balance"
-      ? "Ready could not read private balances. Deploy and activate this account on the selected network first."
+      ? "Ready X could not read private balances. Deploy and activate this account on the selected network first."
       : action === "shield"
-        ? "Ready could not submit this STRK20 action. In Ready, open Protected tokens and confirm the one-time privacy activation, then try again."
+        ? "Ready X could not submit this STRK20 action. In Ready X, open Protected tokens and confirm the one-time privacy activation, then try again."
         : describeError(error) || message;
   }
   if (action === "balance") {
-    return message || "Ready could not read the private balance";
+    return message || "Ready X could not read the private balance";
   }
   if (action === "pay") {
     return describeError(error) || message || "Payment failed";
