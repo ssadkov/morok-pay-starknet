@@ -1,4 +1,12 @@
-import { CallData, ec, hash, num, type Call } from "starknet";
+import {
+  CallData,
+  ec,
+  hash,
+  num,
+  type Call,
+  type Signature,
+  type TypedData,
+} from "starknet";
 import { keccak256, type Address, type Hex } from "viem";
 
 import type { AppNetwork } from "@/lib/network";
@@ -78,6 +86,86 @@ export function receiveAccountTypedData(args: {
       index: BigInt(args.index ?? 0),
     },
   } as const;
+}
+
+/**
+ * The Ready-side attempt at the same signature.
+ *
+ * MetaMask's EIP-712 signing is known deterministic - the current viewing-key
+ * derivation depends on it, and would break on every reconnect if it weren't.
+ * A Starknet wallet's SNIP-12 `signMessage` has never been exercised for this
+ * purpose here, and unlike an EOA's ECDSA it is not guaranteed deterministic
+ * by the curve alone - it is whatever the wallet's own signer does with the
+ * message, and for a guardian-backed account there is more than one key that
+ * could be doing the signing.
+ *
+ * So this is checked, not assumed: sign the same message twice and compare.
+ * A match means the account this derives is recoverable on any device, same
+ * as the MetaMask one. A mismatch means it is not, and none should be created
+ * - a `B` nobody can rederive is worse than no `B`, because donations would
+ * still land on it.
+ */
+export function readyReceiveAccountTypedData(args: {
+  network: AppNetwork;
+  /** 0 is the creator's account. Reserved so per-QR accounts stay possible. */
+  index?: number;
+}): TypedData {
+  const sdk = privacySdkOf(args.network);
+  return {
+    types: {
+      StarknetDomain: [
+        { name: "name", type: "shortstring" },
+        { name: "version", type: "shortstring" },
+        { name: "chainId", type: "shortstring" },
+        { name: "revision", type: "shortstring" },
+      ],
+      ReadyReceiveAccount: [
+        { name: "purpose", type: "string" },
+        { name: "starknetChain", type: "shortstring" },
+        { name: "privacyPool", type: "ContractAddress" },
+        { name: "index", type: "felt" },
+      ],
+    },
+    primaryType: "ReadyReceiveAccount",
+    domain: {
+      name: "MorokPay Receive Account",
+      version: "1",
+      chainId: sdk.snChainName,
+      revision: "1",
+    },
+    message: {
+      purpose: "Derive the MorokPay account your donation QR publishes",
+      starknetChain: sdk.snChainName,
+      privacyPool: sdk.poolAddress,
+      index: String(args.index ?? 0),
+    },
+  };
+}
+
+/**
+ * Turns whatever a wallet returned from `signMessage` into one blob of
+ * entropy. A Starknet signature arrives as an array of felts (typically
+ * `[r, s]`, more for a guardian-backed account) rather than the single byte
+ * string an EOA produces - concatenated, each felt padded to 32 bytes so the
+ * boundaries cannot shift and change the result.
+ */
+export function signatureEntropy(signature: Signature): Hex {
+  const felts = Array.isArray(signature)
+    ? signature
+    : [signature.r, signature.s];
+  return `0x${felts
+    .map((felt) => BigInt(felt).toString(16).padStart(64, "0"))
+    .join("")}`;
+}
+
+/** Whether two signature attempts over the same message actually agree. */
+export function signaturesMatch(a: Signature, b: Signature): boolean {
+  const feltsOf = (signature: Signature) =>
+    Array.isArray(signature) ? signature : [signature.r, signature.s];
+  const left = feltsOf(a);
+  const right = feltsOf(b);
+  if (left.length !== right.length) return false;
+  return left.every((felt, index) => BigInt(felt) === BigInt(right[index]));
 }
 
 export type ReceiveAccount = {

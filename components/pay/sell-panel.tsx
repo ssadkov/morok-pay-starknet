@@ -44,6 +44,7 @@ import { getShieldToken } from "@/lib/starknet/tokens";
 
 import { useAccountPresence } from "./use-account-presence";
 import { usePoolRegistration } from "./use-pool-registration";
+import { useReadyAnonymityCheck } from "./use-ready-anonymity-check";
 import { useReceiveAccount } from "./use-receive-account";
 
 const EMPTY: MerchantInvoice[] = [];
@@ -89,6 +90,7 @@ export function SellPanel() {
     (presence === "unknown" || registration === "unknown");
 
   const receive = useReceiveAccount();
+  const readyCheck = useReadyAnonymityCheck();
   /*
    * The QR carries the receive account when there is one. Whatever address
    * goes on a QR becomes public the first time somebody pays it, so the
@@ -485,6 +487,75 @@ export function SellPanel() {
               </Button>
             </CardFooter>
           ) : null}
+        </Card>
+      ) : null}
+
+      {/* Separate card, separate button, on purpose: unlike the EVM path,
+          nothing here is known to work yet. Ready's SNIP-12 signature has
+          never been checked for the one property this depends on - that it
+          returns the same bytes for the same message every time - and a wrong
+          guess here would be a QR that publishes an account nobody can get
+          back into. This only signs; it deploys nothing and costs the
+          relayer nothing, so it is safe to run before deciding anything. */}
+      {session?.kind === "ready" ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Anonymous receiving on Ready (experimental)</CardTitle>
+            <CardDescription>
+              Checks whether Ready signs the same way twice, which is what an
+              anonymous receive account here would depend on. Two signature
+              prompts, nothing deployed, nothing spent.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {readyCheck.status === "deterministic" ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Ready signed the same way twice. This account is
+                  reproducible from the wallet alone:
+                </p>
+                <p className="break-all font-mono text-xs text-muted-foreground">
+                  {readyCheck.address}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Not wired up to deploy yet - this only confirms it is safe
+                  to build.
+                </p>
+              </>
+            ) : null}
+            {readyCheck.status === "not_deterministic" ? (
+              <Alert variant="destructive">
+                <AlertTitle>Not safe to use</AlertTitle>
+                <AlertDescription>
+                  Ready signed the same message differently each time. An
+                  account derived from it could not be recovered reliably, so
+                  MorokPay will not build one on Ready until this changes.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+            {readyCheck.status === "error" && readyCheck.error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not check</AlertTitle>
+                <AlertDescription>{readyCheck.error}</AlertDescription>
+              </Alert>
+            ) : null}
+          </CardContent>
+          <CardFooter className="border-t">
+            <Button
+              type="button"
+              variant="outline"
+              size="lg"
+              className="min-h-12"
+              disabled={readyCheck.status === "checking"}
+              onClick={() => {
+                void readyCheck.check();
+              }}
+            >
+              {readyCheck.status === "checking"
+                ? "Signing twice…"
+                : "Check if Ready can do this"}
+            </Button>
+          </CardFooter>
         </Card>
       ) : null}
 
