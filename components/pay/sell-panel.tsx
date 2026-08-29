@@ -363,7 +363,7 @@ export function SellPanel() {
             title: "Enable STRK20 Private",
             body: registration === "unknown" && presence === "deployed"
               ? "Checking this Ready X on the pool…"
-              : "This account has no viewing key in the STRK20 pool yet. Ready X must create and register it once before apps can shield or read private balances.",
+              : "This account has no viewing key in the STRK20 pool yet. Ready X must create and register it once before apps can shield or read private balances. Enabling it shields a default amount too - budget about 6 STRK from your public balance.",
             status: activateStatus,
             children:
               activateStatus === "current" && !checking ? (
@@ -695,7 +695,7 @@ export function SellPanel() {
               </Button>
             </div>
             <p className="text-sm text-muted-foreground">
-              First 10 contest: post this link. Amount never appears on the QR.
+              Post this link anywhere. Amount never appears on the QR.
             </p>
           </CardContent>
           <CardFooter className="flex-wrap gap-2 border-t">
