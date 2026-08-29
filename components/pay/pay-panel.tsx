@@ -458,9 +458,9 @@ export function PayPanel() {
         : "current";
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Donate</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">Donate</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
             ? "Sepolia: shield test USDC, wait for the note to mature, then pay. The QR never shows the amount."

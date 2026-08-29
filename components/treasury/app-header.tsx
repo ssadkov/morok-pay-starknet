@@ -30,6 +30,13 @@ const NAV = [
   { href: "/treasury", label: "Top up" },
 ] as const;
 
+/** Top up is the Base-bridge and testnet-faucet page; not a mainnet path yet. */
+function navFor(network: AppNetwork) {
+  return network === "mainnet"
+    ? NAV.filter((item) => item.href !== "/treasury")
+    : NAV;
+}
+
 async function copyAddress(value: string, message: string) {
   try {
     await navigator.clipboard.writeText(value);
@@ -51,6 +58,7 @@ export function AppHeader() {
     disconnect,
   } = useTreasury();
   const { network, setNetwork } = useNetwork();
+  const nav = navFor(network);
   const wallet = wallets[0];
 
   return (
@@ -73,7 +81,7 @@ export function AppHeader() {
             </span>
           </Link>
           <nav aria-label="Primary" className="hidden items-center gap-1 sm:flex">
-            {NAV.map((item) => (
+            {nav.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -202,7 +210,7 @@ export function AppHeader() {
         aria-label="Primary"
         className="mx-auto flex max-w-6xl gap-1 px-4 pb-3 sm:hidden md:px-6"
       >
-        {NAV.map((item) => (
+        {nav.map((item) => (
           <Link
             key={item.href}
             href={item.href}
