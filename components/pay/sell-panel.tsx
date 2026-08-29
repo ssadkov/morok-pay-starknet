@@ -301,7 +301,7 @@ export function SellPanel() {
             body:
               presence === "unknown"
                 ? "Checking whether this Ready X account is deployed…"
-                : "Funding and deployment are separate. In Ready X, send one small outgoing transaction to another account on this network. Ready X deploys itself with that first transaction.",
+                : "Funding and deployment are separate. Ready X deploys itself the first time it sends anything - its own Activate-account prompt (free, opens when you enable Protected tokens) or the button below (sends 0.01 STRK to MorokPay) both work.",
             status: deployStatus,
             children:
               deployStatus === "current" &&

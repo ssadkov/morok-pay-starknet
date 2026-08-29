@@ -78,11 +78,14 @@ export function DeployReadyButton() {
         ) : (
           <ArrowUpRightIcon data-icon="inline-start" />
         )}
-        {submitting ? "Activating Ready X" : "Activate for 0.01 STRK"}
+        {submitting ? "Sending…" : "Send 0.01 STRK to MorokPay"}
       </Button>
       <p className="text-xs text-muted-foreground">
-        Public transaction: deploys this Ready X account and sends 0.01 STRK to
-        the MorokPay treasury. This does not enable Private by itself.
+        A public transfer, not a fee - Ready X deploys itself as a side effect
+        of sending anywhere, and this address is just a convenient one. Ready
+        X will offer to activate the account itself, for free, when you open
+        Protected tokens; use that instead if you would rather not send this.
+        Either way this does not enable Private by itself.
       </p>
     </div>
   );
