@@ -111,7 +111,10 @@ export function UnshieldButton() {
       <p className="text-xs text-muted-foreground">
         Withdraw to this account. The amount, destination, and time become
         public. A new private note may need about 10 blocks before it can be
-        spent.
+        spent.{" "}
+        {session.kind === "ready"
+          ? "Ready X covers the pool fee and gas itself and takes its own cut out of what you withdraw instead - about 15-18% in what we've measured, not from your public STRK."
+          : "The pool fee (about 6 STRK) comes out of your public balance, not the amount withdrawn."}
       </p>
       {privateUsdc > BigInt(0) && !notes.ready ? (
         <p className="font-mono text-sm font-semibold tabular-nums">
