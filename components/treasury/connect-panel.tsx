@@ -25,9 +25,9 @@ export function ConnectPanel() {
         <EmptyMedia variant="icon">
           <WalletIcon />
         </EmptyMedia>
-        <EmptyTitle>Connect Ready</EmptyTitle>
+        <EmptyTitle>Connect Ready X</EmptyTitle>
         <EmptyDescription>
-          Ready holds the STRK20 viewing key and talks to the official proving
+          Ready X holds the STRK20 viewing key and talks to the official proving
           service. Braavos cannot shield. Connect Ready X (or Xverse) on the
           same network as the header toggle. Sepolia is the default for dry
           runs.

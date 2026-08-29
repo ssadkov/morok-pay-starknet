@@ -68,7 +68,7 @@ type PayoutStep =
 
 const STEP_LABEL: Record<PayoutStep, string> = {
   idle: "",
-  unshielding: "Unshield to this Ready account",
+  unshielding: "Unshield to this Ready X account",
   burning: "Burn USDC on Starknet",
   attesting: "Waiting for Circle attestation",
   minting: "Mint USDC on Base with MetaMask",
@@ -330,7 +330,7 @@ export function PayoutPanel() {
         <CardDescription>
           {toBase
             ? "Unshield private USDC if needed, burn it on Starknet, then mint native USDC on Base. Use a fresh Base address so the payout is not linked to the MetaMask you funded with."
-            : `Unshield private ${token.symbol} to a Starknet address you paste. Use a new wallet so the payout is not linked to this Ready account.`}
+            : `Unshield private ${token.symbol} to a Starknet address you paste. Use a new wallet so the payout is not linked to this Ready X account.`}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
@@ -375,7 +375,7 @@ export function PayoutPanel() {
             <FieldDescription>
               {toBase
                 ? "A Base address you control. Do not reuse the MetaMask that funded this treasury."
-                : "A public Starknet address. Do not reuse this Ready account."}
+                : "A public Starknet address. Do not reuse this Ready X account."}
             </FieldDescription>
           </Field>
           <Field>
@@ -412,7 +412,7 @@ export function PayoutPanel() {
           </p>
         ) : toBase ? (
           <p className="text-sm text-muted-foreground">
-            Ready burns on Starknet. MetaMask only submits the Base mint and
+            Ready X burns on Starknet. MetaMask only submits the Base mint and
             needs a little ETH for gas.
           </p>
         ) : null}

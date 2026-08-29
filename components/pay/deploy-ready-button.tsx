@@ -41,7 +41,7 @@ export function DeployReadyButton() {
         treasury,
         ACTIVATION_TIP,
       );
-      toast.success("Ready activation submitted", {
+      toast.success("Ready X activation submitted", {
         description: "0.01 public STRK sent to MorokPay treasury",
         action: {
           label: "Voyager",
@@ -55,7 +55,7 @@ export function DeployReadyButton() {
       });
       await refreshBalances({ private: false });
     } catch (error) {
-      toast.error(describeError(error) || "Ready activation failed");
+      toast.error(describeError(error) || "Ready X activation failed");
     } finally {
       setSubmitting(false);
     }
@@ -78,10 +78,10 @@ export function DeployReadyButton() {
         ) : (
           <ArrowUpRightIcon data-icon="inline-start" />
         )}
-        {submitting ? "Activating Ready" : "Activate for 0.01 STRK"}
+        {submitting ? "Activating Ready X" : "Activate for 0.01 STRK"}
       </Button>
       <p className="text-xs text-muted-foreground">
-        Public transaction: deploys this Ready account and sends 0.01 STRK to
+        Public transaction: deploys this Ready X account and sends 0.01 STRK to
         the MorokPay treasury. This does not enable Private by itself.
       </p>
     </div>

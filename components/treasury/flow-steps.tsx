@@ -7,13 +7,13 @@ import { cn } from "@/lib/utils";
 const STEPS = [
   {
     id: 1,
-    title: "Connect Ready",
-    body: "Ready is the official STRK20 wallet. It holds the viewing key and talks to the proving service.",
+    title: "Connect Ready X",
+    body: "Ready X is the official STRK20 wallet. It holds the viewing key and talks to the proving service.",
   },
   {
     id: 2,
     title: "Fund USDC from Base",
-    body: "Burn USDC on Base with MetaMask. Circle mints native USDC to this Ready address on Starknet.",
+    body: "Burn USDC on Base with MetaMask. Circle mints native USDC to this Ready X address on Starknet.",
   },
   {
     id: 3,

@@ -7,7 +7,7 @@ export type AccountPresence = "deployed" | "undeployed" | "unknown";
 export type PoolRegistration = "registered" | "unregistered" | "unknown";
 
 /**
- * A Ready address is the same on every network but deployed on each one
+ * A Ready X address is the same on every network but deployed on each one
  * separately. The pool cannot credit a note to an account that does not exist,
  * so a payment to an address that never touched this network just fails.
  */

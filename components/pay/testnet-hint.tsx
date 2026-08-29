@@ -17,17 +17,17 @@ export function TestnetHint() {
 
   if (network !== "sepolia") return null;
 
-  // An EVM session never has a Ready account: its Starknet address is derived
-  // from the EVM key, so calling it "Ready" points at the wrong wallet.
+  // An EVM session never has a Ready X account: its Starknet address is derived
+  // from the EVM key, so calling it "Ready X" points at the wrong wallet.
   const isEvm = session?.kind === "evm";
-  const addressLabel = isEvm ? "derived Starknet address" : "Ready address";
+  const addressLabel = isEvm ? "derived Starknet address" : "Ready X address";
 
   async function copyAddress() {
     if (!session) return;
     try {
       await navigator.clipboard.writeText(session.address);
       toast.success(
-        isEvm ? "Derived Starknet address copied" : "Ready address copied",
+        isEvm ? "Derived Starknet address copied" : "Ready X address copied",
       );
     } catch {
       toast.error("Could not copy address");
@@ -45,7 +45,7 @@ export function TestnetHint() {
         <p>
           {isEvm
             ? "Fast path: get test STRK to the derived address below, then shield more than 2 STRK for the pool fee. Circle USDC is only needed when testing fixed-amount payments."
-            : "Fast path: get test STRK, make one outgoing Ready transaction to deploy the account, then shield more than 2 STRK for the pool fee. Circle USDC is only needed when testing fixed-amount payments."}
+            : "Fast path: get test STRK, make one outgoing Ready X transaction to deploy the account, then shield more than 2 STRK for the pool fee. Circle USDC is only needed when testing fixed-amount payments."}
         </p>
         <div className="flex flex-wrap gap-2">
           {session ? (

@@ -176,7 +176,7 @@ export function AppHeader() {
               ) : (
                 <WalletIcon data-icon="inline-start" />
               )}
-              {connecting ? "Connecting" : "Connect Ready"}
+              {connecting ? "Connecting" : "Connect Ready X"}
             </Button>
             <Button
               type="button"

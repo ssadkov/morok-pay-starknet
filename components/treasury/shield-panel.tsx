@@ -87,7 +87,7 @@ export function ShieldPanel() {
       <CardHeader>
         <CardTitle>Shield into STRK20</CardTitle>
         <CardDescription>
-          Ready deposits public {token.symbol} into the official pool. The
+          Ready X deposits public {token.symbol} into the official pool. The
           deposit amount is visible; the remaining private notes are not.
         </CardDescription>
       </CardHeader>
@@ -129,8 +129,8 @@ export function ShieldPanel() {
               {token.id === "strkbtc"
                 ? "Bridge BTC at strkbtc.io or swap on AVNU, then shield."
                 : network === "sepolia"
-                  ? "Fund this Ready address from Base Sepolia first, then shield. Pool fee on Sepolia is 2 STRK."
-                  : "Fund this Ready address from Base first, then shield."}
+                  ? "Fund this Ready X address from Base Sepolia first, then shield. Pool fee on Sepolia is 2 STRK."
+                  : "Fund this Ready X address from Base first, then shield."}
             </AlertDescription>
           </Alert>
         ) : null}

@@ -53,7 +53,7 @@ export async function connectReadyWallet(
     const switched = await account.switchStarknetChain(expectedChainId(network));
     if (!switched) {
       throw new Error(
-        `Switch Ready to Starknet ${network} and try again`,
+        `Switch Ready X to Starknet ${network} and try again`,
       );
     }
     chainId = String(await walletV6.requestChainId(wallet));
@@ -126,10 +126,34 @@ export async function reconnectReadyWalletSilently(
   }
 }
 
+/**
+ * Retries within one page load, not across reloads.
+ *
+ * `createStore` dispatches `wallet-standard:app-ready` and scans `window` for
+ * legacy injected wallets exactly once, synchronously, when it is called. A
+ * wallet extension's content script attaches its own listener - or writes its
+ * `window.starknet_*` object - asynchronously, on its own schedule. When that
+ * finishes after this scan (a cold tab often loses this race; a warm reload
+ * usually wins it by luck, which is why reloading "fixes" it), the wallet is
+ * missed for the rest of the page's life, because nothing here asks again.
+ * A few retries over the first couple of seconds covers that window without
+ * polling forever.
+ */
+const REDISCOVERY_DELAYS_MS = [300, 800, 1500, 2500];
+
 export function watchWallets(
   onChange: (wallets: WalletWithStarknetFeatures[]) => void,
 ) {
   const store = createStore({ eip1193Adapters: [] });
   onChange(store.getWallets().slice());
-  return store.subscribe((next) => onChange(next.slice()));
+  const unsubscribe = store.subscribe((next) => onChange(next.slice()));
+
+  const timers = REDISCOVERY_DELAYS_MS.map((delay) =>
+    setTimeout(() => store._refreshInjectedWallets(), delay),
+  );
+
+  return () => {
+    unsubscribe();
+    timers.forEach(clearTimeout);
+  };
 }

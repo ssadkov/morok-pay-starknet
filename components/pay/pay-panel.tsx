@@ -144,7 +144,7 @@ export function PayPanel() {
     creatorReady &&
     notes.ready &&
     privateRaw > BigInt(0);
-  const walletName = session?.kind === "evm" ? "EVM wallet" : "Ready";
+  const walletName = session?.kind === "evm" ? "EVM wallet" : "Ready X";
 
   /*
    * A donation link arrives in the URL, and once it does the "open a link"
@@ -470,7 +470,7 @@ export function PayPanel() {
 
       <OnboardingSteps
         title="Get ready to donate"
-        description="Use Ready or an onboarded EVM wallet. New notes take about ten blocks before they can move."
+        description="Use Ready X or an onboarded EVM wallet. New notes take about ten blocks before they can move."
         doneLabel={`${walletName} · ${formatUsdc(privateRaw)} private USDC · notes mature`}
         steps={[
           {
@@ -525,7 +525,7 @@ export function PayPanel() {
           },
           {
             id: "ready",
-            title: "Connect Ready or EVM wallet",
+            title: "Connect Ready X or EVM wallet",
             body: "Use a supported private wallet on the same network as the header.",
             status: readyStatus,
             children: readyStatus === "current" ? <ConnectWalletChoices /> : null,
@@ -671,7 +671,7 @@ export function PayPanel() {
               <Alert>
                 <AlertTitle>Waiting for the note to mature</AlertTitle>
                 <AlertDescription>
-                  Ready in {notes.remainingLabel}. New notes need about ten
+                  Ready X in {notes.remainingLabel}. New notes need about ten
                   blocks before the pool will let them move.
                 </AlertDescription>
               </Alert>

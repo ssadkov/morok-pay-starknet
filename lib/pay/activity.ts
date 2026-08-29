@@ -60,7 +60,7 @@ export function activityParties(item: ActivityItem): {
 export const ACTIVITY_STORAGE_KEY = "morokpay.activity";
 export const ACTIVITY_CHANGE_EVENT = "morokpay-activity";
 export const PRIVATE_BALANCE_SNAPSHOT_KEY = "morokpay.private-balance-snapshots";
-/** Ignore Ready note-scan jitter below 0.10 USDC (6 decimals). */
+/** Ignore Ready X note-scan jitter below 0.10 USDC (6 decimals). */
 export const PRIVATE_DELTA_DUST_RAW = BigInt(100_000);
 
 export type PrivateBalanceSnapshot = {
@@ -156,7 +156,7 @@ export function readActivity(
   const value = readAll()
     .filter((item) => {
       if (item.network !== network) return false;
-      // A payment Ready never accepted is not history; the UI shows the error.
+      // A payment Ready X never accepted is not history; the UI shows the error.
       if (item.status === "failed") return false;
       if (!address || !item.address) return true;
       return sameAddress(item.address, address);
@@ -351,7 +351,7 @@ export function classifyPrivateDelta(args: {
 }): PrivateDelta {
   if (args.delta === BigInt(0)) return { kind: "none" };
   const abs = args.delta < BigInt(0) ? -args.delta : args.delta;
-  // Ready's note scan jitters by a few cents between prompts; ignore that noise.
+  // Ready X's note scan jitters by a few cents between prompts; ignore that noise.
   if (abs < PRIVATE_DELTA_DUST_RAW) return { kind: "none" };
   if (args.delta > BigInt(0)) {
     if (args.recentShield) return { kind: "none" };

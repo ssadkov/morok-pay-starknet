@@ -89,7 +89,7 @@ export type TreasuryBalances = AccountSnapshot & {
 };
 
 export type RefreshBalancesOptions = {
-  /** Call wallet_strk20Balances (Ready prompt). Default true. */
+  /** Call wallet_strk20Balances (Ready X prompt). Default true. */
   private?: boolean;
 };
 
@@ -310,7 +310,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         try {
           if (snapshot.status === "undeployed") {
             privateError =
-              "Funded, but not deployed. Send one outgoing transaction in Ready first.";
+              "Funded, but not deployed. Send one outgoing transaction in Ready X first.";
           } else {
             const registration = await poolRegistration(
               network,
@@ -318,7 +318,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
             );
             if (registration === "unregistered") {
               privateError =
-                "Enable Private in Ready first. Turn on Smart Account, then open Protected tokens and confirm the one-time activation.";
+                "Enable Private in Ready X first. Turn on Smart Account, then open Protected tokens and confirm the one-time activation.";
             } else {
               const entries = await current.account.strk20Balances([
                 ...shieldTokenAddresses(network),
@@ -427,7 +427,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         setEvmGate(null);
       } catch (error) {
         setConnectError(
-          error instanceof Error ? error.message : "Could not connect Ready",
+          error instanceof Error ? error.message : "Could not connect Ready X",
         );
       } finally {
         setConnecting(false);
@@ -509,7 +509,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   /**
    * Rebuild the session after a reload instead of showing a disconnected app
    * to someone whose wallet is still authorized. Both paths are silent: wagmi
-   * already restored the EVM connection by itself, and Ready reconnects
+   * already restored the EVM connection by itself, and Ready X reconnects
    * through connectSilent. Nothing here opens a wallet dialog, sets
    * connectError, or raises the onboarding gate - a page load must not
    * interrupt, so any failure just leaves the Connect buttons in place.
