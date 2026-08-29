@@ -422,7 +422,11 @@ export function SellPanel() {
         ]}
       />
 
-      {session ? (
+      {/* Gated on canReceive, not just session: shown any earlier, this and
+          the Ready card below land before "Deploy" and "Enable STRK20" are
+          even done, reading as two paragraphs of privacy architecture ahead
+          of the checklist that actually gets someone to a QR. */}
+      {session && canReceive ? (
         <Card>
           <CardHeader>
             <CardTitle>Anonymous receiving</CardTitle>
@@ -497,7 +501,7 @@ export function SellPanel() {
           guess here would be a QR that publishes an account nobody can get
           back into. This only signs; it deploys nothing and costs the
           relayer nothing, so it is safe to run before deciding anything. */}
-      {session?.kind === "ready" ? (
+      {session?.kind === "ready" && canReceive ? (
         <Card>
           <CardHeader>
             <CardTitle>Anonymous receiving on Ready (experimental)</CardTitle>

@@ -15,7 +15,14 @@
 export type RelayWindow = { count: number; resetAt: number };
 
 export const RELAY_WINDOW_MS = 60 * 60 * 1000;
-export const RELAY_PER_CALLER = 5;
+/*
+ * 5 blocked the organizer's own payout run: ten first-time contest prizes
+ * submitted from one browser hit it on the fifth. 20 covers a ten-entrant
+ * campaign from a single IP with room to retry a couple of failures, without
+ * opening the door to a real scrape - revisit once payouts happen from
+ * something other than one person's browser.
+ */
+export const RELAY_PER_CALLER = 20;
 export const RELAY_PER_WINDOW = 60;
 
 export type RelayVerdict =
