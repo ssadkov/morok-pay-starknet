@@ -274,9 +274,9 @@ export function SellPanel() {
         : "current";
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">My donation QR</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">My donation QR</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           One durable link. Supporters choose the amount. You will see the
           USDC. You will not see who sent it.

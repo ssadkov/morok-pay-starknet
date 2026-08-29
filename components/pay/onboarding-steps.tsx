@@ -55,7 +55,7 @@ export function OnboardingSteps({
               <li
                 key={step.id}
                 className={cn(
-                  "grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 py-4",
+                  "grid grid-cols-[2rem_minmax(0,1fr)] gap-x-3 py-3",
                   index < steps.length - 1 &&
                     "border-b border-border/70",
                 )}
