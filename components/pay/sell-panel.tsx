@@ -44,7 +44,6 @@ import { getShieldToken } from "@/lib/starknet/tokens";
 
 import { useAccountPresence } from "./use-account-presence";
 import { usePoolRegistration } from "./use-pool-registration";
-import { useReadyAnonymityCheck } from "./use-ready-anonymity-check";
 import { useReceiveAccount } from "./use-receive-account";
 
 const EMPTY: MerchantInvoice[] = [];
@@ -90,7 +89,6 @@ export function SellPanel() {
     (presence === "unknown" || registration === "unknown");
 
   const receive = useReceiveAccount();
-  const readyCheck = useReadyAnonymityCheck();
   /*
    * The QR carries the receive account when there is one. Whatever address
    * goes on a QR becomes public the first time somebody pays it, so the
@@ -422,18 +420,22 @@ export function SellPanel() {
         ]}
       />
 
-      {/* Gated on canReceive, not just session: shown any earlier, this and
-          the Ready X card below land before "Deploy" and "Enable STRK20" are
-          even done, reading as two paragraphs of privacy architecture ahead
-          of the checklist that actually gets someone to a QR. */}
-      {session && canReceive ? (
+      {/* Gated on canReceive, not just session: shown any earlier, this
+          lands before "Deploy" and "Enable STRK20" are even done, reading as
+          a paragraph of privacy architecture ahead of the checklist that
+          actually gets someone to a QR. Hidden outright while the rail cannot
+          derive a receive account - on Ready X the card had nothing in it but
+          a sentence saying so, which is a worse answer than not raising the
+          subject. */}
+      {session && canReceive && receive.status !== "unavailable" ? (
         <Card>
           <CardHeader>
             <CardTitle>Anonymous receiving</CardTitle>
             <CardDescription>
-              {receive.status === "unavailable"
-                ? "Ready X cannot derive a separate receive account yet, so a QR made here publishes your own address."
-                : "Your QR publishes a separate account, so sharing it never points at the wallet holding everything else. MorokPay pays to create and register it - a top-up from your own account is the one thing that would link them in public."}
+              Your QR publishes a separate account, so sharing it never points
+              at the wallet holding everything else. MorokPay pays to create
+              and register it - a top-up from your own account is the one thing
+              that would link them in public.
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
@@ -476,7 +478,7 @@ export function SellPanel() {
               </div>
             ) : null}
           </CardContent>
-          {receive.status !== "ready" && receive.status !== "unavailable" ? (
+          {receive.status !== "ready" ? (
             <CardFooter className="border-t">
               <Button
                 type="button"
@@ -491,75 +493,6 @@ export function SellPanel() {
               </Button>
             </CardFooter>
           ) : null}
-        </Card>
-      ) : null}
-
-      {/* Separate card, separate button, on purpose: unlike the EVM path,
-          nothing here is known to work yet. Ready X's SNIP-12 signature has
-          never been checked for the one property this depends on - that it
-          returns the same bytes for the same message every time - and a wrong
-          guess here would be a QR that publishes an account nobody can get
-          back into. This only signs; it deploys nothing and costs the
-          relayer nothing, so it is safe to run before deciding anything. */}
-      {session?.kind === "ready" && canReceive ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Anonymous receiving on Ready X (experimental)</CardTitle>
-            <CardDescription>
-              Checks whether Ready X signs the same way twice, which is what an
-              anonymous receive account here would depend on. Two signature
-              prompts, nothing deployed, nothing spent.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            {readyCheck.status === "deterministic" ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Ready X signed the same way twice. This account is
-                  reproducible from the wallet alone:
-                </p>
-                <p className="break-all font-mono text-xs text-muted-foreground">
-                  {readyCheck.address}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  Not wired up to deploy yet - this only confirms it is safe
-                  to build.
-                </p>
-              </>
-            ) : null}
-            {readyCheck.status === "not_deterministic" ? (
-              <Alert variant="destructive">
-                <AlertTitle>Not safe to use</AlertTitle>
-                <AlertDescription>
-                  Ready X signed the same message differently each time. An
-                  account derived from it could not be recovered reliably, so
-                  MorokPay will not build one on Ready X until this changes.
-                </AlertDescription>
-              </Alert>
-            ) : null}
-            {readyCheck.status === "error" && readyCheck.error ? (
-              <Alert variant="destructive">
-                <AlertTitle>Could not check</AlertTitle>
-                <AlertDescription>{readyCheck.error}</AlertDescription>
-              </Alert>
-            ) : null}
-          </CardContent>
-          <CardFooter className="border-t">
-            <Button
-              type="button"
-              variant="outline"
-              size="lg"
-              className="min-h-12"
-              disabled={readyCheck.status === "checking"}
-              onClick={() => {
-                void readyCheck.check();
-              }}
-            >
-              {readyCheck.status === "checking"
-                ? "Signing twice…"
-                : "Check if Ready X can do this"}
-            </Button>
-          </CardFooter>
         </Card>
       ) : null}
 

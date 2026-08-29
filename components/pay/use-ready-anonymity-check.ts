@@ -1,3 +1,10 @@
+/**
+ * Currently unreferenced. The card that used it was taken off My QR on
+ * 2026-08-30 so the contest page would not open with a paragraph about a
+ * feature Ready X cannot do yet. The check itself passed on a real wallet and
+ * is what wiring an anonymous receive account on Ready X would start from, so
+ * it is kept rather than deleted.
+ */
 "use client";
 
 import { useCallback, useState } from "react";
