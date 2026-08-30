@@ -42,6 +42,17 @@ The middle block is one batch of ordinary public calls, all relayable, inside a
 single intent signed once. It leaves STRK in the account, and that STRK pays
 for the shield.
 
+**Circle's hooks do not execute on Starknet, and are not needed.** Checked
+against the deployed ABIs: inbound, `TokenMessengerMinter` only exposes
+`handle_receive_finalized_message`, which mints and dispatches nothing, and
+`MessageTransmitter` only exposes `receive_message`. What is there instead are
+the two knobs that matter - `mint_recipient` can be a helper contract of ours,
+and `destination_caller` can be our relayer, both fixed at burn time on Base.
+The relayer then submits one transaction that receives the message into the
+helper and settles it: swap a slice through AVNU, forward STRK and USDC to the
+user, take the fee. Atomic, so a swap that reverts on slippage reverts the mint
+with it and the attestation stays replayable.
+
 **Size: weeks.** It is a relayer service - key custody, nonce management, rate
 limiting, abuse handling - plus an AVNU integration, fee accounting and refund
 paths. The full research and the open questions are in

@@ -50,6 +50,44 @@ is opaque metadata carried alongside the burn. Something still has to call
 `receiveMessage` on Starknet and act on the result. A hook does not remove the
 need for a relayer, so `depositForBurnWithHook` is not the unlock it looks like.
 
+Confirmed 2026-08-31 against the deployed mainnet ABIs rather than from
+reading. `TokenMessengerMinter`
+(`0x07d421B9...`) exposes `deposit_for_burn_with_hook`, but that is the
+*outbound* side - burning from Starknet. Inbound it exposes only
+`handle_receive_finalized_message(remote_domain, sender,
+finality_threshold_executed, message_body)`, which mints to the recipient and
+dispatches nothing: there is no handler interface, no call into the recipient,
+no hook execution. `MessageTransmitter` (`0x02EBB577...`) exposes
+`receive_message(message, attestation)` and nothing hook-shaped at all.
+
+**But the two knobs that matter are both there**, and together they are worth
+more than a hook would be:
+
+- `mint_recipient` is chosen at burn time on Base, so the USDC can be minted
+  straight into a helper contract of ours rather than into the user's account;
+- `receive_message` is unrestricted, and `destination_caller` - also set at
+  burn time - restricts who may call it. Setting it to our relayer stops
+  anyone else triggering the mint and leaving the funds parked in the helper
+  with nothing to settle them.
+
+So the relayer submits **one Starknet transaction**:
+
+```
+[ MessageTransmitter.receive_message(message, attestation)   → mints USDC to Helper
+  Helper.settle(user, route, min_strk_out, fee)              → swaps, forwards, charges ]
+```
+
+That is the hook, implemented by us. It is also how the pattern works on EVM,
+where Circle likewise only carries the bytes and a hook-receiving contract does
+the work.
+
+**This answers open question 2 below.** A half-completed bridge is not a state
+this can reach: the mint and the swap are in the same transaction, so a swap
+that reverts on slippage reverts the mint with it, the CCTP nonce is not
+consumed, and the same attestation can be replayed with a wider tolerance. The
+cost of a failed attempt is the relayer's gas, which is question 1 and stays
+real.
+
 ## Sequence
 
 The constraint above rules out one atomic "bridge and shield", but not the goal.
@@ -91,8 +129,10 @@ does not want it can bridge and swap themselves.
 
 1. Who runs the relayer, and what stops it being drained? Gas is spent before
    the fee is collected, so a failed or reverted batch is a direct loss.
-2. What happens when the bridge half-completes - USDC minted, swap reverted on
-   slippage? The user must end up with their USDC, not a stuck intent.
+2. ~~What happens when the bridge half-completes - USDC minted, swap reverted
+   on slippage?~~ **Answered**: the mint and the swap share one transaction, so
+   there is no half-completed state to recover from. See the hook finding
+   above.
 3. Slippage and minimum size. Below some amount the swap plus fee costs more
    than the STRK it buys, and the flow should refuse rather than quietly eat it.
 4. Whether the pool fee can be paid out of the same swap in one batch, or
