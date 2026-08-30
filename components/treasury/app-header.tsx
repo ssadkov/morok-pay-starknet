@@ -27,14 +27,18 @@ import type { AppNetwork } from "@/lib/network";
 const NAV = [
   { href: "/pay", label: "Donate" },
   { href: "/sell", label: "My QR" },
+  { href: "/swap", label: "Get STRK" },
   { href: "/treasury", label: "Top up" },
 ] as const;
 
-/** Top up is the Base-bridge and testnet-faucet page; not a mainnet path yet. */
+/**
+ * Two pages that only make sense on one network each. Top up is the
+ * Base-bridge and testnet-faucet page, not a mainnet path yet; Get STRK routes
+ * through AVNU, and there is no Sepolia liquidity to route against.
+ */
 function navFor(network: AppNetwork) {
-  return network === "mainnet"
-    ? NAV.filter((item) => item.href !== "/treasury")
-    : NAV;
+  const hidden = network === "mainnet" ? "/treasury" : "/swap";
+  return NAV.filter((item) => item.href !== hidden);
 }
 
 async function copyAddress(value: string, message: string) {
