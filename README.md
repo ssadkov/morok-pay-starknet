@@ -61,47 +61,86 @@ same private balance is specified in
 [docs/evm-account-portability.md](docs/evm-account-portability.md) - the factory
 is permissionless, so no permission from us is required.
 
+## The whole round trip, on mainnet, with real money
+
+A MetaMask user with no Starknet wallet went from nothing to USDC on an
+exchange without leaving the app. Every step is a real mainnet transaction,
+and every cost below was read off its receipt:
+
+| step | pool fee | gas | total STRK | transaction |
+| --- | ---: | ---: | ---: | --- |
+| Deploy the derived Starknet account | - | - | - | `0x6ab36fb2b6…3894` |
+| Enable Private (register in the pool) | 6 | 2.68-4.42 | 8.68-10.42 | `0x21b12f4dbe…f22d0` |
+| Shield 1 USDC | 6 | 5.31 | 11.31 | `0x506c1e0665…da2a` |
+| Unshield 1 USDC | 6 | 4.41 | 10.41 | `0x114fb5ad4a…9929` |
+| Send it to a Binance deposit address | - | 1.33 | 1.33 | `0x2401314ccd…1daa` |
+
+Two things worth naming. **The pool fee is paid from public STRK in both
+directions on this rail** - no STRK ever has to be shielded to cover it, which
+is the opposite of Ready X, where Enable Private bundles a shield and a
+paymaster fronts the fee. And **nothing here is sponsored**: every transaction
+above was submitted by the derived account itself and paid for out of its own
+balance. On the Ready X rail the same operations arrive from a paymaster and
+cost the user only the 6 STRK fee.
+
 ## What runs where
 
 | | Starknet Mainnet | Sepolia |
 | --- | --- | --- |
-| Donation QR, private pay, activity | Ready | Ready |
-| Private balances and top-up | Ready | Ready |
-| In-app USDC unshield | Ready | Ready |
-| EVM wallet entry, `/privacy-sdk-lab` | confirmed in the browser | confirmed in the browser |
-| Shield / unshield from an EVM-owned account | `/privacy-sdk-lab` | `/privacy-sdk-lab` |
-| `Connect EVM wallet` on Donate and My QR | not yet - see below | beta |
+| Donation QR, private pay, activity | Ready X · MetaMask | Ready X · MetaMask |
+| Private balances | Ready X · MetaMask | Ready X · MetaMask |
+| Shield / unshield in the app | Ready X · MetaMask | Ready X · MetaMask |
+| Send a public balance out to an exchange | Ready X · MetaMask | Ready X · MetaMask |
+| Relayed first donation, so the donor is never named | both rails | both rails |
+| Anonymous receive account behind a QR | MetaMask | MetaMask |
+| Base → Starknet top-up over CCTP | - | Ready X |
 
-The lab is network-aware on both chains. The shared `Connect EVM wallet` button
-on Donate and My QR still routes through `lib/privacy/evm-strk20-account.ts`,
-which remains hard-coded to Sepolia - that is the one path not yet repointed,
-and it is wiring rather than an unknown.
+`/privacy-sdk-lab` still runs every step one at a time with the proof, the fee
+and the resource bounds shown explicitly. It is a diagnostic surface now, not
+the way in; the balances sidebar links to it quietly.
 
-Mainnet deployment differs from Sepolia by design: Sepolia sponsors a new
-account with 20 test STRK, mainnet never sends STRK to a connecting address and
-requires it to be funded first.
+Mainnet differs from Sepolia by design: Sepolia sponsors a new account with 20
+test STRK, mainnet never sends STRK to a connecting address and requires it to
+be funded first.
 
-`strk20.json` lists six succeeded mainnet transactions against the live STRK20
+`strk20.json` lists the succeeded mainnet transactions against the live STRK20
 pool. This project answers [RFP-12 — private subscriptions and creator
 monetization](https://strk20.starknet.io/rfp/private-subscriptions).
 
+## Two privacy gaps this closes, and how each was verified
+
+STRK20 hides the amount. It does not, on its own, hide either party:
+
+- **The donor.** The first private transfer to a creator opens a channel, and
+  submitted by the donor it puts their address in the transaction envelope.
+  `/api/privacy/relay` submits that one transfer from MorokPay's own relayer
+  instead, so the donor appears in neither the envelope nor the calldata.
+  Verified on mainnet: `0x72a1ff15…` names only the recipient.
+- **The creator.** A donation QR necessarily publishes the address that
+  receives. On the MetaMask rail that address is a separate receive account
+  derived for the purpose, deployed and registered by the relayer so the
+  creator's main account never pays for it and is never linked to it.
+
+Which addresses a private transfer actually publishes was measured rather than
+assumed - [scripts/calldata-leak-probe.mjs](scripts/calldata-leak-probe.mjs)
+asks the pool `get_public_key` about every felt in a transaction's calldata,
+so a registered account sitting there in the clear is visible.
+
 ## Current status
 
-- Donation QR, private pay, balance refresh, top-up, in-app unshield, and onboarding are implemented on mainnet through Ready.
-- Donate and My QR expose `Connect EVM wallet` on Sepolia. Connection checks
-  deterministic-account deployment, the approved STRK20 account class, and
-  live privacy-pool registration. Incomplete accounts are gated into
-  `/privacy-sdk-lab`; ready accounts can discover private balances and send a
-  private USDC donation through the Privacy SDK.
-- The MetaMask path is live on mainnet. `StarknetEth712Account` and
-  `AccountFactory` are declared and deployed there, the mainnet proving and
-  discovery services are reachable without a credential, and a real MetaMask
-  account has been deployed and registered in the live pool from the browser.
-  The lab also covers STRK and USDC shield/unshield and a private USDC transfer,
-  confirmed on Sepolia. See
-  [docs/metamask-privacy-sdk-sepolia.md](docs/metamask-privacy-sdk-sepolia.md)
+- Both rails are live on mainnet, in the app: donation QR, private pay, private
+  balances, shield, unshield, and sending a public balance out.
+- The MetaMask path needs no Starknet wallet at all. `StarknetEth712Account`
+  and `AccountFactory` are declared and deployed on mainnet, the mainnet
+  proving and discovery services answer without a credential, and the whole
+  round trip above was done from the browser with MetaMask signing every step.
+  See [docs/metamask-privacy-sdk-sepolia.md](docs/metamask-privacy-sdk-sepolia.md)
   and [docs/evm-account-portability.md](docs/evm-account-portability.md).
-- The First 10 activation campaign is planned; see [docs/private-first-10.md](docs/private-first-10.md).
+- The anonymous receive account is live on the MetaMask rail. On Ready X the
+  signature it depends on is checked and reproducible, but the deploy path is
+  not wired yet, so a Ready X QR still publishes that wallet's own address.
+- A live donation contest is documented in
+  [docs/private-contest.md](docs/private-contest.md).
 - MorokPay's fee is planned for the in-app unshield step, not for each private donation; see [docs/fees.md](docs/fees.md).
 - `lib/starknet/tokens.ts` already carries mainnet `strkBTC` alongside USDC, and
   amount parsing is decimals-aware. The donation request format is USDC-only, so

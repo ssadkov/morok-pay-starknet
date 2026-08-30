@@ -237,9 +237,15 @@ confirmed on mainnet.
 | registration (Enable Private) | 6 | 2.68-4.42 | 8.68-10.42 |
 | shield 1 USDC | 6 | 5.31 | 11.31 |
 | unshield 1 USDC | 6 | 4.41 | 10.41 |
-| public send out | - | ~0.07 | ~0.07 |
+| public send out to an exchange | - | 1.33 | 1.33 |
 
-Taking 1 USDC in and back out costs **21.72 STRK**, on top of registration,
+The send is `0x2401314ccd78792ea93b870df57f32528311501b9045c373b8b1d0fcea51daa`,
+1 USDC to a Binance Starknet deposit address, **arrived**. Note its 1.33 STRK
+gas: an ordinary ERC-20 transfer from a Ready X account costs ~0.07, but this
+account validates an EIP-712 signature in Cairo on every call, and that is
+what the difference buys. Do not quote the Ready X figure for this rail.
+
+Taking 1 USDC in, back out, and on to an exchange costs **23.05 STRK**, on top of registration,
 none of it sponsored. Gas is the larger and more variable half, and it is not
 tunable from this app - the proof is ~309k felts and its verification is what
 is being paid for. The one real lever is batching several actions into one

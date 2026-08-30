@@ -7,7 +7,8 @@
     "0x78abd030f99f94b757aee36dd32cb77bc864ee6fc116503259a02e47b472617",
     "0x21b12f4dbebf9271d5142f44b75439c0e9944608416e47e55b511d04d7f22d0",
     "0x506c1e0665fa4bbcf5d41e473b9848af299962f4cf7e060bdcdebbc7a02da2a",
-    "0x114fb5ad4a2faa6d46bdcb89dee08a4e3bf4d589961da6a26910fc5c15b9929"
+    "0x114fb5ad4a2faa6d46bdcb89dee08a4e3bf4d589961da6a26910fc5c15b9929",
+    "0x2401314ccd78792ea93b870df57f32528311501b9045c373b8b1d0fcea51daa"
   ],
   "contracts": [],
   "demo_url": "https://morok-pay-starknet.vercel.app"
