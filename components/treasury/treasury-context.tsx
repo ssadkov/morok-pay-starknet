@@ -107,6 +107,7 @@ type TreasuryContextValue = {
   privateRaw: bigint;
   connectWallet: (wallet: WalletWithStarknetFeatures) => Promise<void>;
   evmConnecting: boolean;
+  /** Set whenever wagmi holds a connection, session or not. */
   evmConnectedAddress: string | null;
   evmGate: EvmOnboardingGate | null;
   connectEvm: () => Promise<void>;
@@ -239,7 +240,11 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
 
   const disconnect = useCallback(() => {
     if (session?.kind === "ready") session.account.unsubscribeChange();
-    if (session?.kind === "evm") disconnectEvmWallet();
+    /* Not gated on the session being an EVM one. Connecting a wallet that
+       still needs onboarding leaves wagmi connected with no session at all -
+       dismissing the gate used to strand it there, connected and
+       undisconnectable, with the header showing the connect buttons again. */
+    if (evmConnected) disconnectEvmWallet();
     forgetReadyWallet();
     restoreAttempted.current = true;
     previousPrivateUsdc.current = null;
@@ -249,7 +254,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     setBalances(null);
     setConnectError(null);
     setEvmGate(null);
-  }, [disconnectEvmWallet, session]);
+  }, [disconnectEvmWallet, evmConnected, session]);
 
   const networkReady = useRef(false);
   useEffect(() => {

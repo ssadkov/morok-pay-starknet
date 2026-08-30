@@ -55,6 +55,7 @@ export function AppHeader() {
     evmConnecting,
     connectWallet,
     connectEvm,
+    evmConnectedAddress,
     disconnect,
   } = useTreasury();
   const { network, setNetwork } = useNetwork();
@@ -202,6 +203,21 @@ export function AppHeader() {
               )}
               {evmConnecting ? "Checking" : "Connect EVM wallet"}
             </Button>
+            {/* A wallet can be connected with no session at all - dismissing
+                the onboarding gate leaves it exactly there. Without this the
+                only way back out is clearing site data. */}
+            {evmConnectedAddress ? (
+              <Button
+                type="button"
+                size="lg"
+                variant="ghost"
+                className="min-h-10 px-3 text-sm sm:px-4"
+                onClick={disconnect}
+              >
+                <LogOutIcon data-icon="inline-start" />
+                Disconnect {shortenAddress(evmConnectedAddress)}
+              </Button>
+            ) : null}
           </div>
         )}
         </div>
