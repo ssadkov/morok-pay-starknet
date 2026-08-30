@@ -86,6 +86,25 @@ and is worth revisiting only if STRK appreciates enough to make the sponsorship
 uncomfortable. Research and open questions:
 [funded-onboarding.md](funded-onboarding.md).
 
+### What the relayer actually pays
+
+Measured on mainnet, per action, with STRK at $0.0263 (2026-08-31):
+
+| relayer pays for | STRK | USD |
+| --- | ---: | ---: |
+| deploying a derived account (`0x6ab36fb2...`) | **0.97** | $0.03 |
+| a receive account `B`: deploy + pool registration | 9.97 | $0.26 |
+| relaying a first donation (`0x72a1ff15...`) | 9.02 | $0.24 |
+
+The user still pays for their own Enable Private and every shield, so a
+sponsored deploy is the cheapest possible thing to give away: **10,000 of them
+cost about $256**. That is the shape the funding button should take - deploy on
+us, privacy on them, and the STRK for the privacy bought out of their own
+bridged USDC through the swap.
+
+Budget for a launch, the expensive case (deploy + `B` + one incoming donation,
+19.96 STRK a head): 100 users is ~2,000 STRK, about $53.
+
 ## 2. Anonymous receive account on Ready X
 
 On the MetaMask rail a donation QR publishes a separate receive account that
