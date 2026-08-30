@@ -264,12 +264,18 @@ measured 11: at 12 a user whose gas lands at the top of the observed range
 fails *after* being told 12 was enough, which is the one failure mode worth
 paying 3 STRK of headroom to avoid.
 
-**This matters for the contest.** A $1-2 prize on this rail costs its winner
-~10.4 STRK to unshield. The announcement says the prize lands in a private
-balance, which is true, but the smallest prizes cost more to withdraw than
-they are worth. Either raise the bottom places or say plainly in the thread
-that withdrawal is paid and small prizes are worth accumulating rather than
-withdrawing.
+**Price these in dollars before drawing conclusions from them.** STRK quoted
+both directions through AVNU on 2026-08-31 at **$0.0263** (50 USDC bought
+1896.73 STRK; 1000 STRK sold for 26.34 USDC, routed through Ekubo). At that
+price the whole round trip above is **61 cents**, a shield is 30, an unshield
+27, activation 28, and the 15 STRK funding floor is 40. An earlier draft of
+this file warned that the contest's smallest prizes would cost more to
+withdraw than they are worth; that was wrong by more than an order of
+magnitude - withdrawing a $1 prize costs about 30 cents.
+
+The numbers stay in STRK everywhere because that is what is charged and what
+was measured, but any judgement about whether something is expensive has to
+convert first. STRK is volatile; re-quote before repeating a dollar figure.
 
 ## Also open
 

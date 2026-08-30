@@ -53,12 +53,38 @@ helper and settles it: swap a slice through AVNU, forward STRK and USDC to the
 user, take the fee. Atomic, so a swap that reverts on slippage reverts the mint
 with it and the attestation stays replayable.
 
-**Size: weeks.** It is a relayer service - key custody, nonce management, rate
-limiting, abuse handling - plus an AVNU integration, fee accounting and refund
-paths. The full research and the open questions are in
-[funded-onboarding.md](funded-onboarding.md); the one that has to be answered
-before it ships rather than after is the legal shape, because taking a cut of a
-cross-chain transfer is money-transmission-shaped.
+**No Cairo contract is needed for any of it.** Checked against the deployed
+classes on 2026-08-31. The derived account's only externals are `initialize`,
+`upgrade` and **`execute_from_outside_v2`**, so the user can sign one SNIP-9
+intent that the relayer submits and pays for. AVNU's exchange
+(`0x04270219...`) exposes `multi_route_swap(sell_token, sell_amount, buy_token,
+buy_amount, buy_token_min_amount, beneficiary, integrator_fee_amount_bps,
+integrator_fee_recipient, routes)` - `beneficiary` sends the bought STRK
+straight where we say, `buy_token_min_amount` is the slippage guard, and the
+integrator fee is a native parameter, so monetization needs no custom code and
+is visible in the intent before the user signs it. Routes come from AVNU's
+public quote API and travel as calldata. So one relayer transaction is
+`[receive_message, account.execute_from_outside_v2([approve, multi_route_swap])]`.
+
+Ekubo was the alternative and is the wrong one here: its router exposes
+`multihop_swap` but no beneficiary and no integrator fee, and routing would be
+ours to build. AVNU is an aggregator over the same liquidity - our test quote
+routed through Ekubo anyway.
+
+**But price it before building it.** STRK quoted at **$0.0263** on 2026-08-31,
+which puts the entire STRK requirement this section exists to remove at about
+**66 cents**. At that price the cheaper answer is not a bridge-and-swap
+service but a faucet: send the user the STRK. Sepolia already does exactly
+that. Bridging the USDC itself still matters - that is the user's money and it
+has to arrive - but the swap leg, the helper, the integrator fee and the
+money-transmission question all fall away with it.
+
+**Size:** bridge-only, with sponsored STRK, is **days** - `receive_message` is
+unrestricted, `mint_recipient` and `destination_caller` are set at burn time,
+and the relayer submits and pays. The full swap-and-fee version is **weeks**,
+and is worth revisiting only if STRK appreciates enough to make the sponsorship
+uncomfortable. Research and open questions:
+[funded-onboarding.md](funded-onboarding.md).
 
 ## 2. Anonymous receive account on Ready X
 
