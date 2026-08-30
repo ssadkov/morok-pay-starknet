@@ -277,6 +277,30 @@ The numbers stay in STRK everywhere because that is what is charged and what
 was measured, but any judgement about whether something is expensive has to
 convert first. STRK is volatile; re-quote before repeating a dollar figure.
 
+## Field note 2026-08-31: USDC to STRK through AVNU, on mainnet
+
+`0xb3f5072963946a4498b7695ff4e47c20db6426970429724278bf7a6dba989e` -
+0.1 USDC swapped for 3.8467 STRK from the MetaMask-derived account
+`0x06c90d9b...`, submitted by that account itself, **2.0354 STRK gas**. Routed
+through AVNU into an AMM pool (`0x020d2431...`); AVNU's own fee shows as a
+transfer too small to register at that size.
+
+Two things it settled.
+
+**The proofless `execute` on the EVM account works with more than one call.**
+Until this it had run exactly once, on the single-call public send. The swap
+is `approve` plus `multi_route_swap` signed as one EIP-712 CallSet, and the
+wallet prompted once. That is the path anything non-private will use from now
+on.
+
+**Gas makes small swaps pointless, which the UI had to be taught.** 0.1 USDC
+bought 3.85 STRK and 2.04 went straight back out as gas, so the user kept 1.81
+- 47% of what the quote promised. The quoted figure is gross and always will
+be, so `SwapPanel` now shows what is left after gas and refuses to look
+enthusiastic below twice the gas cost. Around **1 USDC is the smallest amount
+worth swapping**, and it lands comfortably above the ~25 STRK a full
+activation and withdrawal need.
+
 ## Also open
 
 0. **Screenshot onboarding copy** - `docs/assets/ready-onboarding/` has seven

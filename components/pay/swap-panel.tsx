@@ -44,6 +44,14 @@ import { getShieldToken } from "@/lib/starknet/tokens";
 /** A swap that leaves the account unable to pay for the next thing is a trap. */
 const SUGGESTED_STRK = BigInt(25) * BigInt(10) ** BigInt(18);
 
+/**
+ * What the swap itself burns, measured on mainnet (2.04 STRK for a two-call
+ * approve-and-route). Quoted output is gross, so a small swap can hand over
+ * less STRK than it costs to perform - showing the gross number alone would
+ * be the one dishonest thing on a page about costs.
+ */
+const SWAP_GAS_STRK = BigInt(21) * BigInt(10) ** BigInt(17);
+
 export function SwapPanel() {
   const { session, balances, refreshBalances } = useTreasury();
   const { network, starknet } = useNetwork();
@@ -234,7 +242,30 @@ export function SwapPanel() {
                   ? `via ${quote.source ?? "AVNU"} · fills within 1% of this or reverts`
                   : "enter an amount to see the rate"}
               </p>
+              {quote ? (
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Roughly {formatStrk(SWAP_GAS_STRK)} STRK of it pays for this
+                  swap, so you keep about{" "}
+                  {formatStrk(
+                    quote.buy > SWAP_GAS_STRK
+                      ? quote.buy - SWAP_GAS_STRK
+                      : BigInt(0),
+                  )}
+                  .
+                </p>
+              ) : null}
             </div>
+
+            {quote && quote.buy < SWAP_GAS_STRK * BigInt(2) ? (
+              <Alert>
+                <AlertTitle>Too small to be worth it</AlertTitle>
+                <AlertDescription>
+                  Gas would eat most of what this buys. Swap enough to matter -
+                  around 1 USDC leaves comfortably more STRK than a full
+                  activation and withdrawal need.
+                </AlertDescription>
+              </Alert>
+            ) : null}
 
             {publicStrk < SUGGESTED_STRK ? (
               <FieldDescription>
