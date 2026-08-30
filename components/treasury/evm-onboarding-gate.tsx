@@ -255,7 +255,9 @@ export function EvmOnboardingGate() {
             <AlertTitle>Fund this address first</AlertTitle>
             <AlertDescription>
               Send at least {formatStrk(MAINNET_MINIMUM_STRK)} STRK to the
-              address above. It pays the pool fee and gas for activation.
+              address above. Activation spends about 11 of it - a 6 STRK pool
+              fee plus gas. Moving money back out later costs roughly the same
+              again, so send 25 if you would rather not top up twice.
             </AlertDescription>
           </Alert>
         ) : null}

@@ -70,7 +70,7 @@ and every cost below was read off its receipt:
 | step | pool fee | gas | total STRK | transaction |
 | --- | ---: | ---: | ---: | --- |
 | Deploy the derived Starknet account | - | - | - | `0x6ab36fb2b6…3894` |
-| Enable Private (register in the pool) | 6 | 2.68-4.42 | 8.68-10.42 | `0x21b12f4dbe…f22d0` |
+| Enable Private (register in the pool) | 6 | 2.68-4.72 | 8.68-10.72 | `0x21b12f4dbe…f22d0` |
 | Shield 1 USDC | 6 | 5.31 | 11.31 | `0x506c1e0665…da2a` |
 | Unshield 1 USDC | 6 | 4.41 | 10.41 | `0x114fb5ad4a…9929` |
 | Send it to a Binance deposit address | - | 1.33 | 1.33 | `0x2401314ccd…1daa` |

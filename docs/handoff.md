@@ -234,7 +234,7 @@ confirmed on mainnet.
 
 | step | pool fee | gas | total STRK |
 | --- | ---: | ---: | ---: |
-| registration (Enable Private) | 6 | 2.68-4.42 | 8.68-10.42 |
+| registration (Enable Private) | 6 | 2.68-4.72 | 8.68-10.72 |
 | shield 1 USDC | 6 | 5.31 | 11.31 |
 | unshield 1 USDC | 6 | 4.41 | 10.41 |
 | public send out to an exchange | - | 1.33 | 1.33 |
@@ -250,6 +250,19 @@ none of it sponsored. Gas is the larger and more variable half, and it is not
 tunable from this app - the proof is ~309k felts and its verification is what
 is being paid for. The one real lever is batching several actions into one
 `apply_actions`, which shares a single proof; never demonstrated here.
+
+**How much STRK to tell a new user to send.** Four registrations now span
+2.68-4.72 STRK of gas, a 76% swing on the same operation, so any single
+"it costs N" is a guess unless it carries margin. Activation itself has cost up
+to 10.72. But activation is not the whole obligation: a creator who only
+*receives* never shields - the donation arrives already private - yet still
+pays to get it out, and unshield plus a public send measured 10.41 + 1.33.
+So the honest pair is **~11 STRK to activate, ~23 to also withdraw**, and the
+onboarding copy quotes 15 as the floor and 25 for the round trip. The enforced
+`MOROKPAY_MAINNET_MIN_DEPLOY_STRK` stays at 15 rather than dropping to the
+measured 11: at 12 a user whose gas lands at the top of the observed range
+fails *after* being told 12 was enough, which is the one failure mode worth
+paying 3 STRK of headroom to avoid.
 
 **This matters for the contest.** A $1-2 prize on this rail costs its winner
 ~10.4 STRK to unshield. The announcement says the prize lands in a private
