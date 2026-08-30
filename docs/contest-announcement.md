@@ -10,6 +10,9 @@ caveat worth saying out loud.
 Before posting:
 
 - refill the mainnet relayer (34.93 STRK held, ~63 STRK needed for 7 payouts);
+- the "~6 STRK" figure is confirmed on two mainnet wallets - that is exactly
+  what leaves the entrant's account, and Ready X's paymaster pays the ~3 STRK
+  gas on top. Do not raise it;
 - entries arrive as QR **PNGs**, but `scripts/allocate-contest.mjs` reads
   links. At the close, decode each PNG back to its `/pay?...` URL to build
   `entries.txt`. The QR encodes exactly the link the Copy link button gives.
@@ -42,6 +45,9 @@ donation QR the way a blogger would, and I'll donate real USDC through it.
 3. Enable Private once (~6 STRK, charged by the STRK20 pool, not by me)
 4. Create a donation QR, leave the amount empty
 5. Download the PNG and reply to this thread with it
+
+If Ready X answers "Failed to prepare the privacy transaction", remove the
+extension and install it again. That clears it - it is not a balance problem.
 
 https://morok-pay-starknet.vercel.app
 
@@ -114,6 +120,9 @@ $20 в USDC, первые 7 заявок. Приём до 31 августа, 18:
 3. Один раз включить Private (~6 STRK - это комиссия пула STRK20, не моя)
 4. Создать донат-QR, сумму оставить пустой
 5. Скачать PNG и прислать его реплаем в тот же тред
+
+Если Ready X отвечает «Failed to prepare the privacy transaction» - удалите
+расширение и поставьте заново. Лечится именно так, дело не в балансе.
 
 Куда придёт приз: в ваш приватный STRK20-баланс, обычным приватным переводом.
 Не на публичный адрес, без всякого клейма. Поэтому Private обязательно должен

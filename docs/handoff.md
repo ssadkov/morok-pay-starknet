@@ -159,6 +159,39 @@ Either way, receive account `B` remains the only mechanism here that keeps the
 *creator's* address out of that calldata, and that is the half worth leading
 the messaging with.
 
+## Field note 2026-08-30: what Enable Private costs a real user, and how it fails
+
+First outside user onboarded, wallet
+`0x03b93860b4c7809e565ccb3f382fbe00ed1d6d6fa4b5cfe49ae0b93ce42df9ab`
+(ordinary Ready X account, class `0x36078334...` - the same class as the
+sprint wallet and Bemused Bee).
+
+**Cost, measured on the successful transaction**
+`0x6969c1dd100d1dbc81a0e671df61590f9a07c922617ccf3d89b5a3d123d355e`:
+
+- the user's own wallet pays **exactly 6.0000 STRK** to the pool;
+- gas was **3.0895 STRK, paid by a Ready X paymaster**, not by the user;
+- a paymaster also fronts its own 6 STRK through the router.
+
+Two independent wallets now agree on the 6 STRK figure, so the campaign copy's
+"~6 STRK, charged by the STRK20 pool" is right and does not need raising.
+
+**The failure and what actually fixed it.** Ready X refused with "Failed to
+prepare the privacy transaction. Please try again" while the wallet held
+9.81 STRK. The obvious reading was that 9.81 could not cover the fee plus gas
+if the paymaster declined - that reading is **wrong**, and worth recording as
+wrong: the successful transaction needed only 6 STRK from the user, which they
+already had. The user removed the Ready X extension and installed it again,
+and it went through. A 17 STRK top-up arrived shortly before the retry and
+muddies the story, but it did not change what the transaction required.
+
+So the remedy to give anyone who hits that message is **reinstall the
+extension**, not "add more STRK". It is in the contest copy on that basis.
+
+**Fourth paymaster.** `0x010eb4fb...` submitted it, class `0x1a736d6e...` -
+the same class as the three already known. Sponsoring Enable Private is a pool
+of sponsor accounts, not a courtesy extended to one wallet.
+
 ## Also open
 
 0. **Screenshot onboarding copy** - `docs/assets/ready-onboarding/` has seven
@@ -244,7 +277,12 @@ unpleasantly.
 - **Sepolia test roles** (`.secrets/sepolia-accounts.json`): `deployer`,
   `payout`, `spare` - all funded, registered, reusable by every script in
   `scripts/`.
-- Three Ready X paymaster/infra addresses seen submitting on the user's
+- **Four** Ready X paymaster/infra addresses seen submitting on a user's
   behalf, never explained further: `0x57130b60...`, `0x22391d61...`,
-  `0x4455355f...`. Likely different instances or roles of the same sponsor
-  system; not investigated.
+  `0x4455355f...`, `0x010eb4fb...`. All four share class hash
+  `0x1a736d6e...`, as do every paymaster seen submitting for the other sprint
+  projects - so this is one sponsor system with many accounts, not several
+  systems. Not investigated further.
+- **First outside user**, Ready X, mainnet:
+  `0x03b93860b4c7809e565ccb3f382fbe00ed1d6d6fa4b5cfe49ae0b93ce42df9ab`.
+  Registered at block 14089135. See the 2026-08-30 field note.
