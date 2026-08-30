@@ -216,7 +216,41 @@ mind before quoting a single number to a user. And the 6 STRK fee lands at
 `0x00d790...`, the same address the Ready X flow's fee reaches, so the pool
 settles both rails' fees to one place.
 
-Unshield is the remaining unmeasured half of the round trip.
+**Unshield**, `0x114fb5ad4a2faa6d46bdcb89dee08a4e3bf4d589961da6a26910fc5c15b9929`,
+block 14096250, closed the round trip the same evening: sender is again the
+account itself, 6.0000 STRK pool fee, **4.4077 STRK gas**, and the 1 USDC came
+back out of the pool. 10.4077 STRK in total.
+
+**The pool fee comes out of public STRK in both directions on this rail.** No
+STRK ever has to be shielded to pay it - the fee left the public balance on
+the way in and again on the way out, landing at `0x00d790...` both times. That
+is the opposite of Ready X, where Enable Private bundles a shield and the
+paymaster fronts the fee. The code already said so
+([evm-strk20-account.ts](../lib/privacy/evm-strk20-account.ts): "Transfer and
+withdraw only ever spend the pool fee out of public STRK"); it is now
+confirmed on mainnet.
+
+### The whole EVM round trip, measured on mainnet
+
+| step | pool fee | gas | total STRK |
+| --- | ---: | ---: | ---: |
+| registration (Enable Private) | 6 | 2.68-4.42 | 8.68-10.42 |
+| shield 1 USDC | 6 | 5.31 | 11.31 |
+| unshield 1 USDC | 6 | 4.41 | 10.41 |
+| public send out | - | ~0.07 | ~0.07 |
+
+Taking 1 USDC in and back out costs **21.72 STRK**, on top of registration,
+none of it sponsored. Gas is the larger and more variable half, and it is not
+tunable from this app - the proof is ~309k felts and its verification is what
+is being paid for. The one real lever is batching several actions into one
+`apply_actions`, which shares a single proof; never demonstrated here.
+
+**This matters for the contest.** A $1-2 prize on this rail costs its winner
+~10.4 STRK to unshield. The announcement says the prize lands in a private
+balance, which is true, but the smallest prizes cost more to withdraw than
+they are worth. Either raise the bottom places or say plainly in the thread
+that withdrawal is paid and small prizes are worth accumulating rather than
+withdrawing.
 
 ## Also open
 
