@@ -26,6 +26,33 @@ const DEFAULT_SPONSORED_BALANCE = 20n * 10n ** 18n;
  * an account that visibly cannot afford the registration step right after it.
  */
 const DEFAULT_MAINNET_MIN_DEPLOY_STRK = 15n * 10n ** 18n;
+/**
+ * The alternative to holding STRK: enough bridged USDC to buy some. Two
+ * dollars covers a swap, an activation and a withdrawal with room over, and
+ * anything less is not worth deploying an account for.
+ */
+const MAINNET_MIN_DEPLOY_USDC = 2n * 10n ** 6n;
+
+async function readPublicUsdcBalance(
+  provider: RpcProvider,
+  usdc: string,
+  address: string,
+): Promise<bigint> {
+  try {
+    const result = await provider.callContract({
+      contractAddress: usdc,
+      entrypoint: "balance_of",
+      calldata: [address],
+    });
+    const values = Array.isArray(result)
+      ? result
+      : ((result as { result?: string[] }).result ?? []);
+    if (!values[0]) return 0n;
+    return BigInt(values[0]) + (BigInt(values[1] ?? "0x0") << 128n);
+  } catch {
+    return 0n;
+  }
+}
 
 function relayerEnv(network: AppNetwork) {
   return network === "mainnet"
@@ -56,6 +83,7 @@ export async function POST(request: Request) {
 
     const env = relayerEnv(network);
     const rpc = new RpcProvider({ nodeUrl: env.rpc });
+    const chain = starknetOf(network);
     const factoryAddress = privacySdkOf(network).accountFactory;
     const inspection = await inspectEth712Account(
       ownership.evmAddress,
@@ -121,10 +149,21 @@ export async function POST(request: Request) {
         process.env.MOROKPAY_MAINNET_MIN_DEPLOY_STRK,
         DEFAULT_MAINNET_MIN_DEPLOY_STRK,
       );
-      if (balance < minimum) {
+      /* USDC counts too, and it is the whole point of the bridge: someone
+         who arrives over CCTP holds no STRK by definition, and refusing to
+         deploy them would strand the funds we just helped them move. Deploying
+         costs the relayer under a STRK, while the account's own privacy
+         activation is still paid for by the user - out of this USDC, through
+         the swap. */
+      const usdcBalance = await readPublicUsdcBalance(
+        rpc,
+        chain.usdc,
+        inspection.starknetAddress,
+      );
+      if (balance < minimum && usdcBalance < MAINNET_MIN_DEPLOY_USDC) {
         return Response.json(
           {
-            error: `Fund ${inspection.starknetAddress} with at least ${(Number(minimum) / 1e18).toFixed(0)} public STRK before deploying. MorokPay does not sponsor mainnet accounts.`,
+            error: `Fund ${inspection.starknetAddress} with at least ${(Number(minimum) / 1e18).toFixed(0)} public STRK, or bridge at least ${(Number(MAINNET_MIN_DEPLOY_USDC) / 1e6).toFixed(0)} USDC to it, before deploying.`,
           },
           { status: 409 },
         );

@@ -32,13 +32,13 @@ const NAV = [
 ] as const;
 
 /**
- * Two pages that only make sense on one network each. Top up is the
- * Base-bridge and testnet-faucet page, not a mainnet path yet; Get STRK routes
- * through AVNU, and there is no Sepolia liquidity to route against.
+ * Get STRK routes through AVNU and there is no Sepolia liquidity to route
+ * against, so it is a mainnet page only. Top up used to be hidden the other
+ * way round, as a testnet faucet page; the Base bridge on it now delivers to
+ * mainnet with the fee paid by the relayer, so it belongs on both.
  */
 function navFor(network: AppNetwork) {
-  const hidden = network === "mainnet" ? "/treasury" : "/swap";
-  return NAV.filter((item) => item.href !== hidden);
+  return network === "mainnet" ? NAV : NAV.filter((item) => item.href !== "/swap");
 }
 
 async function copyAddress(value: string, message: string) {
