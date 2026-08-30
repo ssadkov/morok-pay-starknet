@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { RefreshCwIcon, WalletIcon } from "lucide-react";
 
+import { SendButton } from "@/components/pay/send-button";
 import { ShieldButton } from "@/components/pay/shield-button";
 import { UnshieldButton } from "@/components/pay/unshield-button";
 import { useTreasury } from "@/components/treasury/treasury-context";
@@ -72,7 +73,14 @@ export function BalanceSidebar() {
                 loading={loading}
                 amount={`${formatUsdc(publicUsdc)} USDC`}
                 extra={`${formatStrk(publicStrk)} public STRK for gas · ${formatStrk(balances?.privateStrk ?? BigInt(0))} shielded`}
-                action={<ShieldButton />}
+                action={
+                  <div className="flex flex-col gap-3">
+                    <ShieldButton />
+                    <div className="flex justify-end">
+                      <SendButton />
+                    </div>
+                  </div>
+                }
               />
               <BalanceRow
                 label="Private"

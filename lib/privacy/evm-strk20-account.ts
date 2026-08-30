@@ -62,6 +62,13 @@ export type MorokPrivateAccount = {
   strk20InvokeTransaction(actions: Strk20Action[]): Promise<{
     transaction_hash: string;
   }>;
+  /**
+   * An ordinary call set with no proof attached - a public ERC-20 transfer
+   * out of this account, and nothing else so far. The Eth712 class validates
+   * an EIP-712 signature for these exactly as it does for the proof-carrying
+   * ones, so the only difference here is that `proof` is absent.
+   */
+  execute(calls: Call[]): Promise<{ transaction_hash: string }>;
 };
 
 type SignTypedData = (typedData: Record<string, unknown>) => Promise<Hex>;
@@ -435,6 +442,38 @@ export function createEvmStrk20Account(options: {
         ...proofDetails,
       });
       return { transaction_hash: String(submission.transaction_hash) };
+      } finally {
+        endRun();
+      }
+    },
+    async execute(calls) {
+      startRun(1, "Sign the Starknet transaction");
+      try {
+        const [nonceValue, snapshot] = await Promise.all([
+          account.getNonce(),
+          getAccountSnapshot(options.starknetAddress, options.network),
+        ]);
+        const nonce = BigInt(nonceValue);
+        const estimate = await account.estimateInvokeFee(calls, {
+          nonce,
+          skipValidate: true,
+          tip: 0n,
+        });
+        /* transferAmount is zero even when the call moves STRK: the caller
+           already withheld a gas reserve, and double-counting it here would
+           reject sends this account can comfortably afford. */
+        const resourceBounds = eth712FundedResourceBounds({
+          estimated: estimate.resourceBounds,
+          publicBalance: snapshot.strkWei,
+          transferAmount: 0n,
+          maximumFeeCap: ETH712_TEST_MAXIMUM_GAS_FEE,
+        });
+        const submission = await account.execute(calls, {
+          nonce,
+          resourceBounds,
+          tip: 0n,
+        });
+        return { transaction_hash: String(submission.transaction_hash) };
       } finally {
         endRun();
       }

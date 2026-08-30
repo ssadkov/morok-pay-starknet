@@ -84,14 +84,22 @@ export function privateBalanceFromEntries(
   return match ? BigInt(match.balance) : BigInt(0);
 }
 
-export function publicStrkTransferCall(
+/**
+ * An ordinary public ERC-20 transfer out of the Starknet account.
+ *
+ * Nothing private happens here - no pool, no proof, no fee beyond gas - which
+ * is the point: it is how a creator moves an unshielded balance on to an
+ * exchange once they are done with it.
+ */
+export function publicTokenTransferCall(
+  token: string,
   recipient: string,
   amount: bigint,
 ): Call {
   if (amount <= BigInt(0)) throw new Error("Amount must be greater than 0");
   const lowMask = (BigInt(1) << BigInt(128)) - BigInt(1);
   return {
-    contractAddress: STRK_ADDRESS,
+    contractAddress: validateAndParseAddress(token),
     entrypoint: "transfer",
     calldata: [
       validateAndParseAddress(recipient),
@@ -101,12 +109,37 @@ export function publicStrkTransferCall(
   };
 }
 
+export function publicStrkTransferCall(
+  recipient: string,
+  amount: bigint,
+): Call {
+  return publicTokenTransferCall(STRK_ADDRESS, recipient, amount);
+}
+
 export async function transferPublicStrk(
   account: WalletAccountV6,
   recipient: string,
   amount: bigint,
 ) {
   return withWalletTimeout(account.execute(publicStrkTransferCall(recipient, amount)));
+}
+
+/** Either wallet rail can send an ordinary transfer; only the shapes differ. */
+type PublicSender =
+  | Pick<WalletAccountV6, "execute">
+  | Pick<MorokPrivateAccount, "execute">;
+
+export async function transferPublicToken(
+  account: PublicSender,
+  token: string,
+  recipient: string,
+  amount: bigint,
+): Promise<{ transaction_hash: string }> {
+  const call = publicTokenTransferCall(token, recipient, amount);
+  const response = await withWalletTimeout(
+    (account as Pick<MorokPrivateAccount, "execute">).execute([call]),
+  );
+  return { transaction_hash: String(response.transaction_hash) };
 }
 
 export async function shieldToken(
