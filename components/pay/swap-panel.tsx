@@ -66,6 +66,9 @@ export function SwapPanel() {
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
   const supported = network === "mainnet";
+  /* Below the gas a swap burns there is nothing to submit with, which is
+     exactly the state someone is in right after bridging. */
+  const gasless = session?.kind === "evm" && publicStrk < SWAP_GAS_STRK;
 
   async function ask(sellAmount: bigint) {
     const response = await fetch("/api/swap", {
@@ -106,6 +109,46 @@ export function SwapPanel() {
     }
   }
 
+  /**
+   * The whole point of the gasless path: the account being funded is the one
+   * that cannot pay, so it signs an intent and AVNU submits it, charging the
+   * gas to the USDC being swapped. Only the EVM rail can do this - Ready X
+   * signs Starknet-native, and this account validates an Ethereum signature.
+   */
+  async function sponsored(calls: unknown[]) {
+    if (!session || session.kind !== "evm") {
+      throw new Error("Gasless swaps need an EVM wallet.");
+    }
+    const built = await fetch("/api/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "sponsor",
+        network,
+        takerAddress: session.address,
+        calls,
+      }),
+    });
+    const body = await built.json();
+    if (!built.ok) throw new Error(body?.error ?? "The paymaster refused this");
+
+    const signed = await session.account.signOutsideExecution(body.intent);
+    const sent = await fetch("/api/swap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "submit",
+        network,
+        takerAddress: session.address,
+        typedData: signed.typedData,
+        signature: signed.signature,
+      }),
+    });
+    const result = await sent.json();
+    if (!sent.ok) throw new Error(result?.error ?? "The paymaster would not submit");
+    return String(result.transactionHash ?? "");
+  }
+
   async function swap() {
     if (!session) return;
     setSwapping(true);
@@ -131,10 +174,15 @@ export function SwapPanel() {
       const body = await built.json();
       if (!built.ok) throw new Error(body?.error ?? "AVNU would not build this swap");
 
-      const response = await session.account.execute(body.calls);
-      const hash = String(
-        (response as { transaction_hash?: string }).transaction_hash ?? "",
-      );
+      const hash = gasless
+        ? await sponsored(body.calls)
+        : String(
+            (
+              (await session.account.execute(body.calls)) as {
+                transaction_hash?: string;
+              }
+            ).transaction_hash ?? "",
+          );
       toast.success(`Swapped ${formatUsdc(sellAmount)} USDC for STRK`, {
         action: hash
           ? {
@@ -267,7 +315,18 @@ export function SwapPanel() {
               </Alert>
             ) : null}
 
-            {publicStrk < SUGGESTED_STRK ? (
+            {gasless ? (
+              <Alert>
+                <AlertTitle>Paid for out of the swap</AlertTitle>
+                <AlertDescription>
+                  This account holds no STRK to submit with, so AVNU submits
+                  the swap and takes its cost from the USDC instead. You sign,
+                  you do not pay gas.
+                </AlertDescription>
+              </Alert>
+            ) : null}
+
+            {!gasless && publicStrk < SUGGESTED_STRK ? (
               <FieldDescription>
                 Holding {formatStrk(publicStrk)} STRK. Around{" "}
                 {formatStrk(SUGGESTED_STRK)} covers activation and a withdrawal

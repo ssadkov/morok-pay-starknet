@@ -27,6 +27,7 @@ import {
   Eth712TransactionSigner,
   ETH712_TEST_MAXIMUM_GAS_FEE,
   eth712FundedResourceBounds,
+  ethSignatureToAccountFelts,
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
 import {
@@ -34,6 +35,10 @@ import {
   normalizeCall,
   relaySubmission,
 } from "@/lib/privacy/relay-client";
+import {
+  eth712OutsideExecutionTypedData,
+  type OutsideExecutionIntent,
+} from "@/lib/privacy/eth712-outside-execution";
 import { privacySdkOf } from "@/lib/privacy/network";
 import type { AppNetwork } from "@/lib/network";
 import { readPoolFee } from "@/lib/starknet/pool-fee";
@@ -69,6 +74,15 @@ export type MorokPrivateAccount = {
    * ones, so the only difference here is that `proof` is absent.
    */
   execute(calls: Call[]): Promise<{ transaction_hash: string }>;
+  /**
+   * Signs an intent for somebody else to submit and pay for. The account class
+   * registers SRC9 for exactly this, and rebuilds the hash from the struct as
+   * EIP-712 - so what a paymaster displays does not matter, only these bytes.
+   */
+  signOutsideExecution(intent: OutsideExecutionIntent): Promise<{
+    typedData: ReturnType<typeof eth712OutsideExecutionTypedData>;
+    signature: string[];
+  }>;
 };
 
 type SignTypedData = (typedData: Record<string, unknown>) => Promise<Hex>;
@@ -442,6 +456,32 @@ export function createEvmStrk20Account(options: {
         ...proofDetails,
       });
       return { transaction_hash: String(submission.transaction_hash) };
+      } finally {
+        endRun();
+      }
+    },
+    async signOutsideExecution(intent) {
+      const typedData = eth712OutsideExecutionTypedData({
+        accountAddress: options.starknetAddress,
+        snChainName: sdk.snChainName,
+        evmChainId: options.evmChainId,
+        intent,
+      });
+      startRun(1, "Approve the gasless transaction");
+      try {
+        const signature = await options.signTypedData(
+          typedData as unknown as Record<string, unknown>,
+        );
+        return {
+          typedData,
+          /* Always the six-felt array the account's `extract_signature`
+             wants; the SDK's wider Signature type is the only reason for the
+             cast. */
+          signature: ethSignatureToAccountFelts(
+            signature,
+            options.evmChainId,
+          ) as string[],
+        };
       } finally {
         endRun();
       }

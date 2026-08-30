@@ -3,6 +3,11 @@ import {
   buildSwapCalls,
   quoteSwap,
 } from "@/lib/avnu/client";
+import {
+  buildPaymasterIntent,
+  executePaymasterIntent,
+  PaymasterError,
+} from "@/lib/avnu/paymaster";
 import { parseAppNetwork, type AppNetwork } from "@/lib/network";
 import { STRK_ADDRESS, starknetOf } from "@/lib/starknet/constants";
 
@@ -82,8 +87,47 @@ export async function POST(request: Request) {
       return Response.json({ calls });
     }
 
+    /* The gasless half. Someone who just bridged holds USDC and no STRK at
+       all, so the swap that would buy them STRK cannot be submitted by them -
+       AVNU relays it and takes its cost in USDC instead. */
+    if (body?.action === "sponsor") {
+      const takerAddress = String(body.takerAddress ?? "");
+      if (!/^0x[0-9a-fA-F]{1,64}$/.test(takerAddress)) {
+        return Response.json({ error: "Missing address" }, { status: 400 });
+      }
+      const calls = Array.isArray(body.calls) ? body.calls : null;
+      if (!calls?.length) {
+        return Response.json({ error: "Nothing to sponsor" }, { status: 400 });
+      }
+      const intent = await buildPaymasterIntent({
+        network,
+        accountAddress: takerAddress,
+        calls,
+        gasToken: chain.usdc,
+        maxGasTokenAmount: BigInt(String(body.maxGasTokenAmount ?? "1000000")),
+      });
+      return Response.json({ intent });
+    }
+
+    if (body?.action === "submit") {
+      const takerAddress = String(body.takerAddress ?? "");
+      if (!/^0x[0-9a-fA-F]{1,64}$/.test(takerAddress)) {
+        return Response.json({ error: "Missing address" }, { status: 400 });
+      }
+      const transactionHash = await executePaymasterIntent({
+        network,
+        accountAddress: takerAddress,
+        typedData: body.typedData,
+        signature: (body.signature as string[]) ?? [],
+      });
+      return Response.json({ transactionHash });
+    }
+
     return Response.json({ error: "Unknown action" }, { status: 400 });
   } catch (error) {
+    if (error instanceof PaymasterError) {
+      return Response.json({ error: error.message }, { status: 502 });
+    }
     if (error instanceof AvnuUnavailableError) {
       return Response.json({ error: error.message }, { status: 502 });
     }
