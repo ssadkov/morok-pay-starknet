@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { EyeOffIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -30,25 +29,6 @@ export function UnshieldButton() {
   const notes = useUsdcMaturity(session?.address, privateUsdc);
 
   if (!session) return null;
-
-  if (session.kind === "evm" && network !== "sepolia") {
-    return (
-      <div className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">
-          Unshield for an EVM wallet is live on Sepolia. Use EVM Lab here on
-          mainnet while that flow still shows the proof and fee review
-          explicitly.
-        </p>
-        <Button
-          nativeButton={false}
-          variant="outline"
-          render={<Link href="/privacy-sdk-lab" />}
-        >
-          Open EVM Lab
-        </Button>
-      </div>
-    );
-  }
 
   async function handleUnshield() {
     if (!session) return;

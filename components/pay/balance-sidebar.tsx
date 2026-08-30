@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import { RefreshCwIcon, WalletIcon } from "lucide-react";
 
 import { ShieldButton } from "@/components/pay/shield-button";
@@ -92,6 +93,20 @@ export function BalanceSidebar() {
           )}
         </CardContent>
       </Card>
+      {/* The lab runs the same steps with the proof, the fee and the resource
+          bounds shown one at a time. That is the right shape for diagnosing a
+          failure and the wrong shape for an everyday shield, so it sits here
+          rather than in place of the buttons. */}
+      {session?.kind === "evm" ? (
+        <p className="px-1 text-center text-xs text-muted-foreground">
+          <Link
+            href="/privacy-sdk-lab"
+            className="underline underline-offset-4"
+          >
+            Run each step yourself in the EVM lab
+          </Link>
+        </p>
+      ) : null}
     </aside>
   );
 }

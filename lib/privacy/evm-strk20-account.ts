@@ -249,14 +249,13 @@ export function createEvmStrk20Account(options: {
         );
       }
       /* Shield and unshield hand-roll the approvals and proof call that
-         Ready X's extension normally does internally, so they stay Sepolia-only
-         until that path is proven out. Donate's transfer already runs on
-         both networks. */
-      if (action.type !== "transfer" && options.network !== "sepolia") {
-        throw new Error(
-          "Shield and unshield for an EVM wallet are available on Sepolia only for now. Use the EVM lab on mainnet.",
-        );
-      }
+         Ready X's extension normally does internally, and were held to Sepolia
+         while that was unproven. Opened on mainnet 2026-08-30: everything the
+         path depends on already runs there - the mainnet prover and discovery
+         service answer, the account factory and class are declared, and
+         registration and transfer have all gone through with real money. The
+         lab remains linked from the balances sidebar for anyone who wants the
+         proof and fee review shown step by step. */
       /* Always the call set and the Starknet transaction, plus the viewing
          key when this session has not derived it yet. */
       startRun(

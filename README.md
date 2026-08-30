@@ -4,11 +4,11 @@ Private USDC donations on Starknet, built for the [STRK20 Private Sprint](https:
 
 A creator publishes one reusable QR. A supporter chooses the amount and confirms the transfer in Ready, or in MetaMask with no Starknet wallet at all. The payment stays inside the STRK20 pool, so its amount and sender-to-recipient relationship are not published on-chain.
 
-[Open the live demo](https://morok-pay-starknet.vercel.app)
+[Open the live demo](https://morok-pay-starknet.vercel.app) · [Announcement thread](https://x.com/ssadkov/status/2093793308359409909)
 
 ## How it works
 
-1. Connect Ready on Starknet Mainnet or Sepolia, or onboard an EVM wallet through `/privacy-sdk-lab`.
+1. Connect Ready X on Starknet Mainnet or Sepolia, or connect MetaMask and let the app derive and deploy a Starknet account for you.
 2. Activate STRK20 by shielding once.
 3. Create one open-amount donation QR, or open a creator's link.
 4. Confirm the private USDC transfer in the connected wallet.

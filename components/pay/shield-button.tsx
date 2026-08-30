@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ShieldIcon } from "lucide-react";
@@ -46,25 +45,6 @@ export function ShieldButton({
   const needsFeeStrk = token ? token === "strk" : shieldStrk;
 
   if (!session) return null;
-
-  if (session.kind === "evm" && network !== "sepolia") {
-    return (
-      <div className="flex flex-col gap-2">
-        <p className="text-xs text-muted-foreground">
-          Shield for an EVM wallet is live on Sepolia. Use EVM Lab here on
-          mainnet while that flow still shows the proof and fee review
-          explicitly.
-        </p>
-        <Button
-          nativeButton={false}
-          variant="outline"
-          render={<Link href="/privacy-sdk-lab" />}
-        >
-          Open EVM Lab
-        </Button>
-      </div>
-    );
-  }
 
   if (session.kind === "ready" && registration !== "registered") {
     return (
