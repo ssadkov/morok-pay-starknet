@@ -95,7 +95,14 @@ export function BalanceSidebar() {
                       ? "Viewing key derived in this browser session"
                       : "Ready X holds the viewing key"
                 }
-                action={<UnshieldButton />}
+                action={
+                  <div className="flex flex-col gap-3">
+                    <UnshieldButton />
+                    <div className="flex justify-end">
+                      <SendButton mode="private" />
+                    </div>
+                  </div>
+                }
               />
             </>
           )}

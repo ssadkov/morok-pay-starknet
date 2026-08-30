@@ -20,12 +20,19 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { transferPublicToken } from "@/lib/starknet/actions";
+import {
+  PublicLinkError,
+  transferPrivate,
+  transferPublicToken,
+} from "@/lib/starknet/actions";
 import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import { describeError } from "@/lib/starknet/errors";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { parseTokenAmount } from "@/lib/amount";
+
+import { usePoolRegistration } from "./use-pool-registration";
+import { useUsdcMaturity } from "./use-usdc-maturity";
 
 /** Left behind so the account can still pay gas after emptying itself. */
 const GAS_RESERVE = BigInt(10) ** BigInt(18);
@@ -39,7 +46,7 @@ const GAS_RESERVE = BigInt(10) ** BigInt(18);
  * than inline, because sending everything away is the rarest thing this
  * screen does and the easiest to fire by accident.
  */
-export function SendButton() {
+export function SendButton({ mode = "public" }: { mode?: "public" | "private" } = {}) {
   const { session, balances, refreshBalances } = useTreasury();
   const { network, starknet } = useNetwork();
   const [open, setOpen] = useState(false);
@@ -47,19 +54,40 @@ export function SendButton() {
   const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [sending, setSending] = useState(false);
+  const privateUsdc = balances?.privateUsdc ?? BigInt(0);
+  const notes = useUsdcMaturity(session?.address, privateUsdc);
+  /* The pool cannot credit a note to an account that never registered a
+     viewing key, so a private send to one fails at the wallet with an error
+     nobody can act on. Say it before they sign anything. */
+  const trimmedRecipient = recipient.trim();
+  const recipientRegistration = usePoolRegistration(
+    mode === "private" && /^0x[0-9a-fA-F]{1,64}$/.test(trimmedRecipient)
+      ? trimmedRecipient
+      : undefined,
+  );
 
   if (!session) return null;
 
+  const isPrivate = mode === "private";
   const usdc = getShieldToken("usdc", network);
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
-  const isStrk = asset === "strk";
+  const isStrk = !isPrivate && asset === "strk";
   const decimals = isStrk ? 18 : usdc.decimals;
-  const available = isStrk ? publicStrk : publicUsdc;
+  const available = isPrivate ? privateUsdc : isStrk ? publicStrk : publicUsdc;
   /* STRK pays this account's own gas, so offering "all of it" would strand
      the account. USDC has no such role and can go out to the last cent. */
   const sendable =
     isStrk && available > GAS_RESERVE ? available - GAS_RESERVE : isStrk ? BigInt(0) : available;
+  const blocked = isPrivate
+    ? privateUsdc <= BigInt(0)
+      ? "Nothing shielded to send."
+      : !notes.ready
+        ? `Freshly shielded USDC matures in ${notes.remainingLabel}. The proving block cannot see it before then.`
+        : recipientRegistration === "unregistered"
+          ? "That address has not enabled Private, so the pool cannot credit it. Ask them to activate STRK20 first."
+          : null
+    : null;
   const format = isStrk ? formatStrk : formatUsdc;
 
   async function handleSend() {
@@ -77,13 +105,17 @@ export function SendButton() {
           `Leave at least ${formatStrk(GAS_RESERVE)} STRK behind, or this account cannot pay gas again`,
         );
       }
-      const response = await transferPublicToken(
-        session.account,
-        isStrk ? STRK_ADDRESS : usdc.address,
-        to,
-        parsed,
-      );
-      toast.success(`${format(parsed)} ${asset.toUpperCase()} sent`, {
+      const response = isPrivate
+        ? await transferPrivate(session.account, usdc, parsed, to, { network })
+        : await transferPublicToken(
+            session.account,
+            isStrk ? STRK_ADDRESS : usdc.address,
+            to,
+            parsed,
+          );
+      toast.success(
+        `${format(parsed)} ${isPrivate ? "private USDC" : asset.toUpperCase()} sent`,
+        {
         action: {
           label: "Voyager",
           onClick: () =>
@@ -93,12 +125,17 @@ export function SendButton() {
               "noopener,noreferrer",
             ),
         },
-      });
+        },
+      );
       setOpen(false);
       setAmount("");
       setRecipient("");
       await refreshBalances({ private: false });
     } catch (error) {
+      if (error instanceof PublicLinkError) {
+        toast.error("This one would be public", { description: error.message });
+        return;
+      }
       toast.error(describeError(error) || "The transfer failed");
     } finally {
       setSending(false);
@@ -111,19 +148,25 @@ export function SendButton() {
         render={
           <Button type="button" size="sm" variant="outline">
             <SendIcon data-icon="inline-start" />
-            Send
+            {isPrivate ? "Send privately" : "Send"}
           </Button>
         }
       />
       <DialogContent>
         <div className="flex flex-col gap-1">
-          <DialogTitle>Send from your Starknet account</DialogTitle>
+          <DialogTitle>
+            {isPrivate
+              ? "Send private USDC"
+              : "Send from your Starknet account"}
+          </DialogTitle>
           <DialogDescription>
-            An ordinary public transfer. Nothing about it is private, and the
-            recipient must be a Starknet address on {network}.
+            {isPrivate
+              ? `Stays inside the STRK20 pool: the amount is not published, and the recipient must already have Private enabled on ${network}.`
+              : `An ordinary public transfer. Nothing about it is private, and the recipient must be a Starknet address on ${network}.`}
           </DialogDescription>
         </div>
 
+        {isPrivate ? null : (
         <ToggleGroup
           value={[asset]}
           onValueChange={(value) => {
@@ -137,6 +180,7 @@ export function SendButton() {
           <ToggleGroupItem value="usdc">USDC</ToggleGroupItem>
           <ToggleGroupItem value="strk">STRK</ToggleGroupItem>
         </ToggleGroup>
+        )}
 
         <Field>
           <FieldLabel htmlFor="send-recipient">Recipient</FieldLabel>
@@ -149,8 +193,9 @@ export function SendButton() {
             onChange={(event) => setRecipient(event.target.value)}
           />
           <FieldDescription>
-            A Starknet address. An exchange deposit address works if that
-            exchange lists Starknet.
+            {isPrivate
+              ? "A Starknet address that has enabled Private. The first transfer to one you have never paid opens a channel, and MorokPay relays that one so you are not named in it."
+              : "A Starknet address. An exchange deposit address works if that exchange lists Starknet."}
           </FieldDescription>
         </Field>
 
@@ -174,12 +219,16 @@ export function SendButton() {
             </Button>
           </div>
           <FieldDescription>
-            {format(available)} {asset.toUpperCase()} available
+            {format(available)} {isPrivate ? "private USDC" : asset.toUpperCase()} available
             {isStrk
               ? ` · ${formatStrk(GAS_RESERVE)} STRK stays behind for gas`
               : ""}
           </FieldDescription>
         </Field>
+
+        {blocked ? (
+          <p className="text-sm text-muted-foreground">{blocked}</p>
+        ) : null}
 
         <div className="flex justify-end gap-2">
           <DialogClose
@@ -191,7 +240,9 @@ export function SendButton() {
           />
           <Button
             type="button"
-            disabled={sending || !recipient.trim() || !amount.trim()}
+            disabled={
+              sending || !recipient.trim() || !amount.trim() || Boolean(blocked)
+            }
             aria-busy={sending}
             onClick={() => {
               void handleSend();
