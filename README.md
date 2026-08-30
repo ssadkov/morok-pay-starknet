@@ -149,6 +149,22 @@ so a registered account sitting there in the clear is visible.
 - Funded onboarding - bridge, auto-swap to STRK, then shield - is researched but
   unbuilt; see [docs/funded-onboarding.md](docs/funded-onboarding.md).
 
+## Roadmap
+
+The nearest piece removes the last thing that still asks a supporter to go buy
+an unrelated token: arriving with USDC on Base and reaching a private balance
+without ever acquiring STRK by hand. CCTP is already wired, and the shape is
+settled by a constraint rather than a preference - a shield cannot be relayed,
+because STRK20 passes its proof as a transaction-level extension and SNIP-9
+outside execution has no field for one. So the flow splits at that boundary:
+the relayer bridges, swaps a slice to STRK through AVNU and pays for all of it,
+and the user's own account then pays for the shield with STRK it never had to
+buy.
+
+That, and what else is open - the anonymous receive account on Ready X, batched
+payouts, where MorokPay's own fee belongs - is in
+[docs/roadmap.md](docs/roadmap.md).
+
 Legacy claim links remain redeemable at `/claim` on networks where `MorokEscrow` is deployed. New claim-link creation is no longer part of the donation UI.
 
 ## Run locally
