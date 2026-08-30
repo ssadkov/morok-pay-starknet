@@ -217,6 +217,15 @@ export function EvmOnboardingGate() {
           You never enter a seed phrase and never install a Starknet wallet.
         </p>
 
+        {/* Not a reassurance but a property of the account class: it holds no
+            key of its own and authorises on an EIP-712 signature from this
+            EVM address, so there is nothing here MorokPay could hold. */}
+        <p className="mt-2 text-sm text-muted-foreground">
+          The account is non-custodial, and there is no second key to lose:
+          it has none of its own and accepts only what your Ethereum wallet
+          signs. MorokPay never holds a key and cannot sign for you.
+        </p>
+
         {evmGate.address ? (
           <div className="mt-4 rounded-xl bg-muted/50 p-3 ring-1 ring-foreground/10">
             <div className="flex items-start justify-between gap-2">
@@ -246,9 +255,7 @@ export function EvmOnboardingGate() {
             <AlertTitle>Fund this address first</AlertTitle>
             <AlertDescription>
               Send at least {formatStrk(MAINNET_MINIMUM_STRK)} STRK to the
-              address above. It pays the pool fee and gas for activation. A
-              bridge that funds this step from Base is planned, so this manual
-              top-up is temporary.
+              address above. It pays the pool fee and gas for activation.
             </AlertDescription>
           </Alert>
         ) : null}
