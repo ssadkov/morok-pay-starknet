@@ -192,6 +192,32 @@ extension**, not "add more STRK". It is in the contest copy on that basis.
 the same class as the three already known. Sponsoring Enable Private is a pool
 of sponsor accounts, not a courtesy extended to one wallet.
 
+## Field note 2026-08-30: first mainnet shield on the EVM rail
+
+`0x506c1e0665fa4bbcf5d41e473b9848af299962f4cf7e060bdcdebbc7a02da2a` -
+1 USDC shielded from the MetaMask-derived account
+`0x06c90d9b384e76a72435b87634153999b8690b3305e18a43613ab368fea887a9`,
+block 14094244. The first time shield has ever run on mainnet on this rail;
+it was held to Sepolia until the guard came off in the same session.
+
+| | |
+| --- | --- |
+| transaction sender | **the account itself** - no paymaster, as expected on this rail |
+| pool fee | 6.0000 STRK |
+| gas | **5.3073 STRK**, paid by the account |
+| moved | 1.0000 USDC into the pool |
+| **total STRK cost** | **11.3073** |
+
+Two things worth carrying forward. Gas here is higher than the 2.68-4.42 STRK
+the registrations cost, so 15 STRK covers a registration but not a
+registration plus a shield - `MOROKPAY_MAINNET_MIN_DEPLOY_STRK` is sized for
+the first step only, which is what its comment says and is worth keeping in
+mind before quoting a single number to a user. And the 6 STRK fee lands at
+`0x00d790...`, the same address the Ready X flow's fee reaches, so the pool
+settles both rails' fees to one place.
+
+Unshield is the remaining unmeasured half of the round trip.
+
 ## Also open
 
 0. **Screenshot onboarding copy** - `docs/assets/ready-onboarding/` has seven
