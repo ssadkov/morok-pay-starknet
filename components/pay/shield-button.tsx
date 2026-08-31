@@ -46,12 +46,18 @@ export function ShieldButton({
 
   if (!session) return null;
 
-  if (session.kind === "ready" && registration !== "registered") {
+  /* The pool cannot credit a note to an account with no viewing key
+     registered, so shielding into one fails with an error the wallet cannot
+     explain. Checked on both rails - an EVM account can now hold a session
+     before it has activated, which is exactly when this matters. */
+  if (registration !== "registered") {
     return (
       <p className="text-xs text-muted-foreground">
         {registration === "unknown"
-          ? "Checking whether Private is enabled in Ready X…"
-          : "Enable Private in Ready X first. Turn on Smart Account, then open Protected tokens, start Shield, and confirm the one-time activation."}
+          ? "Checking whether Private is enabled…"
+          : session.kind === "evm"
+            ? "Activate privacy for this account first - it needs a viewing key registered in the pool before it can hold anything private."
+            : "Enable Private in Ready X first. Turn on Smart Account, then open Protected tokens, start Shield, and confirm the one-time activation."}
       </p>
     );
   }

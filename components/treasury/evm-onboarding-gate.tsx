@@ -262,6 +262,28 @@ export function EvmOnboardingGate() {
           </Alert>
         ) : null}
 
+        {/* Deployed, unregistered, and the registration is the part the user
+            pays for. Someone who arrived over the bridge holds USDC and no
+            STRK at all, so the useful answer is not "go get some" but the page
+            that buys it out of what they already have. */}
+        {isMainnet && !needsDeploy ? (
+          <Alert className="mt-4">
+            <AlertTitle>Activation costs about 11 STRK</AlertTitle>
+            <AlertDescription>
+              A 6 STRK pool fee plus gas, paid by this account. If it holds USDC
+              instead,{" "}
+              <Link
+                href="/swap"
+                className="underline underline-offset-4"
+                onClick={dismissEvmGate}
+              >
+                buy the STRK with it
+              </Link>{" "}
+              - about 1 USDC is enough, and no STRK is needed to do the swap.
+            </AlertDescription>
+          </Alert>
+        ) : null}
+
         {phase.kind === "working" || phase.kind === "waiting" ? (
           <Alert className="mt-4">
             <AlertTitle className="flex items-center gap-2">
