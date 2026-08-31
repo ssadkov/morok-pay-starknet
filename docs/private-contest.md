@@ -16,23 +16,27 @@ one. Re-read the live countdown on <https://strk20.starknet.io/hackathon>
 before the close and move the dates *later* if it turns out to be generous;
 never plan against the generous reading.
 
+**Drawing on 2026-09-01, not on the extended deadline.** Four entrants
+published a QR, and the run is deliberately not held open to 09-05 for more.
+The reasoning is that a settled contest is worth more than a larger one here:
+the payouts are the mainnet evidence the sprint scores, the write-up is
+content that only exists once the draw has happened, and holding the field
+open spends the extension's whole gift on waiting rather than on the video and
+the receive account. Four is a real field; the split rescales to it.
+
 | When (UTC) | What |
 | --- | --- |
 | 2026-08-31 | Announcement posted, entries open |
-| **2026-09-05 15:00** | **Entries close.** Entry list frozen, its hash published |
-| 2026-09-05 ~15:05 | Seed published: the first Starknet mainnet block after the close |
-| 2026-09-05 by 20:00 | Allocation published, all payouts sent |
-| 2026-09-05 by 22:00 | Payout tx hashes recorded in `strk20.json` |
-| 2026-09-07 00:00 | Sprint closes (earliest safe reading) |
+| **2026-09-01** | **Entries close.** Entry list frozen, its hash published |
+| 2026-09-01 | Seed published: the first Starknet mainnet block after the close |
+| 2026-09-01 | Allocation published, all payouts sent |
+| 2026-09-01 | Payout tx hashes recorded in `strk20.json`, result posted |
+| 2026-09-07 00:00 | Sprint closes (earliest safe reading, hour not announced) |
 
-The gap between close and sprint close was nine hours on the original
-schedule, which was tight to the point of reckless: each payout is a
-first-time donation to a QR nobody has paid before, so each is a separate
-relayed transaction sent one at a time through the app (see Cost, below), and
-seven of those plus the write-up needs hours. The extension spends most of its
-gift on entry time - six days instead of fifteen hours, which is the
-difference between a field that exists and a field that does not - and keeps
-**a full spare day** at the end for the payout run to go wrong once.
+Six spare days behind the payout run, where the original schedule had nine
+hours. Each payout is a first-time donation to a QR nobody has paid before, so
+each is a separate relayed transaction sent one at a time through the app (see
+Cost, below).
 
 ## Offer
 
@@ -45,6 +49,7 @@ exactly $20. Fewer finishers means larger prizes, never an unspent remainder:
 | ---: | --- |
 | 7 | $6, $4, $3, $3, $2, $1, $1 |
 | 5 | $6.67, $4.45, $3.33, $3.33, $2.22 |
+| **4** | **$7.50, $5.00, $3.75, $3.75** |
 | 3 | $9.23, $6.15, $4.62 |
 | 1 | $20 |
 
@@ -116,11 +121,13 @@ own rank without the organizer publishing anybody else's.
 
 Measured on mainnet, per payout: **~6 STRK pool fee + ~3 STRK gas ≈ 9 STRK**,
 because every payout opens a new channel to a QR that has never been paid.
-Seven payouts is **~63 STRK**.
+Four payouts is **~36 STRK**.
 
-The relayer `0x34d43acc...` held **34.93 STRK** at 2026-08-30 00:15 UTC+5.
-**It must be refilled before the announcement goes out**, or a full field
-cannot be paid.
+The relayer `0x34d43acc...` held **34.93 STRK** at 2026-08-30 00:15 UTC+5, and
+has paid for deployments and bridge deliveries during testing since, so the
+figure now is lower. **Re-read the balance and refill before the draw** - 36
+STRK is more than it held even before that spending, so a field of four cannot
+be paid out of it as it stands.
 
 Batching several payouts into one `apply_actions` would cut the pool fee
 dramatically, but it has never been demonstrated on Sepolia, and the app pays
