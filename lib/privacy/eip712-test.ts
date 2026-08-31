@@ -6,9 +6,26 @@ export const TEST_PRIVACY_POOL =
 export const TEST_ACCOUNT_FACTORY =
   0x078ce3c3e3080a579d268feae011761b32146efd40f4faa14dc8b9a30b4de35fn;
 
+/**
+ * The chain id baked into the viewing-key signature, deliberately fixed.
+ *
+ * It used to be whichever network MetaMask happened to be on. The derived
+ * Starknet address does not depend on that, but the viewing key did - so
+ * switching networks silently produced a different key, the indexer refused it
+ * against the one registered in the pool, and the account's private balance
+ * became unreadable. Our own onboarding made that near-certain by switching
+ * the wallet to Base to bridge and never switching it back.
+ *
+ * A viewing key is immutable once registered, so this cannot be changed again
+ * without orphaning every account registered under the old rule. Callers that
+ * have to read such an account pass the chain id it was registered with.
+ */
+export const VIEWING_KEY_CHAIN_ID = 1;
+
 export function privacyKeyTypedData(args: {
   evmAddress: Address;
-  evmChainId: number;
+  /** Only for reading an account registered before the id was fixed. */
+  evmChainId?: number;
   starknetChain?: string;
   privacyPool?: bigint;
   accountFactory?: bigint;
@@ -17,7 +34,7 @@ export function privacyKeyTypedData(args: {
     domain: {
       name: "MorokPay Privacy Access",
       version: "1",
-      chainId: args.evmChainId,
+      chainId: args.evmChainId ?? VIEWING_KEY_CHAIN_ID,
     },
     types: {
       PrivacyAccess: [

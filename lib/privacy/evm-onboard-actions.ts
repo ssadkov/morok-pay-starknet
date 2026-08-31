@@ -143,9 +143,10 @@ export async function registerEvmAccount(args: {
   }
 
   progress("Confirm the viewing-key signature in your wallet");
+  /* No evmChainId: the viewing key is pinned to a fixed one so it does not
+     change with whatever network the wallet is on. */
   const keyRequest = privacyKeyTypedData({
     evmAddress: evmAddress as `0x${string}`,
-    evmChainId,
     starknetChain: sdk.snChainName,
     privacyPool: BigInt(sdk.poolAddress),
     accountFactory: BigInt(sdk.accountFactory),

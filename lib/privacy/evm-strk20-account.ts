@@ -7,6 +7,8 @@ import {
 import {
   Account,
   cairo,
+  ec,
+  num,
   RpcProvider,
   validateAndParseAddress,
   type Call,
@@ -30,6 +32,7 @@ import {
   ethSignatureToAccountFelts,
 } from "@/lib/privacy/eth712-transaction";
 import { privacyKeyTypedData } from "@/lib/privacy/eip712-test";
+import { poolPublicKey } from "@/lib/starknet/account-status";
 import {
   namesRecipient,
   normalizeCall,
@@ -183,11 +186,10 @@ export function createEvmStrk20Account(options: {
     return signature;
   }
 
-  async function getViewingKey() {
-    if (viewingKey !== null) return viewingKey;
+  async function deriveWith(evmChainId?: number) {
     const request = privacyKeyTypedData({
       evmAddress: options.evmAddress as `0x${string}`,
-      evmChainId: options.evmChainId,
+      evmChainId,
       starknetChain: sdk.snChainName,
       privacyPool: BigInt(sdk.poolAddress),
       accountFactory: BigInt(sdk.accountFactory),
@@ -195,7 +197,38 @@ export function createEvmStrk20Account(options: {
     const signature = await checkedSignature(
       request as unknown as Record<string, unknown>,
     );
-    viewingKey = BigInt(deriveViewingKey(signature, options.starknetAddress));
+    return BigInt(deriveViewingKey(signature, options.starknetAddress));
+  }
+
+  /**
+   * The pinned derivation first, and the old wallet-chain one only to rescue an
+   * account registered before it was pinned.
+   *
+   * A viewing key cannot be re-registered, so an account whose key was derived
+   * under the old rule would otherwise be unreadable forever - and the pool
+   * publishes the public key, which is exactly enough to tell the two apart
+   * without a wrong guess ever reaching the indexer.
+   */
+  async function getViewingKey() {
+    if (viewingKey !== null) return viewingKey;
+    const candidate = await deriveWith();
+    const registered = await poolPublicKey(
+      options.network,
+      options.starknetAddress,
+    );
+    const publicKeyOf = (key: bigint) =>
+      BigInt(ec.starkCurve.getStarkKey(num.toHex(key)));
+    if (registered === null || publicKeyOf(candidate) === registered) {
+      viewingKey = candidate;
+      return viewingKey;
+    }
+    const legacy = await deriveWith(options.evmChainId);
+    if (publicKeyOf(legacy) !== registered) {
+      throw new Error(
+        "This wallet does not derive the viewing key registered for this account. If it was activated on a different EVM network, switch back to it and reload.",
+      );
+    }
+    viewingKey = legacy;
     return viewingKey;
   }
 

@@ -28,6 +28,32 @@ export async function accountPresence(
 }
 
 /**
+ * The viewing public key the pool holds for an address, or null when it has
+ * never registered. Public by design - it reveals that registration happened
+ * and which key was used, never the private viewing key behind it.
+ */
+export async function poolPublicKey(
+  network: AppNetwork,
+  address: string,
+): Promise<bigint | null> {
+  try {
+    const result = await createProvider(network).callContract({
+      contractAddress: starknetOf(network).pool,
+      entrypoint: "get_public_key",
+      calldata: [address],
+    });
+    const values = Array.isArray(result)
+      ? result
+      : ((result as { result?: string[] }).result ?? []);
+    if (!values[0]) return null;
+    const key = BigInt(values[0]);
+    return key === BigInt(0) ? null : key;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * STRK20 recipients need an immutable viewing key registered in the pool.
  * This view is public and reveals only whether registration happened, never
  * the private viewing key or the user's notes.
