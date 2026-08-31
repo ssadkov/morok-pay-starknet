@@ -133,22 +133,46 @@ export function StartPanel() {
   const account = session?.address ?? evmStarknetAddress;
 
   const refresh = useCallback(async () => {
-    if (!account) return;
+    if (!account) return null;
     try {
       const [snapshot, registration] = await Promise.all([
         getAccountSnapshot(account, network),
         poolRegistration(network, account),
       ]);
-      setState({
+      const next = {
         usdc: snapshot.usdcRaw,
         strk: snapshot.strkWei,
         deployed: Boolean(session) || snapshot.strkWei > BigInt(0),
         registered: registration === "registered",
-      });
+      };
+      setState(next);
+      return next;
     } catch {
       setState(null);
+      return null;
     }
   }, [account, network, session]);
+
+  /**
+   * A step finishes when the chain says so, not when the wallet stops talking.
+   *
+   * Every action here returns before its transaction is included - a paymaster
+   * hands back a hash the moment it accepts, a relayer the moment it submits -
+   * so reading balances once straight afterwards reads the state from before.
+   * That looked like the screen was stuck a step behind and only caught up
+   * when the reader pressed Recheck themselves.
+   */
+  const settle = useCallback(
+    async (done: (snapshot: NonNullable<typeof state>) => boolean) => {
+      for (let attempt = 0; attempt < 20; attempt++) {
+        const next = await refresh();
+        if (next && done(next)) return;
+        setBusy("Confirming on Starknet");
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+    },
+    [refresh],
+  );
 
   /* Reading the chain is the external system here; the state it writes is a
      cache of it, not a render input derived from other state. */
@@ -272,6 +296,7 @@ export function StartPanel() {
         toast.success("USDC arrived on Starknet", {
           description: "MorokPay paid the delivery fee",
         });
+        await settle((snapshot) => snapshot.usdc >= MIN_USDC);
       }
 
       /* Runs here rather than sending the reader to Get STRK. It is the same
@@ -302,6 +327,7 @@ export function StartPanel() {
             : undefined,
         });
         await refreshBalances({ private: false });
+        await settle((snapshot) => snapshot.strk >= ACTIVATION_STRK);
       }
 
       if (step === "deploy") {
@@ -317,6 +343,7 @@ export function StartPanel() {
         const body = await response.json().catch(() => null);
         if (!response.ok) throw new Error(body?.error ?? "The account was not created");
         toast.success("Starknet account created");
+        await settle((snapshot) => snapshot.deployed);
         await connectEvm();
       }
 
@@ -333,6 +360,7 @@ export function StartPanel() {
           onProgress: (message) => setBusy(String(message)),
         });
         toast.success("Privacy activated");
+        await settle((snapshot) => snapshot.registered);
         await connectEvm();
         await refreshBalances();
       }
