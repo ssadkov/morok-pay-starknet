@@ -65,7 +65,7 @@ import { wagmiConfig } from "@/lib/wagmi";
  * the swap that buys it has to come first.
  */
 
-/** Enough USDC to buy the STRK activation costs, with room over. */
+/** What the screen suggests bringing: activation now, a withdrawal later. */
 const MIN_USDC = BigInt(2) * BigInt(10) ** BigInt(6);
 /** The pool fee plus gas for the activation the user pays for. */
 const ACTIVATION_STRK = BigInt(11) * BigInt(10) ** BigInt(18);
@@ -73,6 +73,15 @@ const ACTIVATION_STRK = BigInt(11) * BigInt(10) ** BigInt(18);
 const SWAP_GAS_STRK = BigInt(21) * BigInt(10) ** BigInt(17);
 /** Buys well over the activation at any recent price, and leaves change. */
 const SWAP_USDC = BigInt(1) * BigInt(10) ** BigInt(6);
+/**
+ * Enough to carry on with, which is not the same number as the one above.
+ *
+ * Fast Transfer takes its fee in flight, so bringing over the suggested two
+ * dollars delivers 1.99 - and gating the step on the amount that was *sent*
+ * left the screen waiting forever for money that had already arrived. The
+ * step is finished once there is enough to buy the activation STRK.
+ */
+const USABLE_USDC = SWAP_USDC + BigInt(50_000);
 
 type StepId = "bridge" | "deploy" | "strk" | "activate" | "done";
 
@@ -128,7 +137,7 @@ export function StartPanel() {
   } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [amount, setAmount] = useState("2");
+  const [amount, setAmount] = useState(formatUsdc(MIN_USDC));
 
   const account = session?.address ?? evmStarknetAddress;
 
@@ -193,7 +202,7 @@ export function StartPanel() {
     ? "bridge"
     : state.registered
       ? "done"
-      : state.usdc < MIN_USDC && state.strk < ACTIVATION_STRK
+      : state.usdc < USABLE_USDC && state.strk < ACTIVATION_STRK
         ? "bridge"
         : !session
           ? "deploy"
@@ -296,7 +305,8 @@ export function StartPanel() {
         toast.success("USDC arrived on Starknet", {
           description: "MorokPay paid the delivery fee",
         });
-        await settle((snapshot) => snapshot.usdc >= MIN_USDC);
+        /* `maxFee` is a ceiling, so this is the least that can land. */
+        await settle((snapshot) => snapshot.usdc >= value - maxFee);
       }
 
       /* Runs here rather than sending the reader to Get STRK. It is the same
@@ -452,8 +462,38 @@ export function StartPanel() {
                             {step.detail}
                           </p>
                         ) : null}
-                        {active && step.id !== "bridge" ? (
-                          <div className="mt-2">{action}</div>
+                        {/* The control for a step belongs to that step. The
+                            bridge amount used to sit below the whole list,
+                            which put the button four steps away from the line
+                            it acts on. */}
+                        {active ? (
+                          <div className="mt-2 flex flex-col gap-2">
+                            {step.id === "bridge" ? (
+                              <Field>
+                                <FieldLabel htmlFor="start-amount">
+                                  USDC to bring over
+                                </FieldLabel>
+                                <Input
+                                  id="start-amount"
+                                  value={amount}
+                                  inputMode="decimal"
+                                  onChange={(event) =>
+                                    setAmount(event.target.value)
+                                  }
+                                />
+                                <FieldDescription>
+                                  {baseBalance !== undefined
+                                    ? `${formatUsdc(baseBalance)} USDC on Base in this wallet. `
+                                    : ""}
+                                  Two dollars covers activation and a
+                                  withdrawal later. Already hold USDC on
+                                  Starknet? Send it to the address above
+                                  instead - this screen will notice.
+                                </FieldDescription>
+                              </Field>
+                            ) : null}
+                            {action}
+                          </div>
                         ) : null}
                       </div>
                     </div>
@@ -461,27 +501,6 @@ export function StartPanel() {
                 );
               })}
             </ol>
-
-            {current === "bridge" ? (
-              <Field className="-mt-2">
-                <FieldLabel htmlFor="start-amount">USDC to bring over</FieldLabel>
-                <Input
-                  id="start-amount"
-                  value={amount}
-                  inputMode="decimal"
-                  onChange={(event) => setAmount(event.target.value)}
-                />
-                <FieldDescription>
-                  {baseBalance !== undefined
-                    ? `${formatUsdc(baseBalance)} USDC on Base in this wallet. `
-                    : ""}
-                  Two dollars covers activation and a withdrawal later. Already
-                  hold USDC on Starknet? Send it to the address above instead -
-                  this screen will notice.
-                </FieldDescription>
-                <div className="mt-1">{action}</div>
-              </Field>
-            ) : null}
 
             {current === "done" ? (
               <Alert>
