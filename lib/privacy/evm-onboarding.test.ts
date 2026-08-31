@@ -47,9 +47,9 @@ describe("classifyEvmReadiness", () => {
     ).toMatchObject({ status: "onboarding", reason: "upgrade" });
   });
 
-  it("requires the live privacy-pool registration", () => {
+  it("lets an unregistered account keep its public half", () => {
     expect(classifyEvmReadiness(inspection(), "unregistered")).toMatchObject({
-      status: "onboarding",
+      status: "partial",
       reason: "unregistered",
     });
   });

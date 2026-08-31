@@ -93,6 +93,12 @@ export type TreasuryBalances = AccountSnapshot & {
   privateStrk: bigint;
   privateStrkBtc: bigint;
   privateError: string | null;
+  /**
+   * False when the note read failed outright. The amounts above are seeded
+   * with zero, so without this a wallet whose viewing key we could not use
+   * would report an emphatic "0 USDC" for a balance nobody has looked at.
+   */
+  privateKnown: boolean;
 };
 
 export type RefreshBalancesOptions = {
@@ -143,6 +149,7 @@ const EMPTY_BALANCES: TreasuryBalances = {
   privateStrk: BigInt(0),
   privateStrkBtc: BigInt(0),
   privateError: null,
+  privateKnown: true,
 };
 
 function publicBalance(balances: TreasuryBalances | null, token: ShieldToken) {
@@ -335,6 +342,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
             privateStrkBtc:
               prev?.privateStrkBtc ?? lastPrivate.current.strkBtc,
             privateError: prev?.privateError ?? null,
+            privateKnown: prev?.privateKnown ?? lastPrivate.current.known,
           }));
           return;
         }
@@ -346,6 +354,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
             privateStrkBtc:
               prev?.privateStrkBtc ?? lastPrivate.current.strkBtc,
             privateError: prev?.privateError ?? null,
+            privateKnown: prev?.privateKnown ?? lastPrivate.current.known,
           }));
           return;
         }
@@ -354,6 +363,9 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         let privateStrk = lastPrivate.current.strk;
         let privateStrkBtc = lastPrivate.current.strkBtc;
         let privateError: string | null = null;
+        /* Undeployed and unregistered accounts hold nothing, and zero is the
+           true answer for them. Only a read that threw leaves us guessing. */
+        let privateKnown = true;
         try {
           if (snapshot.status === "undeployed") {
             privateError =
@@ -420,6 +432,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         } catch (error) {
           if (!lastPrivate.current.known) {
             privateError = formatStrk20Error(error, "balance");
+            privateKnown = false;
           }
         } finally {
           privateInFlight.current = false;
@@ -430,6 +443,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
           privateStrk,
           privateStrkBtc,
           privateError,
+          privateKnown,
         });
       } catch {
         setBalances({
@@ -441,6 +455,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
           privateError: lastPrivate.current.known
             ? null
             : "Could not load balances",
+          privateKnown: lastPrivate.current.known,
         });
       } finally {
         if (includePrivate) setBalancesLoading(false);

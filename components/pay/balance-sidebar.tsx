@@ -30,6 +30,11 @@ export function BalanceSidebar() {
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
+  /* A failed note read leaves the amounts at their seed value. Printing that
+     zero in the same large type as a real balance is the one thing this card
+     must not do - it reads as "your money is gone" when it means "we could
+     not look". */
+  const privateUnknown = balances ? !balances.privateKnown : false;
 
   return (
     <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
@@ -110,8 +115,14 @@ export function BalanceSidebar() {
                 label="Private"
                 hint="STRK20 pool"
                 loading={loading}
-                amount={`${formatUsdc(privateUsdc)} USDC`}
-                secondaryAmount={`${formatStrk(balances?.privateStrk ?? BigInt(0))} STRK shielded`}
+                amount={
+                  privateUnknown ? "—" : `${formatUsdc(privateUsdc)} USDC`
+                }
+                secondaryAmount={
+                  privateUnknown
+                    ? "Balance not read"
+                    : `${formatStrk(balances?.privateStrk ?? BigInt(0))} STRK shielded`
+                }
                 extra={
                   balances?.privateError
                     ? balances.privateError
