@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useState } from "react";
 import { CheckIcon, CircleIcon } from "lucide-react";
 import { toast } from "sonner";
-import { useAccount, useSignMessage, useSignTypedData } from "wagmi";
+import {
+  useAccount,
+  useReadContract,
+  useSignMessage,
+  useSignTypedData,
+  useSwitchChain,
+  useWriteContract,
+} from "wagmi";
+import { waitForTransactionReceipt } from "wagmi/actions";
+import { zeroHash, type Address } from "viem";
 
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
@@ -20,12 +29,23 @@ import {
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import { parseUsdc } from "@/lib/amount";
+import { waitForAttestation } from "@/lib/cctp/attestation";
+import { starkAddressToBytes32 } from "@/lib/cctp/bytes";
+import {
+  CCTP_DOMAIN_BASE,
+  CCTP_DOMAIN_STARKNET,
+  CCTP_MIN_FINALITY_THRESHOLD,
+  erc20Abi,
+  tokenMessengerV2Abi,
+} from "@/lib/cctp/constants";
 import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import { registerEvmAccount } from "@/lib/privacy/evm-onboard-actions";
 import { poolRegistration } from "@/lib/starknet/account-status";
 import { describeError } from "@/lib/starknet/errors";
 import { formatStrk, formatUsdc, getAccountSnapshot } from "@/lib/starknet/status";
 import { shortenAddress } from "@/lib/format";
+import { wagmiConfig } from "@/lib/wagmi";
 
 /**
  * The whole way in, on one screen.
@@ -76,10 +96,23 @@ const STEPS: { id: StepId; title: string; detail: string }[] = [
 export function StartPanel() {
   const { session, evmStarknetAddress, connectEvm, evmConnecting, refreshBalances } =
     useTreasury();
-  const { network, starknet } = useNetwork();
+  const { network, starknet, cctp, baseChain } = useNetwork();
   const { address: evmAddress, chainId: evmChainId, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { signTypedDataAsync } = useSignTypedData();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
+
+  const baseUsdc = cctp.usdc as Address;
+  const messenger = cctp.tokenMessenger as Address;
+  const { data: baseBalance } = useReadContract({
+    address: baseUsdc,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: evmAddress ? [evmAddress] : undefined,
+    chainId: baseChain.id,
+    query: { enabled: Boolean(evmAddress) },
+  });
 
   const [state, setState] = useState<{
     usdc: bigint;
@@ -141,6 +174,94 @@ export function StartPanel() {
   async function run(step: StepId) {
     setError(null);
     try {
+      /* Approve, burn, wait for Circle, then hand the attestation to the
+         relayer to deliver. The last step is the reason this can be the first
+         thing a new wallet does: the mint is paid for by us, and the account
+         it credits does not have to exist yet. */
+      if (step === "bridge") {
+        if (!account) throw new Error("Still deriving your Starknet address");
+        const value = parseUsdc(amount);
+        if (!value) throw new Error("Enter a USDC amount");
+        if (baseBalance !== undefined && baseBalance < value) {
+          throw new Error(
+            `Only ${formatUsdc(baseBalance)} USDC on Base in this wallet`,
+          );
+        }
+        if (evmChainId !== baseChain.id) {
+          setBusy(`Switch to ${baseChain.name}`);
+          await switchChainAsync({ chainId: baseChain.id });
+        }
+
+        setBusy("Approve USDC on Base");
+        const approveHash = await writeContractAsync({
+          address: baseUsdc,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [messenger, value],
+          chainId: baseChain.id,
+        });
+        await waitForTransactionReceipt(wagmiConfig, {
+          hash: approveHash,
+          chainId: baseChain.id,
+        });
+
+        setBusy("Send USDC from Base");
+        const burnHash = await writeContractAsync({
+          address: messenger,
+          abi: tokenMessengerV2Abi,
+          functionName: "depositForBurn",
+          args: [
+            value,
+            CCTP_DOMAIN_STARKNET,
+            starkAddressToBytes32(account),
+            baseUsdc,
+            zeroHash,
+            BigInt(0),
+            CCTP_MIN_FINALITY_THRESHOLD,
+          ],
+          chainId: baseChain.id,
+        });
+        toast.success("Sent from Base", {
+          action: {
+            label: "Basescan",
+            onClick: () =>
+              window.open(
+                `${cctp.explorer}/tx/${burnHash}`,
+                "_blank",
+                "noopener,noreferrer",
+              ),
+          },
+        });
+        await waitForTransactionReceipt(wagmiConfig, {
+          hash: burnHash,
+          chainId: baseChain.id,
+        });
+
+        setBusy("Waiting for Circle to attest - a minute or two");
+        const attested = await waitForAttestation(burnHash, {
+          sourceDomain: CCTP_DOMAIN_BASE,
+          network,
+        });
+
+        setBusy("Delivering on Starknet");
+        const delivered = await fetch("/api/bridge/settle", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            network,
+            message: attested.message,
+            attestation: attested.attestation,
+          }),
+        });
+        const body = await delivered.json();
+        if (!delivered.ok) {
+          throw new Error(body?.error ?? "The transfer was not delivered");
+        }
+        toast.success("USDC arrived on Starknet", {
+          description: "MorokPay paid the delivery fee",
+        });
+      }
+
       if (step === "deploy") {
         if (!evmAddress) throw new Error("Connect your wallet first");
         setBusy("Confirm ownership in your wallet");
@@ -257,9 +378,12 @@ export function StartPanel() {
                   onChange={(event) => setAmount(event.target.value)}
                 />
                 <FieldDescription>
-                  Two dollars covers activation and a withdrawal later. Send it
-                  to the address above from an exchange that supports Starknet,
-                  or bridge it from Base on the Top up page.
+                  {baseBalance !== undefined
+                    ? `${formatUsdc(baseBalance)} USDC on Base in this wallet. `
+                    : ""}
+                  Two dollars covers activation and a withdrawal later. Already
+                  hold USDC on Starknet? Send it to the address above instead -
+                  this screen will notice.
                 </FieldDescription>
               </Field>
             ) : null}
@@ -315,7 +439,7 @@ export function StartPanel() {
           >
             Buy STRK with USDC
           </Button>
-        ) : current !== "bridge" && current !== "done" ? (
+        ) : current !== "done" ? (
           <Button
             type="button"
             size="lg"
@@ -325,29 +449,36 @@ export function StartPanel() {
             onClick={() => void run(current)}
           >
             {busy ? <Spinner data-icon="inline-start" /> : null}
-            {current === "deploy" ? "Create my account" : "Activate privacy"}
+            {current === "bridge"
+              ? "Send USDC from Base"
+              : current === "deploy"
+                ? "Create my account"
+                : "Activate privacy"}
           </Button>
         ) : null}
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={() => void refresh()}
-        >
-          {account ? `Recheck ${shortenAddress(account)}` : "Recheck"}
-        </Button>
-        <p className="text-center text-xs text-muted-foreground">
-          Explorer:{" "}
-          <a
-            className="underline underline-offset-4"
-            href={account ? `${starknet.explorer}/contract/${account}` : "#"}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            this account
-          </a>
-        </p>
+        {account ? (
+          <>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => void refresh()}
+            >
+              Recheck {shortenAddress(account)}
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              <a
+                className="underline underline-offset-4"
+                href={`${starknet.explorer}/contract/${account}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                See this account on Voyager
+              </a>
+            </p>
+          </>
+        ) : null}
       </CardFooter>
     </Card>
   );
