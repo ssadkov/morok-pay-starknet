@@ -116,6 +116,13 @@ type TreasuryContextValue = {
   evmConnecting: boolean;
   /** Set whenever wagmi holds a connection, session or not. */
   evmConnectedAddress: string | null;
+  /**
+   * Where a bridge should deliver. Known from the EVM address alone, so it is
+   * available before the account is deployed - which is the whole point:
+   * an ERC-20 balance needs no code at the address, so USDC can arrive first
+   * and pay for the deployment afterwards.
+   */
+  evmStarknetAddress: string | null;
   evmGate: EvmOnboardingGate | null;
   connectEvm: () => Promise<void>;
   dismissEvmGate: () => void;
@@ -179,6 +186,9 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [evmConnecting, setEvmConnecting] = useState(false);
   const [evmGate, setEvmGate] = useState<EvmOnboardingGate | null>(null);
+  const [evmStarknetAddress, setEvmStarknetAddress] = useState<string | null>(
+    null,
+  );
   const [signatureProgress, setSignatureProgress] =
     useState<SignatureProgress | null>(null);
   const [balances, setBalances] = useState<TreasuryBalances | null>(null);
@@ -223,6 +233,31 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return watchWallets((next) => setWallets(listReadyWallets(next)));
   }, []);
+
+  /* Derived from the connected address through the factory's own view, so it
+     agrees with whatever the factory would deploy rather than guessing at it. */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!connectedEvmAddress) {
+        if (!cancelled) setEvmStarknetAddress(null);
+        return;
+      }
+      try {
+        const inspection = await inspectEth712Account(
+          connectedEvmAddress,
+          new RpcProvider({ nodeUrl: starknetOf(network).rpc }),
+          privacySdkOf(network).accountFactory,
+        );
+        if (!cancelled) setEvmStarknetAddress(inspection.starknetAddress);
+      } catch {
+        if (!cancelled) setEvmStarknetAddress(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connectedEvmAddress, network]);
 
   const sessionAccount = session?.kind === "ready" ? session.account : null;
   useEffect(() => {
@@ -631,6 +666,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       connectWallet,
       evmConnecting,
       evmConnectedAddress: connectedEvmAddress ?? null,
+      evmStarknetAddress,
       evmGate,
       connectEvm,
       dismissEvmGate: () => setEvmGate(null),
@@ -650,6 +686,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       connectWallet,
       evmConnecting,
       connectedEvmAddress,
+      evmStarknetAddress,
       evmGate,
       connectEvm,
       disconnect,

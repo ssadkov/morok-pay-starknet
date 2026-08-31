@@ -66,7 +66,7 @@ const STEP_LABEL: Record<FundStep, string> = {
 };
 
 export function FundPanel() {
-  const { session, refreshBalances } = useTreasury();
+  const { session, refreshBalances, evmStarknetAddress } = useTreasury();
   const { network, starknet, cctp, baseChain } = useNetwork();
   const usdc = cctp.usdc as Address;
   const messenger = cctp.tokenMessenger as Address;
@@ -112,8 +112,14 @@ export function FundPanel() {
     query: { enabled: Boolean(address) },
   });
 
-  if (!session) return null;
-  const recipient = session;
+  /* Deliberately not gated on a session. Someone bridging for the first time
+     has no Starknet account yet - that is why they are bridging - and an
+     ERC-20 balance needs no code at the address, so the USDC can land first
+     and pay for the deployment afterwards. */
+  const derived = session?.address ?? evmStarknetAddress;
+  if (!derived) return null;
+  /* Narrowed once, so the closures below do not each have to re-prove it. */
+  const destination: string = derived;
 
   /**
    * The mint is relayed rather than submitted here, because the account it
@@ -191,7 +197,7 @@ export function FundPanel() {
         args: [
           value,
           CCTP_DOMAIN_STARKNET,
-          starkAddressToBytes32(recipient.address),
+          starkAddressToBytes32(destination),
           usdc,
           zeroHash,
           BigInt(0),
