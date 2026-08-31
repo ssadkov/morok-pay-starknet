@@ -42,6 +42,11 @@ import {
   tokenMessengerV2Abi,
 } from "@/lib/cctp/constants";
 import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
+import {
+  ONBOARDING_MIN_USDC,
+  ONBOARDING_SUGGESTED_USDC,
+  ONBOARDING_SWAP_USDC,
+} from "@/lib/privacy/onboarding-limits";
 import { registerEvmAccount } from "@/lib/privacy/evm-onboard-actions";
 import { poolRegistration } from "@/lib/starknet/account-status";
 import { describeError } from "@/lib/starknet/errors";
@@ -65,23 +70,10 @@ import { wagmiConfig } from "@/lib/wagmi";
  * the swap that buys it has to come first.
  */
 
-/** What the screen suggests bringing: activation now, a withdrawal later. */
-const MIN_USDC = BigInt(2) * BigInt(10) ** BigInt(6);
 /** The pool fee plus gas for the activation the user pays for. */
 const ACTIVATION_STRK = BigInt(11) * BigInt(10) ** BigInt(18);
 /** What a submission burns; below it the account cannot send its own swap. */
 const SWAP_GAS_STRK = BigInt(21) * BigInt(10) ** BigInt(17);
-/** Buys well over the activation at any recent price, and leaves change. */
-const SWAP_USDC = BigInt(1) * BigInt(10) ** BigInt(6);
-/**
- * Enough to carry on with, which is not the same number as the one above.
- *
- * Fast Transfer takes its fee in flight, so bringing over the suggested two
- * dollars delivers 1.99 - and gating the step on the amount that was *sent*
- * left the screen waiting forever for money that had already arrived. The
- * step is finished once there is enough to buy the activation STRK.
- */
-const USABLE_USDC = SWAP_USDC + BigInt(50_000);
 
 type StepId = "bridge" | "deploy" | "strk" | "activate" | "done";
 
@@ -137,7 +129,7 @@ export function StartPanel() {
   } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [amount, setAmount] = useState(formatUsdc(MIN_USDC));
+  const [amount, setAmount] = useState(formatUsdc(ONBOARDING_SUGGESTED_USDC));
 
   const account = session?.address ?? evmStarknetAddress;
 
@@ -202,7 +194,7 @@ export function StartPanel() {
     ? "bridge"
     : state.registered
       ? "done"
-      : state.usdc < USABLE_USDC && state.strk < ACTIVATION_STRK
+      : state.usdc < ONBOARDING_MIN_USDC && state.strk < ACTIVATION_STRK
         ? "bridge"
         : !session
           ? "deploy"
@@ -314,7 +306,7 @@ export function StartPanel() {
          drops them back at a connect button. */
       if (step === "strk") {
         if (!session || !state) throw new Error("Connect your wallet first");
-        const spend = state.usdc < SWAP_USDC ? state.usdc : SWAP_USDC;
+        const spend = state.usdc < ONBOARDING_SWAP_USDC ? state.usdc : ONBOARDING_SWAP_USDC;
         if (spend <= BigInt(0)) throw new Error("No USDC to swap");
         const hash = await swapUsdcToStrk({
           network,

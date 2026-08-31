@@ -7,6 +7,7 @@ import {
   inspectEth712Account,
 } from "@/lib/privacy/eth712-account";
 import { privacySdkOf } from "@/lib/privacy/network";
+import { ONBOARDING_MIN_USDC } from "@/lib/privacy/onboarding-limits";
 import {
   parseWholeStrk,
   readPublicStrkBalance,
@@ -26,12 +27,6 @@ const DEFAULT_SPONSORED_BALANCE = 20n * 10n ** 18n;
  * an account that visibly cannot afford the registration step right after it.
  */
 const DEFAULT_MAINNET_MIN_DEPLOY_STRK = 15n * 10n ** 18n;
-/**
- * The alternative to holding STRK: enough bridged USDC to buy some. Two
- * dollars covers a swap, an activation and a withdrawal with room over, and
- * anything less is not worth deploying an account for.
- */
-const MAINNET_MIN_DEPLOY_USDC = 2n * 10n ** 6n;
 
 async function readPublicUsdcBalance(
   provider: RpcProvider,
@@ -160,10 +155,10 @@ export async function POST(request: Request) {
         chain.usdc,
         inspection.starknetAddress,
       );
-      if (balance < minimum && usdcBalance < MAINNET_MIN_DEPLOY_USDC) {
+      if (balance < minimum && usdcBalance < ONBOARDING_MIN_USDC) {
         return Response.json(
           {
-            error: `Fund ${inspection.starknetAddress} with at least ${(Number(minimum) / 1e18).toFixed(0)} public STRK, or bridge at least ${(Number(MAINNET_MIN_DEPLOY_USDC) / 1e6).toFixed(0)} USDC to it, before deploying.`,
+            error: `Fund ${inspection.starknetAddress} with at least ${(Number(minimum) / 1e18).toFixed(0)} public STRK, or bridge at least ${(Number(ONBOARDING_MIN_USDC) / 1e6).toFixed(2)} USDC to it, before deploying.`,
           },
           { status: 409 },
         );
