@@ -3,16 +3,26 @@ import { describe, expect, it } from "vitest";
 import { privacyKeyTypedData, signatureFingerprint } from "./eip712-test";
 
 describe("privacyKeyTypedData", () => {
-  it("binds the derivation request to the EVM account and chain", () => {
+  it("leaves the chain out so any network can sign it", () => {
+    /* A `chainId` in the domain is enforced by the wallet, so pinning one
+       makes the signature unobtainable everywhere else - which broke both
+       activation and every later read. */
+    const data = privacyKeyTypedData({
+      evmAddress: "0x1111111111111111111111111111111111111111",
+    });
+    expect(data.domain).toEqual({
+      name: "MorokPay Privacy Access",
+      version: "1",
+    });
+    expect(data.domain).not.toHaveProperty("chainId");
+  });
+
+  it("still carries a chain id when asked to read a legacy account", () => {
     const data = privacyKeyTypedData({
       evmAddress: "0x1111111111111111111111111111111111111111",
       evmChainId: 11155111,
     });
-    expect(data.domain).toMatchObject({
-      name: "MorokPay Privacy Access",
-      version: "1",
-      chainId: 11155111,
-    });
+    expect(data.domain).toMatchObject({ chainId: 11155111 });
     expect(data.message.evmAccount).toBe(
       "0x1111111111111111111111111111111111111111",
     );
