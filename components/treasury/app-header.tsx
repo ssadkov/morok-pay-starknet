@@ -25,6 +25,7 @@ import { shortenAddress } from "@/lib/format";
 import type { AppNetwork } from "@/lib/network";
 
 const NAV = [
+  { href: "/start", label: "Start" },
   { href: "/pay", label: "Donate" },
   { href: "/sell", label: "My QR" },
   { href: "/swap", label: "Get STRK" },

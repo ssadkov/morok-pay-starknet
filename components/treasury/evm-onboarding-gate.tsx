@@ -39,6 +39,8 @@ type Phase =
 
 /** Enough for the pool fee plus gas for the registration that follows. */
 const MAINNET_MINIMUM_STRK = BigInt(15) * BigInt(10) ** BigInt(18);
+/** Or this much bridged USDC, which buys the STRK the next step needs. */
+const MAINNET_MINIMUM_USDC = BigInt(2) * BigInt(10) ** BigInt(6);
 
 export function EvmOnboardingGate() {
   const { evmGate, dismissEvmGate, connectEvm } = useTreasury();
@@ -89,14 +91,18 @@ export function EvmOnboardingGate() {
 
     try {
       if (needsDeploy) {
-        /* Mainnet never sponsors, so refuse early with the number rather than
-           letting the server reject after a wallet signature. */
+        /* Refuse early with the number rather than after a wallet signature -
+           but USDC unlocks the deploy too, so read both before deciding, the
+           same way the server does. */
         if (isMainnet) {
           const snapshot = await getAccountSnapshot(accountAddress, network);
-          if (snapshot.strkWei < MAINNET_MINIMUM_STRK) {
+          if (
+            snapshot.strkWei < MAINNET_MINIMUM_STRK &&
+            snapshot.usdcRaw < MAINNET_MINIMUM_USDC
+          ) {
             setPhase({
               kind: "failed",
-              message: `This account holds ${formatStrk(snapshot.strkWei)} STRK. Send at least ${formatStrk(MAINNET_MINIMUM_STRK)} to the address above, then try again - on mainnet MorokPay does not fund it for you.`,
+              message: `This account holds ${formatStrk(snapshot.strkWei)} STRK and no bridged USDC. Send at least ${formatStrk(MAINNET_MINIMUM_STRK)} STRK to the address above, or bridge USDC to it, then try again.`,
             });
             return;
           }
