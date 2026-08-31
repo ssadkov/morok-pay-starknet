@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { CheckIcon, CircleIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -512,12 +513,36 @@ export function StartPanel() {
               })}
             </ol>
 
+            {/* Naming the next pages was not the same as offering them: the
+                last step of the way in used to end on a sentence, leaving
+                someone who had just finished to find the nav themselves. */}
             {current === "done" ? (
               <Alert>
                 <AlertTitle>Ready</AlertTitle>
-                <AlertDescription>
-                  This account can receive private USDC. Create a donation QR on
-                  My QR, or open someone else&apos;s link to pay one.
+                <AlertDescription className="flex flex-col gap-3">
+                  <span>
+                    This account can receive private USDC. Publish a donation
+                    QR of your own, or open someone else&apos;s link to pay it.
+                  </span>
+                  <span className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      nativeButton={false}
+                      render={<Link href="/sell" />}
+                    >
+                      Create my donation QR
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      nativeButton={false}
+                      render={<Link href="/pay" />}
+                    >
+                      Pay someone
+                    </Button>
+                  </span>
                 </AlertDescription>
               </Alert>
             ) : null}

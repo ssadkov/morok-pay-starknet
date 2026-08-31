@@ -221,13 +221,25 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     sessionRef.current = session;
   }, [session]);
 
+  /**
+   * A different account ends the session. A different network does not.
+   *
+   * Switching networks used to drop the session outright, which our own
+   * onboarding then walked straight into: the bridge step switches the wallet
+   * to Base, and someone who connected on another network was disconnected in
+   * the middle of getting in. Only the account object depends on the chain id
+   * - it goes into the EIP-712 domain of everything this account signs, so a
+   * stale one would be refused by the wallet - so that is rebuilt and the rest
+   * of the session stays. The cached viewing key lives in the replaced closure
+   * and goes with it; the next private read asks for that signature again,
+   * which costs a prompt and derives the same key either way.
+   */
   useEffect(() => {
     if (session?.kind !== "evm") return;
     if (
       !connectedEvmAddress ||
       !connectedEvmChainId ||
-      connectedEvmAddress.toLowerCase() !== session.evmAddress.toLowerCase() ||
-      connectedEvmChainId !== session.evmChainId
+      connectedEvmAddress.toLowerCase() !== session.evmAddress.toLowerCase()
     ) {
       const clear = window.setTimeout(() => {
         setSession(null);
@@ -235,7 +247,35 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       }, 0);
       return () => window.clearTimeout(clear);
     }
-  }, [connectedEvmAddress, connectedEvmChainId, session]);
+    if (connectedEvmChainId === session.evmChainId) return;
+    const evmChainId = connectedEvmChainId;
+    const clear = window.setTimeout(() => {
+      setSession((previous) =>
+        previous?.kind === "evm"
+          ? {
+              ...previous,
+              evmChainId,
+              account: createEvmStrk20Account({
+                starknetAddress: previous.address,
+                evmAddress: previous.evmAddress,
+                evmChainId,
+                network,
+                signTypedData: (typedData) =>
+                  signTypedDataAsync(typedData as never),
+                onSignatureProgress: setSignatureProgress,
+              }),
+            }
+          : previous,
+      );
+    }, 0);
+    return () => window.clearTimeout(clear);
+  }, [
+    connectedEvmAddress,
+    connectedEvmChainId,
+    network,
+    session,
+    signTypedDataAsync,
+  ]);
 
   useEffect(() => {
     return watchWallets((next) => setWallets(listReadyWallets(next)));
@@ -470,7 +510,17 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       void refreshBalances({ private: true });
     }, 0);
     const timer = window.setInterval(() => {
-      void refreshBalances({ private: false });
+      /* Private too, but only where asking is free. An EVM session caches its
+         viewing key in the account closure, so re-reading notes prompts for
+         nothing; Ready X asks the wallet every single time, and polling it
+         would be a popup every twenty seconds. The `known` guard keeps a
+         dismissed first signature from being asked for again on a timer.
+         Without this an arriving donation is invisible until the recipient
+         thinks to press refresh. */
+      void refreshBalances({
+        private:
+          sessionRef.current?.kind === "evm" && lastPrivate.current.known,
+      });
     }, 20_000);
     return () => {
       window.clearTimeout(initial);

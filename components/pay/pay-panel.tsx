@@ -7,6 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardPasteIcon, CopyIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -609,7 +610,7 @@ export function PayPanel() {
                           size="lg"
                           className="min-h-12"
                           nativeButton={false}
-                          render={<a href="/treasury" />}
+                          render={<Link href="/treasury" />}
                         >
                           Top up from Base
                         </Button>
