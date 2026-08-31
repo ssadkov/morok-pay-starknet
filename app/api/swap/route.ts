@@ -9,6 +9,7 @@ import {
   PaymasterError,
 } from "@/lib/avnu/paymaster";
 import { parseAppNetwork, type AppNetwork } from "@/lib/network";
+import { ONBOARDING_SWAP_GAS_USDC } from "@/lib/privacy/onboarding-limits";
 import { STRK_ADDRESS, starknetOf } from "@/lib/starknet/constants";
 
 /**
@@ -104,7 +105,9 @@ export async function POST(request: Request) {
         accountAddress: takerAddress,
         calls,
         gasToken: chain.usdc,
-        maxGasTokenAmount: BigInt(String(body.maxGasTokenAmount ?? "1000000")),
+        maxGasTokenAmount: BigInt(
+          String(body.maxGasTokenAmount ?? ONBOARDING_SWAP_GAS_USDC),
+        ),
       });
       return Response.json(composed);
     }

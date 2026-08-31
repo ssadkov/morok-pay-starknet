@@ -45,6 +45,7 @@ import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import {
   ONBOARDING_MIN_USDC,
   ONBOARDING_SUGGESTED_USDC,
+  ONBOARDING_SWAP_GAS_USDC,
   ONBOARDING_SWAP_USDC,
 } from "@/lib/privacy/onboarding-limits";
 import { registerEvmAccount } from "@/lib/privacy/evm-onboard-actions";
@@ -143,7 +144,11 @@ export function StartPanel() {
       const next = {
         usdc: snapshot.usdcRaw,
         strk: snapshot.strkWei,
-        deployed: Boolean(session) || snapshot.strkWei > BigInt(0),
+        /* Read from the class hash at the address, not inferred from holding
+           STRK. An account that arrived over the bridge holds USDC and zero
+           STRK, so the old guess said "not deployed" about an account that had
+           just been deployed - and the step sat spinning until a reload. */
+        deployed: snapshot.status === "deployed",
         registered: registration === "registered",
       };
       setState(next);
@@ -152,7 +157,7 @@ export function StartPanel() {
       setState(null);
       return null;
     }
-  }, [account, network, session]);
+  }, [account, network]);
 
   /**
    * A step finishes when the chain says so, not when the wallet stops talking.
@@ -306,13 +311,26 @@ export function StartPanel() {
          drops them back at a connect button. */
       if (step === "strk") {
         if (!session || !state) throw new Error("Connect your wallet first");
-        const spend = state.usdc < ONBOARDING_SWAP_USDC ? state.usdc : ONBOARDING_SWAP_USDC;
-        if (spend <= BigInt(0)) throw new Error("No USDC to swap");
+        const gasless = session.kind === "evm" && state.strk < SWAP_GAS_STRK;
+        /* The paymaster bills the same USDC the swap is spending, so what is
+           sold and what pays to submit it come out of one balance and have to
+           fit in it together. Selling a flat dollar out of a 1.99 balance left
+           less behind than the gas ceiling, and the paymaster refused to relay
+           a transaction the account could not visibly cover. */
+        const gasBudget = gasless ? ONBOARDING_SWAP_GAS_USDC : BigInt(0);
+        const spare = state.usdc > gasBudget ? state.usdc - gasBudget : BigInt(0);
+        const spend = spare < ONBOARDING_SWAP_USDC ? spare : ONBOARDING_SWAP_USDC;
+        if (spend <= BigInt(0)) {
+          throw new Error(
+            "Not enough USDC left to buy STRK and pay for the swap.",
+          );
+        }
         const hash = await swapUsdcToStrk({
           network,
           session: { address: session.address, kind: session.kind, account: session.account },
           sellAmount: spend,
-          gasless: session.kind === "evm" && state.strk < SWAP_GAS_STRK,
+          gasless,
+          gasBudget,
           onProgress: setBusy,
         });
         toast.success("Bought STRK", {

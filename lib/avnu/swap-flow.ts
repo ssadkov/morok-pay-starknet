@@ -66,6 +66,12 @@ export async function swapUsdcToStrk(args: {
   session: SwapExecutor;
   sellAmount: bigint;
   gasless: boolean;
+  /**
+   * Ceiling for what the paymaster may bill, in the sell token. Left unset it
+   * falls back to the router's default, which is only safe when the account
+   * holds comfortably more than it is selling.
+   */
+  gasBudget?: bigint;
   onProgress?: (step: string) => void;
 }): Promise<string> {
   const progress = args.onProgress ?? (() => {});
@@ -108,6 +114,7 @@ export async function swapUsdcToStrk(args: {
     network: args.network,
     takerAddress: args.session.address,
     calls,
+    maxGasTokenAmount: args.gasBudget?.toString(),
   });
 
   progress("Approve the gasless swap");

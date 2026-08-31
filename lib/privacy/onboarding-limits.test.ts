@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   ONBOARDING_MIN_USDC,
   ONBOARDING_SUGGESTED_USDC,
+  ONBOARDING_SWAP_GAS_USDC,
   ONBOARDING_SWAP_USDC,
   bridgeDeliversAtLeast,
 } from "./onboarding-limits";
@@ -16,8 +17,12 @@ describe("onboarding USDC limits", () => {
     );
   });
 
-  it("requires enough to actually buy the activation STRK", () => {
-    expect(ONBOARDING_MIN_USDC).toBeGreaterThanOrEqual(ONBOARDING_SWAP_USDC);
+  it("requires enough for the swap and the gas that submits it", () => {
+    /* The paymaster bills the same USDC the swap spends. Requiring only the
+       swap left the account a cent short of what the paymaster had to see. */
+    expect(ONBOARDING_MIN_USDC).toBeGreaterThanOrEqual(
+      ONBOARDING_SWAP_USDC + ONBOARDING_SWAP_GAS_USDC,
+    );
   });
 
   it("suggests more than it requires", () => {

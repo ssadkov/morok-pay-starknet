@@ -21,10 +21,21 @@ import { cctpFastMaxFee } from "@/lib/cctp/constants";
 export const ONBOARDING_SWAP_USDC = BigInt(1_000_000);
 
 /**
- * Enough to carry on with: the swap, plus change for its rounding. This is
- * what every gate checks - not what the user was asked to send.
+ * The ceiling the paymaster may charge for relaying that swap.
+ *
+ * It bills in the same USDC the swap is spending, so the two are drawn from
+ * one balance and have to fit in it together. A ceiling is not a price - the
+ * actual gas is a fraction of this - but the paymaster has to see the account
+ * cover the ceiling before it will agree to relay at all.
  */
-export const ONBOARDING_MIN_USDC = ONBOARDING_SWAP_USDC + BigInt(50_000);
+export const ONBOARDING_SWAP_GAS_USDC = BigInt(350_000);
+
+/**
+ * Enough to carry on with: the swap and the gas that submits it. This is what
+ * every gate checks - not what the user was asked to send.
+ */
+export const ONBOARDING_MIN_USDC =
+  ONBOARDING_SWAP_USDC + ONBOARDING_SWAP_GAS_USDC;
 
 /**
  * What the screen suggests bringing over. Larger than the requirement on
