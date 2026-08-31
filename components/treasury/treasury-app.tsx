@@ -1,7 +1,6 @@
 "use client";
 
 import { TestnetHint } from "@/components/pay/testnet-hint";
-import { AccountCard } from "@/components/treasury/account-card";
 import { ConnectPanel } from "@/components/treasury/connect-panel";
 import { FlowSteps } from "@/components/treasury/flow-steps";
 import { useNetwork } from "@/components/network-provider";
@@ -46,7 +45,6 @@ export function TreasuryApp() {
       ) : (
         <>
           {!connected ? <ConnectPanel /> : null}
-          {connected ? <AccountCard /> : null}
         </>
       )}
       <section className="flex flex-col gap-4" aria-labelledby="flow-heading">
