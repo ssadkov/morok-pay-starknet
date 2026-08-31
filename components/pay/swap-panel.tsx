@@ -20,6 +20,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseTokenAmount } from "@/lib/amount";
+import { swapUsdcToStrk } from "@/lib/avnu/swap-flow";
 import { describeError } from "@/lib/starknet/errors";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
@@ -109,46 +110,6 @@ export function SwapPanel() {
     }
   }
 
-  /**
-   * The whole point of the gasless path: the account being funded is the one
-   * that cannot pay, so it signs an intent and AVNU submits it, charging the
-   * gas to the USDC being swapped. Only the EVM rail can do this - Ready X
-   * signs Starknet-native, and this account validates an Ethereum signature.
-   */
-  async function sponsored(calls: unknown[]) {
-    if (!session || session.kind !== "evm") {
-      throw new Error("Gasless swaps need an EVM wallet.");
-    }
-    const built = await fetch("/api/swap", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "sponsor",
-        network,
-        takerAddress: session.address,
-        calls,
-      }),
-    });
-    const body = await built.json();
-    if (!built.ok) throw new Error(body?.error ?? "The paymaster refused this");
-
-    const signed = await session.account.signOutsideExecution(body.intent);
-    const sent = await fetch("/api/swap", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "submit",
-        network,
-        takerAddress: session.address,
-        typedData: signed.typedData,
-        signature: signed.signature,
-      }),
-    });
-    const result = await sent.json();
-    if (!sent.ok) throw new Error(result?.error ?? "The paymaster would not submit");
-    return String(result.transactionHash ?? "");
-  }
-
   async function swap() {
     if (!session) return;
     setSwapping(true);
@@ -159,30 +120,16 @@ export function SwapPanel() {
         throw new Error(`Only ${formatUsdc(publicUsdc)} public USDC is available`);
       }
 
-      const fresh = await ask(sellAmount);
-      const built = await fetch("/api/swap", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          action: "build",
-          network,
-          quoteId: fresh.quoteId,
-          takerAddress: session.address,
-          slippage: 0.01,
-        }),
+      const hash = await swapUsdcToStrk({
+        network,
+        session: {
+          address: session.address,
+          kind: session.kind,
+          account: session.account,
+        },
+        sellAmount,
+        gasless,
       });
-      const body = await built.json();
-      if (!built.ok) throw new Error(body?.error ?? "AVNU would not build this swap");
-
-      const hash = gasless
-        ? await sponsored(body.calls)
-        : String(
-            (
-              (await session.account.execute(body.calls)) as {
-                transaction_hash?: string;
-              }
-            ).transaction_hash ?? "",
-          );
       toast.success(`Swapped ${formatUsdc(sellAmount)} USDC for STRK`, {
         action: hash
           ? {

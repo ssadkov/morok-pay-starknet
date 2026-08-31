@@ -30,6 +30,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
+import { swapUsdcToStrk } from "@/lib/avnu/swap-flow";
 import { waitForAttestation } from "@/lib/cctp/attestation";
 import { starkAddressToBytes32 } from "@/lib/cctp/bytes";
 import {
@@ -68,6 +69,10 @@ import { wagmiConfig } from "@/lib/wagmi";
 const MIN_USDC = BigInt(2) * BigInt(10) ** BigInt(6);
 /** The pool fee plus gas for the activation the user pays for. */
 const ACTIVATION_STRK = BigInt(11) * BigInt(10) ** BigInt(18);
+/** What a submission burns; below it the account cannot send its own swap. */
+const SWAP_GAS_STRK = BigInt(21) * BigInt(10) ** BigInt(17);
+/** Buys well over the activation at any recent price, and leaves change. */
+const SWAP_USDC = BigInt(1) * BigInt(10) ** BigInt(6);
 
 type StepId = "bridge" | "deploy" | "strk" | "activate" | "done";
 
@@ -269,6 +274,36 @@ export function StartPanel() {
         });
       }
 
+      /* Runs here rather than sending the reader to Get STRK. It is the same
+         call either way, and a page change at this point loses the session and
+         drops them back at a connect button. */
+      if (step === "strk") {
+        if (!session || !state) throw new Error("Connect your wallet first");
+        const spend = state.usdc < SWAP_USDC ? state.usdc : SWAP_USDC;
+        if (spend <= BigInt(0)) throw new Error("No USDC to swap");
+        const hash = await swapUsdcToStrk({
+          network,
+          session: { address: session.address, kind: session.kind, account: session.account },
+          sellAmount: spend,
+          gasless: session.kind === "evm" && state.strk < SWAP_GAS_STRK,
+          onProgress: setBusy,
+        });
+        toast.success("Bought STRK", {
+          action: hash
+            ? {
+                label: "Voyager",
+                onClick: () =>
+                  window.open(
+                    `${starknet.explorer}/tx/${hash}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  ),
+              }
+            : undefined,
+        });
+        await refreshBalances({ private: false });
+      }
+
       if (step === "deploy") {
         if (!evmAddress) throw new Error("Connect your wallet first");
         setBusy("Confirm ownership in your wallet");
@@ -310,16 +345,7 @@ export function StartPanel() {
   }
 
   const action =
-    current === "done" ? null : current === "strk" ? (
-      <Button
-        nativeButton={false}
-        size="lg"
-        className="min-h-12 w-full"
-        render={<a href="/swap" />}
-      >
-        Buy STRK with USDC
-      </Button>
-    ) : (
+    current === "done" ? null : (
       <Button
         type="button"
         size="lg"
@@ -333,7 +359,9 @@ export function StartPanel() {
           ? "Send USDC from Base"
           : current === "deploy"
             ? "Create my account"
-            : "Activate privacy"}
+            : current === "strk"
+              ? "Buy STRK with USDC"
+              : "Activate privacy"}
       </Button>
     );
 
