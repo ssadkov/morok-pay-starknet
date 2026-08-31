@@ -8,24 +8,31 @@ rescales to however many people finish.
 
 ## Dates
 
-The STRK20 Private Sprint closes **2026-09-01 00:00 UTC** (read off the live
-countdown on <https://strk20.starknet.io/hackathon> at 2026-08-29 19:18 UTC).
-Every contest date is set backwards from that, so the contest produces sprint
-evidence instead of finishing after the sprint has already been judged.
+StarkWare extended the sprint by seven days on 2026-08-31 (announced in the
+builders' Telegram group by Starkience | StarkWare): the new deadline is
+**Monday 2026-09-07**. No hour was given, so every date below is set backwards
+from 2026-09-07 **00:00 UTC** - the earliest reading, which is the only safe
+one. Re-read the live countdown on <https://strk20.starknet.io/hackathon>
+before the close and move the dates *later* if it turns out to be generous;
+never plan against the generous reading.
 
 | When (UTC) | What |
 | --- | --- |
-| 2026-08-30 | Announcement posted, entries open |
-| **2026-08-31 15:00** | **Entries close.** Entry list frozen, its hash published |
-| 2026-08-31 ~15:05 | Seed published: the first Starknet mainnet block after the close |
-| 2026-08-31 by 20:00 | Allocation published, all payouts sent |
-| 2026-08-31 by 22:00 | Payout tx hashes recorded in `strk20.json` |
-| 2026-09-01 00:00 | Sprint closes |
+| 2026-08-31 | Announcement posted, entries open |
+| **2026-09-05 15:00** | **Entries close.** Entry list frozen, its hash published |
+| 2026-09-05 ~15:05 | Seed published: the first Starknet mainnet block after the close |
+| 2026-09-05 by 20:00 | Allocation published, all payouts sent |
+| 2026-09-05 by 22:00 | Payout tx hashes recorded in `strk20.json` |
+| 2026-09-07 00:00 | Sprint closes (earliest safe reading) |
 
-The nine-hour gap between close and sprint close is not slack for its own
-sake. Each payout is a first-time donation to a QR nobody has paid before, so
-each one is a separate relayed transaction sent one at a time through the app
-(see Cost, below); seven of those plus the write-up needs hours, not minutes.
+The gap between close and sprint close was nine hours on the original
+schedule, which was tight to the point of reckless: each payout is a
+first-time donation to a QR nobody has paid before, so each is a separate
+relayed transaction sent one at a time through the app (see Cost, below), and
+seven of those plus the write-up needs hours. The extension spends most of its
+gift on entry time - six days instead of fifteen hours, which is the
+difference between a field that exists and a field that does not - and keeps
+**a full spare day** at the end for the payout run to go wrong once.
 
 ## Offer
 
@@ -117,7 +124,10 @@ cannot be paid.
 
 Batching several payouts into one `apply_actions` would cut the pool fee
 dramatically, but it has never been demonstrated on Sepolia, and the app pays
-one QR at a time. Do not budget as if batching works.
+one QR at a time. Do not budget as if batching works. The extension makes it
+worth *trying* on Sepolia before the close - 63 STRK of pool fee to move $20
+is the single worst number in this document - but the budget above stands
+until a Sepolia transaction says otherwise.
 
 ## Execution boundary
 
