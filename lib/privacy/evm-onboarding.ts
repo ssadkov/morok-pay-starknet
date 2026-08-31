@@ -4,12 +4,28 @@ import {
 } from "@/lib/privacy/eth712-account";
 import type { PoolRegistration } from "@/lib/starknet/account-status";
 
+/**
+ * Three states, not two, because the middle one is where the whole bridged
+ * path lives.
+ *
+ * A deployed account on the right class can already do everything public -
+ * receive a bridged transfer, swap USDC for the STRK its activation will cost,
+ * send funds out. None of that touches the pool. Treating it as "not ready"
+ * locked those out behind the very registration they exist to pay for, which
+ * left someone arriving with only USDC unable to reach any of it.
+ */
 export type EvmReadiness =
   | { status: "ready"; starknetAddress: string }
   | {
+      status: "partial";
+      starknetAddress: string;
+      reason: "unregistered";
+      message: string;
+    }
+  | {
       status: "onboarding";
       starknetAddress: string;
-      reason: "undeployed" | "upgrade" | "unregistered" | "unsupported";
+      reason: "undeployed" | "upgrade" | "unsupported";
       message: string;
     };
 
@@ -41,7 +57,7 @@ export function classifyEvmReadiness(
   }
   if (registration !== "registered") {
     return {
-      status: "onboarding",
+      status: "partial",
       starknetAddress: inspection.starknetAddress,
       reason: "unregistered",
       message:

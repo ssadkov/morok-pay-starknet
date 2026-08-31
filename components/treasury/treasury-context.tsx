@@ -71,6 +71,13 @@ export type EvmSession = {
   chainId: string;
   evmAddress: string;
   evmChainId: number;
+  /**
+   * False while the account is deployed but not registered in the pool. It can
+   * still hold, receive, swap and send in public; nothing private will work
+   * until it activates, and the pool would reject it with an error nobody can
+   * read.
+   */
+  privacyReady: boolean;
 };
 
 export type TreasurySession = ReadySession | EvmSession;
@@ -109,6 +116,13 @@ type TreasuryContextValue = {
   evmConnecting: boolean;
   /** Set whenever wagmi holds a connection, session or not. */
   evmConnectedAddress: string | null;
+  /**
+   * Where a bridge should deliver. Known from the EVM address alone, so it is
+   * available before the account is deployed - which is the whole point:
+   * an ERC-20 balance needs no code at the address, so USDC can arrive first
+   * and pay for the deployment afterwards.
+   */
+  evmStarknetAddress: string | null;
   evmGate: EvmOnboardingGate | null;
   connectEvm: () => Promise<void>;
   dismissEvmGate: () => void;
@@ -172,6 +186,9 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   const [connectError, setConnectError] = useState<string | null>(null);
   const [evmConnecting, setEvmConnecting] = useState(false);
   const [evmGate, setEvmGate] = useState<EvmOnboardingGate | null>(null);
+  const [evmStarknetAddress, setEvmStarknetAddress] = useState<string | null>(
+    null,
+  );
   const [signatureProgress, setSignatureProgress] =
     useState<SignatureProgress | null>(null);
   const [balances, setBalances] = useState<TreasuryBalances | null>(null);
@@ -216,6 +233,31 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     return watchWallets((next) => setWallets(listReadyWallets(next)));
   }, []);
+
+  /* Derived from the connected address through the factory's own view, so it
+     agrees with whatever the factory would deploy rather than guessing at it. */
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      if (!connectedEvmAddress) {
+        if (!cancelled) setEvmStarknetAddress(null);
+        return;
+      }
+      try {
+        const inspection = await inspectEth712Account(
+          connectedEvmAddress,
+          new RpcProvider({ nodeUrl: starknetOf(network).rpc }),
+          privacySdkOf(network).accountFactory,
+        );
+        if (!cancelled) setEvmStarknetAddress(inspection.starknetAddress);
+      } catch {
+        if (!cancelled) setEvmStarknetAddress(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [connectedEvmAddress, network]);
 
   const sessionAccount = session?.kind === "ready" ? session.account : null;
   useEffect(() => {
@@ -477,6 +519,16 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         });
         return;
       }
+      /* A partial account still gets a session - it can swap and receive a
+         bridge - but the gate goes up too, since activating is the next thing
+         it needs and there would otherwise be nowhere to start it from. */
+      if (readiness.status === "partial") {
+        setEvmGate({
+          address: readiness.starknetAddress,
+          reason: readiness.reason,
+          message: readiness.message,
+        });
+      }
 
       const account = createEvmStrk20Account({
         starknetAddress: readiness.starknetAddress,
@@ -493,6 +545,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         chainId: sdk.snChainName,
         evmAddress,
         evmChainId,
+        privacyReady: readiness.status === "ready",
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not connect EVM wallet";
@@ -544,8 +597,12 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
             inspection.starknetAddress,
           );
           const readiness = classifyEvmReadiness(inspection, registration);
-          // Onboarding is an interactive flow; only restore a finished account.
-          if (readiness.status !== "ready" || cancelled) return;
+          /* Onboarding is an interactive flow, so a reload never resumes one.
+             A partial account is not mid-flow though - it is deployed and can
+             work in public - so it restores like any other, silently and
+             without raising the gate at somebody who only came back to look at
+             a balance. */
+          if (readiness.status === "onboarding" || cancelled) return;
           setSession({
             kind: "evm",
             account: createEvmStrk20Account({
@@ -560,6 +617,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
             chainId: sdk.snChainName,
             evmAddress: connectedEvmAddress!,
             evmChainId: connectedEvmChainId!,
+            privacyReady: readiness.status === "ready",
           });
         } catch {
           // Leave the app disconnected; the Connect buttons still work.
@@ -608,6 +666,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       connectWallet,
       evmConnecting,
       evmConnectedAddress: connectedEvmAddress ?? null,
+      evmStarknetAddress,
       evmGate,
       connectEvm,
       dismissEvmGate: () => setEvmGate(null),
@@ -627,6 +686,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
       connectWallet,
       evmConnecting,
       connectedEvmAddress,
+      evmStarknetAddress,
       evmGate,
       connectEvm,
       disconnect,

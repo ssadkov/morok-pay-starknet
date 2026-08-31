@@ -20,7 +20,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 
 export function BalanceSidebar() {
-  const { session, balances, balancesLoading, refreshBalances } = useTreasury();
+  const { session, balances, balancesLoading, refreshBalances, connectEvm } =
+    useTreasury();
+  /* Deployed but not registered: everything public works, nothing private
+     does. Re-running the connect check is what raises the activation flow, so
+     this is a way back to it rather than a second copy of it. */
+  const needsActivation = session?.kind === "evm" && !session.privacyReady;
   const loading = balancesLoading && !balances;
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
@@ -61,6 +66,25 @@ export function BalanceSidebar() {
           </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
+          {needsActivation ? (
+            <div className="flex flex-col gap-2 rounded-xl bg-muted/40 px-3 py-3 ring-1 ring-foreground/10">
+              <p className="text-sm font-medium">Privacy is not activated</p>
+              <p className="text-xs text-muted-foreground">
+                This account can hold, swap and send in public. Receiving
+                privately needs a one-time activation, paid in STRK.
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="self-start"
+                onClick={() => void connectEvm()}
+              >
+                Activate privacy
+              </Button>
+            </div>
+          ) : null}
+
           {!session ? (
             <p className="text-sm text-muted-foreground">
               Connect Ready X or an EVM wallet to see balances.

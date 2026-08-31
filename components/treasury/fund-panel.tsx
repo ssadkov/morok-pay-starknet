@@ -36,7 +36,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
 import { waitForAttestation } from "@/lib/cctp/attestation";
-import { receiveMessageCall, starkAddressToBytes32 } from "@/lib/cctp/bytes";
+import { starkAddressToBytes32 } from "@/lib/cctp/bytes";
 import {
   CCTP_DOMAIN_BASE,
   CCTP_DOMAIN_STARKNET,
@@ -66,7 +66,7 @@ const STEP_LABEL: Record<FundStep, string> = {
 };
 
 export function FundPanel() {
-  const { session, refreshBalances } = useTreasury();
+  const { session, refreshBalances, evmStarknetAddress } = useTreasury();
   const { network, starknet, cctp, baseChain } = useNetwork();
   const usdc = cctp.usdc as Address;
   const messenger = cctp.tokenMessenger as Address;
@@ -112,21 +112,39 @@ export function FundPanel() {
     query: { enabled: Boolean(address) },
   });
 
-  if (!session || session.kind !== "ready") return null;
-  const ready = session;
+  /* Deliberately not gated on a session. Someone bridging for the first time
+     has no Starknet account yet - that is why they are bridging - and an
+     ERC-20 balance needs no code at the address, so the USDC can land first
+     and pay for the deployment afterwards. */
+  const derived = session?.address ?? evmStarknetAddress;
+  if (!derived) return null;
+  /* Narrowed once, so the closures below do not each have to re-prove it. */
+  const destination: string = derived;
 
+  /**
+   * The mint is relayed rather than submitted here, because the account it
+   * credits is by definition one that holds nothing on Starknet yet - asking
+   * it to pay a fee first is asking for the thing the bridge exists to
+   * deliver. MorokPay pays the gas; the recipient was fixed on Base and
+   * nothing here can redirect it.
+   */
   async function mintOnStarknet(message: string, attestation: string) {
     setStep("minting");
-    const response = await ready.account.execute(
-      receiveMessageCall(message, attestation, starknet.messageTransmitter),
-    );
-    toast.success("USDC minted on Starknet", {
-      description: response.transaction_hash,
+    const response = await fetch("/api/bridge/settle", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ network, message, attestation }),
+    });
+    const body = await response.json();
+    if (!response.ok) throw new Error(body?.error ?? "The transfer was not delivered");
+
+    toast.success("USDC delivered on Starknet", {
+      description: "MorokPay paid the fee for this step",
       action: {
         label: "Voyager",
         onClick: () =>
           window.open(
-            `${starknet.explorer}/tx/${response.transaction_hash}`,
+            `${starknet.explorer}/tx/${body.transactionHash}`,
             "_blank",
             "noopener,noreferrer",
           ),
@@ -179,7 +197,7 @@ export function FundPanel() {
         args: [
           value,
           CCTP_DOMAIN_STARKNET,
-          starkAddressToBytes32(ready.address),
+          starkAddressToBytes32(destination),
           usdc,
           zeroHash,
           BigInt(0),
