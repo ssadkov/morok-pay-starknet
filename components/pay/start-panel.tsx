@@ -35,7 +35,8 @@ import { starkAddressToBytes32 } from "@/lib/cctp/bytes";
 import {
   CCTP_DOMAIN_BASE,
   CCTP_DOMAIN_STARKNET,
-  CCTP_MIN_FINALITY_THRESHOLD,
+  CCTP_FINALITY_FAST,
+  cctpFastMaxFee,
   erc20Abi,
   tokenMessengerV2Abi,
 } from "@/lib/cctp/constants";
@@ -182,6 +183,12 @@ export function StartPanel() {
         if (!account) throw new Error("Still deriving your Starknet address");
         const value = parseUsdc(amount);
         if (!value) throw new Error("Enter a USDC amount");
+        const maxFee = cctpFastMaxFee(value);
+        if (value <= maxFee * BigInt(2)) {
+          throw new Error(
+            `Too small to bridge - send at least ${formatUsdc(maxFee * BigInt(3))} USDC`,
+          );
+        }
         if (baseBalance !== undefined && baseBalance < value) {
           throw new Error(
             `Only ${formatUsdc(baseBalance)} USDC on Base in this wallet`,
@@ -216,8 +223,8 @@ export function StartPanel() {
             starkAddressToBytes32(account),
             baseUsdc,
             zeroHash,
-            BigInt(0),
-            CCTP_MIN_FINALITY_THRESHOLD,
+            maxFee,
+            CCTP_FINALITY_FAST,
           ],
           chainId: baseChain.id,
         });
@@ -237,7 +244,7 @@ export function StartPanel() {
           chainId: baseChain.id,
         });
 
-        setBusy("Waiting for Circle to attest - a minute or two");
+        setBusy("Waiting for Circle to attest - usually under a minute");
         const attested = await waitForAttestation(burnHash, {
           sourceDomain: CCTP_DOMAIN_BASE,
           network,
@@ -302,6 +309,34 @@ export function StartPanel() {
     }
   }
 
+  const action =
+    current === "done" ? null : current === "strk" ? (
+      <Button
+        nativeButton={false}
+        size="lg"
+        className="min-h-12 w-full"
+        render={<a href="/swap" />}
+      >
+        Buy STRK with USDC
+      </Button>
+    ) : (
+      <Button
+        type="button"
+        size="lg"
+        className="min-h-12 w-full"
+        disabled={Boolean(busy)}
+        aria-busy={Boolean(busy)}
+        onClick={() => void run(current)}
+      >
+        {busy ? <Spinner data-icon="inline-start" /> : null}
+        {current === "bridge"
+          ? "Send USDC from Base"
+          : current === "deploy"
+            ? "Create my account"
+            : "Activate privacy"}
+      </Button>
+    );
+
   return (
     <Card>
       <CardHeader className="border-b">
@@ -361,6 +396,9 @@ export function StartPanel() {
                             {step.detail}
                           </p>
                         ) : null}
+                        {active && step.id !== "bridge" ? (
+                          <div className="mt-2">{action}</div>
+                        ) : null}
                       </div>
                     </div>
                   </li>
@@ -369,7 +407,7 @@ export function StartPanel() {
             </ol>
 
             {current === "bridge" ? (
-              <Field>
+              <Field className="-mt-2">
                 <FieldLabel htmlFor="start-amount">USDC to bring over</FieldLabel>
                 <Input
                   id="start-amount"
@@ -385,6 +423,7 @@ export function StartPanel() {
                   hold USDC on Starknet? Send it to the address above instead -
                   this screen will notice.
                 </FieldDescription>
+                <div className="mt-1">{action}</div>
               </Field>
             ) : null}
 
@@ -429,31 +468,6 @@ export function StartPanel() {
           >
             {evmConnecting ? <Spinner data-icon="inline-start" /> : null}
             Connect an EVM wallet
-          </Button>
-        ) : current === "strk" ? (
-          <Button
-            nativeButton={false}
-            size="lg"
-            className="min-h-12"
-            render={<a href="/swap" />}
-          >
-            Buy STRK with USDC
-          </Button>
-        ) : current !== "done" ? (
-          <Button
-            type="button"
-            size="lg"
-            className="min-h-12"
-            disabled={Boolean(busy)}
-            aria-busy={Boolean(busy)}
-            onClick={() => void run(current)}
-          >
-            {busy ? <Spinner data-icon="inline-start" /> : null}
-            {current === "bridge"
-              ? "Send USDC from Base"
-              : current === "deploy"
-                ? "Create my account"
-                : "Activate privacy"}
           </Button>
         ) : null}
 

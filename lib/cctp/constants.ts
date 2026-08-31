@@ -36,8 +36,34 @@ export const IRIS_API_URL = NETWORK.iris;
 export const CCTP_DOMAIN_BASE = 6;
 export const CCTP_DOMAIN_STARKNET = 25;
 
-/** Finalized attestation. Fast Transfer is unused so maxFee can stay 0. */
-export const CCTP_MIN_FINALITY_THRESHOLD = 2000;
+/**
+ * Finalized attestation: Circle waits for finality on the source chain, which
+ * on Base is 13-19 minutes. Free, and correct for a treasury top-up nobody is
+ * watching.
+ */
+export const CCTP_FINALITY_FINALIZED = 2000;
+
+/**
+ * Fast Transfer: attested in seconds for a fee Circle quotes at 1.3 basis
+ * points. Used for onboarding, where the alternative is a first-time visitor
+ * staring at a spinner for a quarter of an hour with no way to tell whether it
+ * broke - which is not a trade-off, it is the whole first impression.
+ */
+export const CCTP_FINALITY_FAST = 1000;
+
+/** Kept for callers that have not chosen; the slow path is the safe default. */
+export const CCTP_MIN_FINALITY_THRESHOLD = CCTP_FINALITY_FINALIZED;
+
+/**
+ * A cap, not a charge - Circle takes what it quotes and this only has to be
+ * above it. Ten basis points with a one-cent floor clears 1.3 bps by a wide
+ * margin at any size worth bridging.
+ */
+export function cctpFastMaxFee(amount: bigint): bigint {
+  const tenBps = amount / BigInt(1000);
+  const floor = BigInt(10_000);
+  return tenBps > floor ? tenBps : floor;
+}
 
 export const erc20Abi = [
   {
