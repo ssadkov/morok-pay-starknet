@@ -27,6 +27,21 @@ export class PaymasterError extends Error {}
 
 export type PaymasterIntent = OutsideExecutionIntent;
 
+/**
+ * What comes back from composing an intent: the struct to sign, and the
+ * paymaster's own typed data untouched.
+ *
+ * The typed data is carried rather than rebuilt because it goes straight back
+ * to AVNU on submit and only has to match what AVNU issued. Ours is a
+ * different encoding of the same struct - EIP-712 where theirs is SNIP-12 -
+ * and it exists only to be hashed and signed locally. It also holds bigints,
+ * so it cannot cross a JSON boundary at all.
+ */
+export type PaymasterComposition = {
+  intent: PaymasterIntent;
+  typedData: unknown;
+};
+
 function baseUrl(network: AppNetwork) {
   const url = BASE_URL[network];
   if (!url) throw new PaymasterError(`No paymaster on ${network}.`);
@@ -71,7 +86,7 @@ export async function buildPaymasterIntent(args: {
   calls: Call[];
   gasToken: string;
   maxGasTokenAmount: bigint;
-}): Promise<PaymasterIntent> {
+}): Promise<PaymasterComposition> {
   const built = await paymaster(args.network, "/paymaster/v1/build-typed-data", {
     method: "POST",
     body: JSON.stringify({
@@ -92,15 +107,18 @@ export async function buildPaymasterIntent(args: {
     throw new PaymasterError("The paymaster returned an intent we cannot read.");
   }
   return {
-    caller: String(message.Caller ?? message.caller),
-    nonce: String(message.Nonce ?? message.nonce),
-    executeAfter: String(message["Execute After"] ?? message.execute_after),
-    executeBefore: String(message["Execute Before"] ?? message.execute_before),
-    calls: rawCalls.map((call: Record<string, unknown>) => ({
-      to: String(call.To ?? call.to),
-      selector: String(call.Selector ?? call.selector),
-      calldata: ((call.Calldata ?? call.calldata) as string[]) ?? [],
-    })),
+    typedData: built,
+    intent: {
+      caller: String(message.Caller ?? message.caller),
+      nonce: String(message.Nonce ?? message.nonce),
+      executeAfter: String(message["Execute After"] ?? message.execute_after),
+      executeBefore: String(message["Execute Before"] ?? message.execute_before),
+      calls: rawCalls.map((call: Record<string, unknown>) => ({
+        to: String(call.To ?? call.to),
+        selector: String(call.Selector ?? call.selector),
+        calldata: ((call.Calldata ?? call.calldata) as string[]) ?? [],
+      })),
+    },
   };
 }
 

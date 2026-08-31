@@ -100,7 +100,10 @@ export async function swapUsdcToStrk(args: {
     );
   }
 
-  const { intent } = await post<{ intent: Parameters<typeof sign>[0] }>({
+  const composed = await post<{
+    intent: Parameters<typeof sign>[0];
+    typedData: unknown;
+  }>({
     action: "sponsor",
     network: args.network,
     takerAddress: args.session.address,
@@ -108,14 +111,17 @@ export async function swapUsdcToStrk(args: {
   });
 
   progress("Approve the gasless swap");
-  const signed = await sign(intent);
+  const signed = await sign(composed.intent);
 
+  /* AVNU's own typed data goes back, not the one just signed. The account
+     rebuilds the hash from the struct either way, and ours carries bigints
+     that JSON cannot even carry. */
   progress("AVNU is submitting it");
   const { transactionHash } = await post<{ transactionHash: string }>({
     action: "submit",
     network: args.network,
     takerAddress: args.session.address,
-    typedData: signed.typedData,
+    typedData: composed.typedData,
     signature: signed.signature,
   });
   return transactionHash;

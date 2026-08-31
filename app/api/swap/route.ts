@@ -99,14 +99,14 @@ export async function POST(request: Request) {
       if (!calls?.length) {
         return Response.json({ error: "Nothing to sponsor" }, { status: 400 });
       }
-      const intent = await buildPaymasterIntent({
+      const composed = await buildPaymasterIntent({
         network,
         accountAddress: takerAddress,
         calls,
         gasToken: chain.usdc,
         maxGasTokenAmount: BigInt(String(body.maxGasTokenAmount ?? "1000000")),
       });
-      return Response.json({ intent });
+      return Response.json(composed);
     }
 
     if (body?.action === "submit") {
