@@ -53,3 +53,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# The frozen contest entry list. Its hash is published; the file is not -
+# posting it would republish four addresses as a single correlated set.
+entries.txt
