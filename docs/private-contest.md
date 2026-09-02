@@ -113,9 +113,18 @@ nobody could know while entering.
 
 The script canonicalizes the address set, ranks each entry by
 `sha256(seed + "\n" + listHash + "\n" + address)`, and assigns the rescaled
-weights. Publish the seed, the list hash, the algorithm and the result before
-sending anything. An entrant who knows their own address can recompute their
-own rank without the organizer publishing anybody else's.
+weights.
+
+**Publish the `publishable` block, not the whole output.** It carries the
+algorithm, the seed, the list hash and the ranked prizes keyed by rank score,
+with no address anywhere. Every entrant recomputes their own score from the
+seed, the list hash and their own address, finds that score in the list, and
+reads their prize beside it - so the result is fully checkable without the
+organizer publishing who won what. The entrants' QR links are already public
+because they posted them; an address-to-prize table would be information the
+organizer *creates*, and it cannot be taken back.
+
+Publish it before sending anything.
 
 ## Cost to run it
 
