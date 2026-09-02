@@ -30,12 +30,23 @@ import { describeError } from "@/lib/starknet/errors";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { parseTokenAmount } from "@/lib/amount";
+import { pollTransactionReceipt } from "@/lib/starknet/transaction-confirmation";
 
 import { usePoolRegistration } from "./use-pool-registration";
 import { useUsdcMaturity } from "./use-usdc-maturity";
 
-/** Left behind so the account can still pay gas after emptying itself. */
-const GAS_RESERVE = BigInt(10) ** BigInt(18);
+/**
+ * Left behind so the account can still pay gas after emptying itself, and
+ * measured per rail rather than assumed.
+ *
+ * A public transfer signed through the Eth712 account costs about 1.33 STRK -
+ * validating an EIP-712 signature in Cairo is not free - so a flat one-STRK
+ * reserve was less than a single transaction. Max would hand back an amount
+ * that emptied the account past its own next fee. Ready X transfers cost
+ * about 0.07 on the same measurements, where one STRK is already generous.
+ */
+const GAS_RESERVE_EVM = BigInt(2) * BigInt(10) ** BigInt(18);
+const GAS_RESERVE_READY = BigInt(10) ** BigInt(18);
 
 /**
  * Moves a public balance out of the Starknet account to any other address.
@@ -72,13 +83,15 @@ export function SendButton({ mode = "public" }: { mode?: "public" | "private" } 
   const usdc = getShieldToken("usdc", network);
   const publicUsdc = balances?.usdcRaw ?? BigInt(0);
   const publicStrk = balances?.strkWei ?? BigInt(0);
+  const gasReserve =
+    session?.kind === "evm" ? GAS_RESERVE_EVM : GAS_RESERVE_READY;
   const isStrk = !isPrivate && asset === "strk";
   const decimals = isStrk ? 18 : usdc.decimals;
   const available = isPrivate ? privateUsdc : isStrk ? publicStrk : publicUsdc;
   /* STRK pays this account's own gas, so offering "all of it" would strand
      the account. USDC has no such role and can go out to the last cent. */
   const sendable =
-    isStrk && available > GAS_RESERVE ? available - GAS_RESERVE : isStrk ? BigInt(0) : available;
+    isStrk && available > gasReserve ? available - gasReserve : isStrk ? BigInt(0) : available;
   const blocked = isPrivate
     ? privateUsdc <= BigInt(0)
       ? "Nothing shielded to send."
@@ -100,9 +113,9 @@ export function SendButton({ mode = "public" }: { mode?: "public" | "private" } 
       if (parsed > available) {
         throw new Error(`Only ${format(available)} ${asset.toUpperCase()} is available`);
       }
-      if (isStrk && available - parsed < GAS_RESERVE) {
+      if (isStrk && available - parsed < gasReserve) {
         throw new Error(
-          `Leave at least ${formatStrk(GAS_RESERVE)} STRK behind, or this account cannot pay gas again`,
+          `Leave at least ${formatStrk(gasReserve)} STRK behind, or this account cannot pay gas again`,
         );
       }
       const response = isPrivate
@@ -130,6 +143,18 @@ export function SendButton({ mode = "public" }: { mode?: "public" | "private" } 
       setOpen(false);
       setAmount("");
       setRecipient("");
+      /* Gas is only deducted when the transaction is included, so refreshing
+         straight after submitting read the balance as it was before the send.
+         The stale figure then fed Max on the next one, which offered more
+         than the account held and was refused by the token contract with
+         "insufficient balance" - a true statement about a balance the screen
+         was not showing. */
+      await pollTransactionReceipt({
+        read: () =>
+          session.account.provider.getTransactionReceipt(
+            response.transaction_hash,
+          ),
+      });
       await refreshBalances({ private: false });
     } catch (error) {
       if (error instanceof PublicLinkError) {
@@ -221,7 +246,7 @@ export function SendButton({ mode = "public" }: { mode?: "public" | "private" } 
           <FieldDescription>
             {format(available)} {isPrivate ? "private USDC" : asset.toUpperCase()} available
             {isStrk
-              ? ` · ${formatStrk(GAS_RESERVE)} STRK stays behind for gas`
+              ? ` · ${formatStrk(gasReserve)} STRK stays behind for gas`
               : ""}
           </FieldDescription>
         </Field>
