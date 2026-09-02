@@ -102,6 +102,57 @@ describe("same allocation rules as the first-10 script", () => {
     }
   });
 
+  it("orders the field by the rank score it publishes", () => {
+    /* The scores changed with the seed and the ordering did not follow them:
+       a comparison against the wrong operand left the sort inert, so the
+       winner was whoever appeared first in entries.txt. Asserting that scores
+       changed was not the same as asserting the ranking used them. */
+    const entries = parseDonationEntries(links(5));
+    const scores = allocateContest(entries, "0xabc").allocations.map(
+      (entry) => entry.score,
+    );
+    expect(scores).toEqual([...scores].sort());
+  });
+
+  it("does not let the order of entries.txt decide the winner", () => {
+    const entries = parseDonationEntries(links(5));
+    const forwards = allocateContest(entries, "0xabc");
+    const backwards = allocateContest([...entries].reverse(), "0xabc");
+    expect(backwards.allocations).toEqual(forwards.allocations);
+  });
+
+  it("lets the seed reach every place in the field", () => {
+    const entries = parseDonationEntries(links(4));
+    const winners = new Set();
+    for (let i = 1; i <= 40; i++) {
+      winners.add(allocateContest(entries, `0x${i.toString(16)}`).allocations[0].address);
+    }
+    expect(winners.size).toBe(entries.length);
+  });
+
+  it("publishes the ranking without naming anybody", () => {
+    /* Real-length addresses: the toy ones elsewhere in this file are short
+       enough to appear inside any hex string by chance. */
+    const entries = parseDonationEntries(
+      [1, 2, 3, 4]
+        .map(
+          (n) =>
+            `https://morok-pay-starknet.vercel.app/pay?n=mainnet&kind=donation&to=0x${String(n).repeat(63)}f`,
+        )
+        .join("\n"),
+    );
+    const result = allocateContest(entries, "0xabc");
+    const posted = JSON.stringify(result.publishable);
+    for (const entry of entries) {
+      expect(posted).not.toContain(entry.address);
+    }
+    /* Each entrant still finds their own line by the score they can
+       recompute, and reads their prize off it. */
+    expect(result.publishable.ranks.map((rank) => rank.score)).toEqual(
+      result.allocations.map((entry) => entry.score),
+    );
+  });
+
   it("still rejects Private Drop links and duplicate addresses", () => {
     expect(() => parseDonationEntries(links(3).replace("donation", "drop"))).toThrow(
       "link is not a Donation QR",

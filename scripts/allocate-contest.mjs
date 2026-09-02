@@ -40,6 +40,16 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+/**
+ * Byte order, not locale order. Both the entry list and the ranking are
+ * hashed or ordered by these strings, so a comparison that depends on the
+ * machine's locale would let two people compute two different winners from
+ * the same seed.
+ */
+function byteOrder(a, b) {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
 export function parseDonationEntries(text) {
   const entries = [];
   const seen = new Set();
@@ -128,14 +138,14 @@ export function allocateContest(entries, seed, options = {}) {
 
   const canonicalAddresses = entries
     .map((entry) => entry.address)
-    .sort((a, b) => a.localeCompare(b));
+    .sort(byteOrder);
   const listHash = `0x${sha256(canonicalAddresses.join("\n"))}`;
   const ranked = entries
     .map((entry) => ({
       ...entry,
       score: `0x${sha256(`${seed.toLowerCase()}\n${listHash}\n${entry.address}`)}`,
     }))
-    .sort((a, b) => a.score.localeCompare(b));
+    .sort((a, b) => byteOrder(a.score, b.score));
 
   const amounts = rescaleWeights(ranked.length, budgetUsdc, baseWeights);
 
@@ -152,6 +162,29 @@ export function allocateContest(entries, seed, options = {}) {
       ...entry,
       amountUsdc: amounts[index],
     })),
+    /**
+     * The half that is safe to post.
+     *
+     * Publishing an address-to-prize table would take four links their owners
+     * already made public and add to them who won what - information the
+     * organizer creates rather than reports. The rank scores prove the
+     * ordering just as well: anyone can recompute their own from the seed,
+     * the list hash and their own address, find it in this list, and see the
+     * prize beside it. Nobody learns anybody else's.
+     */
+    publishable: {
+      algorithm:
+        "rank by sha256(seed + newline + listHash + newline + address); " +
+        `take the first N of [${baseWeights.join(",")}] and rescale to sum to $${budgetUsdc} (largest-remainder rounding)`,
+      seed: seed.toLowerCase(),
+      listHash,
+      finisherCount: ranked.length,
+      budgetUsdc,
+      ranks: ranked.map((entry, index) => ({
+        score: entry.score,
+        amountUsdc: amounts[index],
+      })),
+    },
   };
 }
 
