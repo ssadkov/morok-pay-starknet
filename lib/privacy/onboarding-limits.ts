@@ -44,16 +44,22 @@ export const ONBOARDING_MIN_USDC =
 export const ONBOARDING_SUGGESTED_USDC = BigInt(2_000_000);
 
 /**
- * What the pool's one-time registration costs the account, measured.
+ * How much STRK an account needs before the pool registration is safe to
+ * attempt - the funding floor, not the price.
  *
- * The screen uses it to decide the STRK step is finished; the deploy route
- * uses it to refuse deploying into an account that cannot afford the
- * registration waiting behind it. Those were 11 and 15, in different files,
- * which meant funding the address by hand with 12 STRK satisfied the screen
- * and was then turned away by the server.
+ * The registration itself has measured 8.68 to 10.72 STRK across four runs on
+ * mainnet: a fixed 6 STRK pool fee plus 2.68-4.72 of gas, a 76% swing on the
+ * same operation. So 11 is the average bill and a coin flip as a threshold,
+ * and the four STRK above it are deliberately bought headroom - the failure
+ * they prevent is being told a number was enough and then running out
+ * afterwards. See docs/who-pays.md.
+ *
+ * The screen and the deploy route disagreed about this, 11 against 15, so
+ * funding an address by hand with 12 satisfied the screen and was refused by
+ * the server. They now share this one, and it is the cautious number rather
+ * than the cheap one.
  */
-export const ONBOARDING_ACTIVATION_STRK =
-  BigInt(11) * BigInt(10) ** BigInt(18);
+export const ONBOARDING_MIN_STRK = BigInt(15) * BigInt(10) ** BigInt(18);
 
 /** The least a Fast Transfer of `sent` can deliver; its fee is a ceiling. */
 export function bridgeDeliversAtLeast(sent: bigint): bigint {

@@ -35,7 +35,7 @@ import { swapUsdcToStrk } from "@/lib/avnu/swap-flow";
 import { erc20Abi } from "@/lib/cctp/constants";
 import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import {
-  ONBOARDING_ACTIVATION_STRK,
+  ONBOARDING_MIN_STRK,
   ONBOARDING_MIN_USDC,
   ONBOARDING_SUGGESTED_USDC,
   ONBOARDING_SWAP_GAS_USDC,
@@ -64,7 +64,7 @@ import { shortenAddress } from "@/lib/format";
  */
 
 /** The pool fee plus gas for the activation the user pays for. */
-const ACTIVATION_STRK = ONBOARDING_ACTIVATION_STRK;
+const ACTIVATION_STRK = ONBOARDING_MIN_STRK;
 /** What a submission burns; below it the account cannot send its own swap. */
 const SWAP_GAS_STRK = BigInt(21) * BigInt(10) ** BigInt(17);
 
@@ -89,7 +89,8 @@ const STEPS: { id: StepId; title: string; detail: string }[] = [
   {
     id: "activate",
     title: "Activate privacy",
-    detail: "A one-time pool registration, about 11 STRK, paid by your account.",
+    detail:
+      "A one-time pool registration, 9 to 11 STRK depending on gas, paid by your account.",
   },
 ];
 

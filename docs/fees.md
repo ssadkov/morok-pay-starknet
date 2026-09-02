@@ -2,6 +2,10 @@
 
 Status: product decision recorded on 2026-08-25; not implemented on `master`.
 
+This file is about the fee **MorokPay would charge**. For who currently pays
+the fees that already exist - the pool's and the chain's - and how much they
+have measured, see [who-pays.md](who-pays.md).
+
 ## Decision
 
 Do not add a MorokPay service-fee transfer to every private donation. Keep the

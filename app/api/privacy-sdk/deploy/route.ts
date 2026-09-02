@@ -8,7 +8,7 @@ import {
 } from "@/lib/privacy/eth712-account";
 import { privacySdkOf } from "@/lib/privacy/network";
 import {
-  ONBOARDING_ACTIVATION_STRK,
+  ONBOARDING_MIN_STRK,
   ONBOARDING_MIN_USDC,
 } from "@/lib/privacy/onboarding-limits";
 import {
@@ -30,7 +30,7 @@ const DEFAULT_SPONSORED_BALANCE = 20n * 10n ** 18n;
  * an account that visibly cannot afford the registration step right after it,
  * which is exactly what the registration costs and no more.
  */
-const DEFAULT_MAINNET_MIN_DEPLOY_STRK = ONBOARDING_ACTIVATION_STRK;
+const DEFAULT_MAINNET_MIN_DEPLOY_STRK = ONBOARDING_MIN_STRK;
 
 async function readPublicUsdcBalance(
   provider: RpcProvider,
