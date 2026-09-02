@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { EyeOffIcon } from "lucide-react";
+import { DicesIcon, EyeOffIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useNetwork } from "@/components/network-provider";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
 import { recordActivity } from "@/lib/pay/activity";
+import { jitterUnshieldAmount } from "@/lib/pay/jitter";
 import { payoutToken } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import { formatUsdc } from "@/lib/starknet/status";
@@ -96,6 +97,12 @@ export function UnshieldButton() {
           ? "Ready X covers the pool fee and gas itself and takes its own cut out of what you withdraw instead - about 15-18% in what we've measured, not from your public STRK."
           : "The pool fee (about 6 STRK) comes out of your public balance, not the amount withdrawn."}
       </p>
+      <p className="text-xs text-muted-foreground">
+        Withdrawing a round number, or all of it, is what gives you away: a
+        supporter who sent you $5 and then watches exactly $5 leave has learned
+        nobody else sent anything. Roll for an odd amount and leave the rest
+        behind.
+      </p>
       {privateUsdc > BigInt(0) && !notes.ready ? (
         <p className="font-mono text-sm font-semibold tabular-nums">
           Matures in {notes.remainingLabel}
@@ -128,6 +135,17 @@ export function UnshieldButton() {
           onClick={() => setAmount(formatUsdc(privateUsdc))}
         >
           Max
+        </Button>
+        <Button
+          type="button"
+          size="icon"
+          variant="outline"
+          aria-label="Pick an amount that matches nothing"
+          title="Roll an odd amount, leaving a remainder behind"
+          disabled={unshielding || !canUnshield}
+          onClick={() => setAmount(formatUsdc(jitterUnshieldAmount(privateUsdc)))}
+        >
+          <DicesIcon />
         </Button>
       </div>
       <Button
