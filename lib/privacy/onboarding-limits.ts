@@ -43,6 +43,18 @@ export const ONBOARDING_MIN_USDC =
  */
 export const ONBOARDING_SUGGESTED_USDC = BigInt(2_000_000);
 
+/**
+ * What the pool's one-time registration costs the account, measured.
+ *
+ * The screen uses it to decide the STRK step is finished; the deploy route
+ * uses it to refuse deploying into an account that cannot afford the
+ * registration waiting behind it. Those were 11 and 15, in different files,
+ * which meant funding the address by hand with 12 STRK satisfied the screen
+ * and was then turned away by the server.
+ */
+export const ONBOARDING_ACTIVATION_STRK =
+  BigInt(11) * BigInt(10) ** BigInt(18);
+
 /** The least a Fast Transfer of `sent` can deliver; its fee is a ceiling. */
 export function bridgeDeliversAtLeast(sent: bigint): bigint {
   return sent - cctpFastMaxFee(sent);

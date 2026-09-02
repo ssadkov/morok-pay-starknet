@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckIcon, CircleIcon } from "lucide-react";
+import { CheckIcon, CircleIcon, CopyIcon } from "lucide-react";
 import { toast } from "sonner";
 import {
   useAccount,
@@ -44,6 +44,7 @@ import {
 } from "@/lib/cctp/constants";
 import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import {
+  ONBOARDING_ACTIVATION_STRK,
   ONBOARDING_MIN_USDC,
   ONBOARDING_SUGGESTED_USDC,
   ONBOARDING_SWAP_GAS_USDC,
@@ -73,7 +74,7 @@ import { wagmiConfig } from "@/lib/wagmi";
  */
 
 /** The pool fee plus gas for the activation the user pays for. */
-const ACTIVATION_STRK = BigInt(11) * BigInt(10) ** BigInt(18);
+const ACTIVATION_STRK = ONBOARDING_ACTIVATION_STRK;
 /** What a submission burns; below it the account cannot send its own swap. */
 const SWAP_GAS_STRK = BigInt(21) * BigInt(10) ** BigInt(17);
 
@@ -434,9 +435,32 @@ export function StartPanel() {
           <>
             <div className="rounded-xl bg-muted/40 px-3 py-3 ring-1 ring-foreground/10">
               <p className="text-xs text-muted-foreground">Your Starknet account</p>
-              <p className="mt-1 break-all font-mono text-xs">
-                {account ? account : "deriving…"}
-              </p>
+              {/* Worth copying rather than reading off the screen: sending
+                  USDC or STRK straight here is a supported way through the
+                  first two steps, and a hand-typed felt is a lost transfer. */}
+              <div className="mt-1 flex items-start gap-2">
+                <p className="min-w-0 flex-1 break-all font-mono text-xs">
+                  {account ? account : "deriving…"}
+                </p>
+                {account ? (
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    className="shrink-0"
+                    aria-label="Copy your Starknet address"
+                    title="Copy address"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(account)
+                        .then(() => toast.success("Address copied"))
+                        .catch(() => toast.error("Could not copy the address"));
+                    }}
+                  >
+                    <CopyIcon />
+                  </Button>
+                ) : null}
+              </div>
               {state ? (
                 <p className="mt-2 font-mono text-xs tabular-nums text-muted-foreground">
                   {formatUsdc(state.usdc)} USDC · {formatStrk(state.strk)} STRK

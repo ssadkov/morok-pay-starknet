@@ -7,7 +7,10 @@ import {
   inspectEth712Account,
 } from "@/lib/privacy/eth712-account";
 import { privacySdkOf } from "@/lib/privacy/network";
-import { ONBOARDING_MIN_USDC } from "@/lib/privacy/onboarding-limits";
+import {
+  ONBOARDING_ACTIVATION_STRK,
+  ONBOARDING_MIN_USDC,
+} from "@/lib/privacy/onboarding-limits";
 import {
   parseWholeStrk,
   readPublicStrkBalance,
@@ -24,9 +27,10 @@ const DEFAULT_SPONSORED_BALANCE = 20n * 10n ** 18n;
 /**
  * Mainnet never sponsors a balance - the connecting account must already hold
  * public STRK. This is only a courtesy check so a deploy doesn't succeed into
- * an account that visibly cannot afford the registration step right after it.
+ * an account that visibly cannot afford the registration step right after it,
+ * which is exactly what the registration costs and no more.
  */
-const DEFAULT_MAINNET_MIN_DEPLOY_STRK = 15n * 10n ** 18n;
+const DEFAULT_MAINNET_MIN_DEPLOY_STRK = ONBOARDING_ACTIVATION_STRK;
 
 async function readPublicUsdcBalance(
   provider: RpcProvider,
