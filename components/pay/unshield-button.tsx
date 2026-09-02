@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DicesIcon, EyeOffIcon } from "lucide-react";
+import { DicesIcon, EyeOffIcon, InfoIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useNetwork } from "@/components/network-provider";
@@ -9,6 +9,11 @@ import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { parseUsdc } from "@/lib/amount";
 import { recordActivity } from "@/lib/pay/activity";
 import { jitterUnshieldAmount } from "@/lib/pay/jitter";
@@ -89,20 +94,10 @@ export function UnshieldButton() {
 
   return (
     <div className="flex w-full flex-col gap-2">
-      <p className="text-xs text-muted-foreground">
-        Withdraw to this account. The amount, destination, and time become
-        public. A new private note may need about 10 blocks before it can be
-        spent.{" "}
-        {session.kind === "ready"
-          ? "Ready X covers the pool fee and gas itself and takes its own cut out of what you withdraw instead - about 15-18% in what we've measured, not from your public STRK."
-          : "The pool fee (about 6 STRK) comes out of your public balance, not the amount withdrawn."}
-      </p>
-      <p className="text-xs text-muted-foreground">
-        Withdrawing a round number, or all of it, is what gives you away: a
-        supporter who sent you $5 and then watches exactly $5 leave has learned
-        nobody else sent anything. Roll for an odd amount and leave the rest
-        behind.
-      </p>
+      {/* Both explanations moved into tooltips. They are worth reading once
+          and re-reading never, and as standing paragraphs they pushed the
+          controls off the card. The maturity line below stays visible, since
+          it is the only one that says wait rather than explains. */}
       {privateUsdc > BigInt(0) && !notes.ready ? (
         <p className="font-mono text-sm font-semibold tabular-nums">
           Matures in {notes.remainingLabel}
@@ -136,17 +131,52 @@ export function UnshieldButton() {
         >
           Max
         </Button>
-        <Button
-          type="button"
-          size="icon"
-          variant="outline"
-          aria-label="Pick an amount that matches nothing"
-          title="Roll an odd amount, leaving a remainder behind"
-          disabled={unshielding || !canUnshield}
-          onClick={() => setAmount(formatUsdc(jitterUnshieldAmount(privateUsdc)))}
-        >
-          <DicesIcon />
-        </Button>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                size="icon"
+                variant="outline"
+                aria-label="Pick an amount that matches nothing"
+                disabled={unshielding || !canUnshield}
+                onClick={() =>
+                  setAmount(formatUsdc(jitterUnshieldAmount(privateUsdc)))
+                }
+              >
+                <DicesIcon />
+              </Button>
+            }
+          />
+          <TooltipContent>
+            Withdrawing a round number, or all of it, is what gives you away: a
+            supporter who sent you $5 and then watches exactly $5 leave has
+            learned nobody else sent anything. Roll for an odd amount and leave
+            the rest behind.
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                aria-label="What becomes public when you withdraw"
+              >
+                <InfoIcon />
+              </Button>
+            }
+          />
+          <TooltipContent>
+            Withdraw to this account. The amount, destination, and time become
+            public. A new private note may need about 10 blocks before it can be
+            spent.{" "}
+            {session.kind === "ready"
+              ? "Ready X covers the pool fee and gas itself and takes its own cut out of what you withdraw instead - about 15-18% in what we've measured, not from your public STRK."
+              : "The pool fee (about 6 STRK) comes out of your public balance, not the amount withdrawn."}
+          </TooltipContent>
+        </Tooltip>
       </div>
       <Button
         type="button"

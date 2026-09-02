@@ -12,8 +12,7 @@ import {
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import { zeroHash, type Address } from "viem";
+import type { Address } from "viem";
 
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
@@ -31,17 +30,9 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
+import { bridgeUsdcFromBase } from "@/lib/cctp/bridge-from-base";
 import { swapUsdcToStrk } from "@/lib/avnu/swap-flow";
-import { waitForAttestation } from "@/lib/cctp/attestation";
-import { starkAddressToBytes32 } from "@/lib/cctp/bytes";
-import {
-  CCTP_DOMAIN_BASE,
-  CCTP_DOMAIN_STARKNET,
-  CCTP_FINALITY_FAST,
-  cctpFastMaxFee,
-  erc20Abi,
-  tokenMessengerV2Abi,
-} from "@/lib/cctp/constants";
+import { erc20Abi } from "@/lib/cctp/constants";
 import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import {
   ONBOARDING_ACTIVATION_STRK,
@@ -55,7 +46,6 @@ import { poolRegistration } from "@/lib/starknet/account-status";
 import { describeError } from "@/lib/starknet/errors";
 import { formatStrk, formatUsdc, getAccountSnapshot } from "@/lib/starknet/status";
 import { shortenAddress } from "@/lib/format";
-import { wagmiConfig } from "@/lib/wagmi";
 
 /**
  * The whole way in, on one screen.
@@ -220,92 +210,46 @@ export function StartPanel() {
         if (!account) throw new Error("Still deriving your Starknet address");
         const value = parseUsdc(amount);
         if (!value) throw new Error("Enter a USDC amount");
-        const maxFee = cctpFastMaxFee(value);
-        if (value <= maxFee * BigInt(2)) {
-          throw new Error(
-            `Too small to bridge - send at least ${formatUsdc(maxFee * BigInt(3))} USDC`,
-          );
-        }
-        if (baseBalance !== undefined && baseBalance < value) {
-          throw new Error(
-            `Only ${formatUsdc(baseBalance)} USDC on Base in this wallet`,
-          );
-        }
-        if (evmChainId !== baseChain.id) {
-          setBusy(`Switch to ${baseChain.name}`);
-          await switchChainAsync({ chainId: baseChain.id });
-        }
-
-        setBusy("Approve USDC on Base");
-        const approveHash = await writeContractAsync({
-          address: baseUsdc,
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [messenger, value],
-          chainId: baseChain.id,
-        });
-        await waitForTransactionReceipt(wagmiConfig, {
-          hash: approveHash,
-          chainId: baseChain.id,
-        });
-
-        setBusy("Send USDC from Base");
-        const burnHash = await writeContractAsync({
-          address: messenger,
-          abi: tokenMessengerV2Abi,
-          functionName: "depositForBurn",
-          args: [
-            value,
-            CCTP_DOMAIN_STARKNET,
-            starkAddressToBytes32(account),
-            baseUsdc,
-            zeroHash,
-            maxFee,
-            CCTP_FINALITY_FAST,
-          ],
-          chainId: baseChain.id,
-        });
-        toast.success("Sent from Base", {
-          action: {
-            label: "Basescan",
-            onClick: () =>
-              window.open(
-                `${cctp.explorer}/tx/${burnHash}`,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-          },
-        });
-        await waitForTransactionReceipt(wagmiConfig, {
-          hash: burnHash,
-          chainId: baseChain.id,
-        });
-
-        setBusy("Waiting for Circle to attest - usually under a minute");
-        const attested = await waitForAttestation(burnHash, {
-          sourceDomain: CCTP_DOMAIN_BASE,
+        const { transactionHash, deliveredAtLeast } = await bridgeUsdcFromBase({
           network,
+          amount: value,
+          destination: account,
+          usdc: baseUsdc,
+          messenger,
+          baseChainId: baseChain.id,
+          currentChainId: evmChainId,
+          baseBalance,
+          switchChain: (chainId) => switchChainAsync({ chainId }),
+          writeContract: (config) => writeContractAsync(config as never),
+          onProgress: setBusy,
+          onBurn: (hash) =>
+            toast.success("Sent from Base", {
+              action: {
+                label: "Basescan",
+                onClick: () =>
+                  window.open(
+                    `${cctp.explorer}/tx/${hash}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  ),
+              },
+            }),
         });
-
-        setBusy("Delivering on Starknet");
-        const delivered = await fetch("/api/bridge/settle", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            network,
-            message: attested.message,
-            attestation: attested.attestation,
-          }),
-        });
-        const body = await delivered.json();
-        if (!delivered.ok) {
-          throw new Error(body?.error ?? "The transfer was not delivered");
-        }
         toast.success("USDC arrived on Starknet", {
           description: "MorokPay paid the delivery fee",
+          action: transactionHash
+            ? {
+                label: "Voyager",
+                onClick: () =>
+                  window.open(
+                    `${starknet.explorer}/tx/${transactionHash}`,
+                    "_blank",
+                    "noopener,noreferrer",
+                  ),
+              }
+            : undefined,
         });
-        /* `maxFee` is a ceiling, so this is the least that can land. */
-        await settle((snapshot) => snapshot.usdc >= value - maxFee);
+        await settle((snapshot) => snapshot.usdc >= deliveredAtLeast);
       }
 
       /* Runs here rather than sending the reader to Get STRK. It is the same

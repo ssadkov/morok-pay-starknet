@@ -2,17 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { ArrowDownToLineIcon, WalletIcon } from "lucide-react";
+import { ArrowDownToLineIcon } from "lucide-react";
 import {
   useAccount,
   useConnect,
-  useDisconnect,
   useReadContract,
   useSwitchChain,
   useWriteContract,
 } from "wagmi";
-import { waitForTransactionReceipt } from "wagmi/actions";
-import { zeroHash, type Address } from "viem";
+import type { Address } from "viem";
 
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
@@ -22,71 +20,54 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
-import { waitForAttestation } from "@/lib/cctp/attestation";
-import { starkAddressToBytes32 } from "@/lib/cctp/bytes";
 import {
-  CCTP_DOMAIN_BASE,
-  CCTP_DOMAIN_STARKNET,
-  CCTP_MIN_FINALITY_THRESHOLD,
-  erc20Abi,
-  tokenMessengerV2Abi,
-} from "@/lib/cctp/constants";
+  bridgeUsdcFromBase,
+  deliverAttestation,
+} from "@/lib/cctp/bridge-from-base";
+import { erc20Abi } from "@/lib/cctp/constants";
 import { shortenAddress } from "@/lib/format";
 import { formatUsdc } from "@/lib/starknet/status";
-import { wagmiConfig } from "@/lib/wagmi";
 
-type FundStep =
-  | "idle"
-  | "approving"
-  | "burning"
-  | "attesting"
-  | "minting"
-  | "done";
-
-const STEP_LABEL: Record<FundStep, string> = {
-  idle: "",
-  approving: "Approve USDC on Base",
-  burning: "Burn USDC on Base",
-  attesting: "Waiting for Circle attestation",
-  minting: "Mint USDC on Starknet with Ready X",
-  done: "USDC arrived on Ready X",
-};
-
+/**
+ * Bringing more USDC over, after the way in is already behind you.
+ *
+ * The onboarding screen carries this too, but it is a way *in*: it stops
+ * offering itself the moment the account is ready, which is exactly when
+ * somebody wants to add funds for the second time. So the same bridge lives
+ * here permanently, on the page whose whole job is topping up - and it is
+ * literally the same one, from lib/cctp/bridge-from-base, rather than a
+ * second copy of a long sequence that would quietly drift away from it.
+ *
+ * This file used to be that second copy. It was written first, never rendered
+ * anywhere, and had settled on the finalized threshold - thirteen to nineteen
+ * minutes instead of about one, for no benefit anybody chose.
+ */
 export function FundPanel() {
   const { session, refreshBalances, evmStarknetAddress } = useTreasury();
   const { network, starknet, cctp, baseChain } = useNetwork();
   const usdc = cctp.usdc as Address;
   const messenger = cctp.tokenMessenger as Address;
-  const { address, isConnected, chainId, status } = useAccount();
-  const { connect, connectors, isPending } = useConnect();
-  const { disconnect } = useDisconnect();
+  const { address, isConnected, chainId } = useAccount();
+  const { connect, connectors } = useConnect();
   const { switchChainAsync } = useSwitchChain();
   const { writeContractAsync } = useWriteContract();
-  const connector = connectors[0];
-  const connecting = isPending || status === "connecting";
 
   const [amount, setAmount] = useState("");
-  const [step, setStep] = useState<FundStep>("idle");
+  const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [pendingMint, setPendingMint] = useState<{
+  const [pending, setPending] = useState<{
     message: string;
     attestation: string;
   } | null>(null);
 
-  const parsedAmount = useMemo(() => {
+  const parsed = useMemo(() => {
     try {
       return amount.trim() ? parseUsdc(amount) : null;
     } catch {
@@ -94,7 +75,7 @@ export function FundPanel() {
     }
   }, [amount]);
 
-  const { data: baseUsdc, refetch: refetchBaseUsdc } = useReadContract({
+  const { data: baseUsdc } = useReadContract({
     address: usdc,
     abi: erc20Abi,
     functionName: "balanceOf",
@@ -103,7 +84,7 @@ export function FundPanel() {
     query: { enabled: Boolean(address) },
   });
 
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
+  const { data: allowance } = useReadContract({
     address: usdc,
     abi: erc20Abi,
     functionName: "allowance",
@@ -112,256 +93,175 @@ export function FundPanel() {
     query: { enabled: Boolean(address) },
   });
 
-  /* Deliberately not gated on a session. Someone bridging for the first time
-     has no Starknet account yet - that is why they are bridging - and an
-     ERC-20 balance needs no code at the address, so the USDC can land first
-     and pay for the deployment afterwards. */
+  /* Not gated on a session: an ERC-20 balance needs no code at the address,
+     so USDC can be sent to an account that is not deployed yet. */
   const derived = session?.address ?? evmStarknetAddress;
   if (!derived) return null;
-  /* Narrowed once, so the closures below do not each have to re-prove it. */
   const destination: string = derived;
 
-  /**
-   * The mint is relayed rather than submitted here, because the account it
-   * credits is by definition one that holds nothing on Starknet yet - asking
-   * it to pay a fee first is asking for the thing the bridge exists to
-   * deliver. MorokPay pays the gas; the recipient was fixed on Base and
-   * nothing here can redirect it.
-   */
-  async function mintOnStarknet(message: string, attestation: string) {
-    setStep("minting");
-    const response = await fetch("/api/bridge/settle", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ network, message, attestation }),
+  function announce(transactionHash: string) {
+    toast.success("USDC arrived on Starknet", {
+      description: "MorokPay paid the delivery fee",
+      action: transactionHash
+        ? {
+            label: "Voyager",
+            onClick: () =>
+              window.open(
+                `${starknet.explorer}/tx/${transactionHash}`,
+                "_blank",
+                "noopener,noreferrer",
+              ),
+          }
+        : undefined,
     });
-    const body = await response.json();
-    if (!response.ok) throw new Error(body?.error ?? "The transfer was not delivered");
-
-    toast.success("USDC delivered on Starknet", {
-      description: "MorokPay paid the fee for this step",
-      action: {
-        label: "Voyager",
-        onClick: () =>
-          window.open(
-            `${starknet.explorer}/tx/${body.transactionHash}`,
-            "_blank",
-            "noopener,noreferrer",
-          ),
-      },
-    });
-    setPendingMint(null);
-    setStep("done");
-    await refreshBalances();
   }
 
-  async function handleFund() {
+  async function send() {
     setError(null);
+    setBusy("Starting");
     try {
-      const value = parsedAmount;
-      if (!value) throw new Error("Enter a USDC amount");
+      if (!parsed) throw new Error("Enter a USDC amount");
       if (!isConnected || !address) {
+        const connector = connectors[0];
         if (!connector) throw new Error("Install MetaMask to fund from Base");
         connect({ connector, chainId: baseChain.id });
-        throw new Error("Connect MetaMask, then tap Fund Ready X again");
+        throw new Error("Connect MetaMask, then send again");
       }
-      if (chainId !== baseChain.id) {
-        await switchChainAsync({ chainId: baseChain.id });
-      }
-
-      const balance = baseUsdc ?? (await refetchBaseUsdc()).data ?? BigInt(0);
-      if (balance < value) throw new Error("Not enough USDC in MetaMask");
-
-      const currentAllowance =
-        allowance ?? (await refetchAllowance()).data ?? BigInt(0);
-      if (currentAllowance < value) {
-        setStep("approving");
-        const approveHash = await writeContractAsync({
-          address: usdc,
-          abi: erc20Abi,
-          functionName: "approve",
-          args: [messenger, value],
-          chainId: baseChain.id,
-        });
-        await waitForTransactionReceipt(wagmiConfig, {
-          hash: approveHash,
-          chainId: baseChain.id,
-        });
-      }
-
-      setStep("burning");
-      const burnHash = await writeContractAsync({
-        address: messenger,
-        abi: tokenMessengerV2Abi,
-        functionName: "depositForBurn",
-        args: [
-          value,
-          CCTP_DOMAIN_STARKNET,
-          starkAddressToBytes32(destination),
-          usdc,
-          zeroHash,
-          BigInt(0),
-          CCTP_MIN_FINALITY_THRESHOLD,
-        ],
-        chainId: baseChain.id,
-      });
-      toast.success("Burn submitted on Base", {
-        description: burnHash,
-        action: {
-          label: "Basescan",
-          onClick: () =>
-            window.open(
-              `${cctp.explorer}/tx/${burnHash}`,
-              "_blank",
-              "noopener,noreferrer",
-            ),
-        },
-      });
-      await waitForTransactionReceipt(wagmiConfig, {
-        hash: burnHash,
-        chainId: baseChain.id,
-      });
-
-      setStep("attesting");
-      const attested = await waitForAttestation(burnHash, {
-        sourceDomain: CCTP_DOMAIN_BASE,
+      const { transactionHash } = await bridgeUsdcFromBase({
         network,
+        amount: parsed,
+        destination,
+        usdc,
+        messenger,
+        baseChainId: baseChain.id,
+        currentChainId: chainId,
+        allowance: allowance as bigint | undefined,
+        baseBalance: baseUsdc as bigint | undefined,
+        switchChain: (id) => switchChainAsync({ chainId: id }),
+        writeContract: (config) => writeContractAsync(config as never),
+        onProgress: setBusy,
+        onBurn: (hash) =>
+          toast.success("Sent from Base", {
+            action: {
+              label: "Basescan",
+              onClick: () =>
+                window.open(
+                  `${cctp.explorer}/tx/${hash}`,
+                  "_blank",
+                  "noopener,noreferrer",
+                ),
+            },
+          }),
+        onAttested: setPending,
       });
-      setPendingMint(attested);
-      await mintOnStarknet(attested.message, attested.attestation);
+      setPending(null);
+      setAmount("");
+      announce(transactionHash);
+      await refreshBalances({ private: false });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Funding failed");
-      setStep((current) => (current === "done" ? current : "idle"));
+      setError(caught instanceof Error ? caught.message : "The transfer failed");
+    } finally {
+      setBusy(null);
     }
   }
 
-  async function retryMint() {
-    if (!pendingMint) return;
+  /* The burn already happened, so the money exists and is owed to this
+     address. Only the relayed mint is outstanding, and it can be asked for
+     again without burning anything a second time. */
+  async function retry() {
+    if (!pending) return;
     setError(null);
+    setBusy("Delivering on Starknet");
     try {
-      await mintOnStarknet(pendingMint.message, pendingMint.attestation);
+      const transactionHash = await deliverAttestation(network, pending);
+      setPending(null);
+      announce(transactionHash);
+      await refreshBalances({ private: false });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Mint failed");
-      setStep("idle");
+      setError(caught instanceof Error ? caught.message : "Delivery failed");
+    } finally {
+      setBusy(null);
     }
   }
-
-  const busy = step !== "idle" && step !== "done";
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
-          {network === "sepolia" ? "Fund from Base Sepolia" : "Fund from Base"}
-        </CardTitle>
+        <CardTitle>Bring USDC from Base</CardTitle>
         <CardDescription>
-          {network === "sepolia"
-            ? "Burn test USDC on Base Sepolia. Circle sandbox attests, then Ready X mints on Starknet Sepolia. Get USDC from faucet.circle.com."
-            : "Burn USDC on Base with MetaMask. Circle attests the message, then Ready X mints native USDC on Starknet."}
+          Burn on Base with MetaMask, and MorokPay pays to deliver it on
+          Starknet. It lands on {shortenAddress(destination)} - the address the
+          burn names, which nothing afterwards can redirect.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <FieldGroup>
-          <Field>
-            <FieldLabel htmlFor="fund-amount">USDC amount</FieldLabel>
+        <Field>
+          <FieldLabel htmlFor="fund-amount">USDC to bring over</FieldLabel>
+          <div className="flex gap-2">
             <Input
               id="fund-amount"
               inputMode="decimal"
               placeholder="10.00"
               value={amount}
+              disabled={Boolean(busy)}
               onChange={(event) => setAmount(event.target.value)}
             />
-            <FieldDescription>
-              {network === "sepolia" ? "Base Sepolia" : "Base"} USDC in MetaMask
-              {baseUsdc !== undefined ? `: ${formatUsdc(baseUsdc)}` : ""}.
-            </FieldDescription>
-          </Field>
-        </FieldGroup>
-        {isConnected && address ? (
-          <p className="text-sm text-muted-foreground">
-            MetaMask {shortenAddress(address)}
-            {chainId !== baseChain.id ? ` — switch to ${baseChain.name}` : ""}
-          </p>
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            MetaMask is only used for the Base burn. Ready X stays the Starknet
-            wallet.
-          </p>
-        )}
-        {step !== "idle" ? (
-          <p className="text-sm text-muted-foreground">{STEP_LABEL[step]}</p>
-        ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              disabled={Boolean(busy) || baseUsdc === undefined}
+              onClick={() =>
+                setAmount(formatUsdc((baseUsdc as bigint) ?? BigInt(0)))
+              }
+            >
+              Max
+            </Button>
+          </div>
+          <FieldDescription>
+            {baseUsdc !== undefined
+              ? `${formatUsdc(baseUsdc as bigint)} USDC on Base in this wallet.`
+              : "Connect MetaMask to see your Base balance."}{" "}
+            Circle takes a small transfer fee on the way.
+          </FieldDescription>
+        </Field>
+
+        {busy ? <p className="text-sm text-muted-foreground">{busy}</p> : null}
+
         {error ? (
-          <Alert variant={pendingMint ? "default" : "destructive"}>
+          <Alert variant={pending ? "default" : "destructive"}>
             <AlertTitle>
-              {pendingMint ? "Mint on Starknet still needed" : "Funding paused"}
+              {pending ? "Burned, not yet delivered" : "That did not finish"}
             </AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         ) : null}
-      </CardContent>
-      <CardFooter className="flex flex-wrap gap-2">
-        {!isConnected ? (
+
+        {pending ? (
           <Button
             type="button"
             variant="outline"
-            size="lg"
-            className="min-h-10"
-            disabled={!connector || connecting}
-            aria-busy={connecting}
-            onClick={() => {
-              if (connector) connect({ connector, chainId: baseChain.id });
-            }}
+            disabled={Boolean(busy)}
+            onClick={() => void retry()}
           >
-            {connecting ? (
-              <Spinner data-icon="inline-start" />
-            ) : (
-              <WalletIcon data-icon="inline-start" />
-            )}
-            {connecting ? "Connecting" : "Connect MetaMask"}
+            Deliver it on Starknet
           </Button>
         ) : (
           <Button
             type="button"
-            variant="ghost"
-            size="lg"
-            className="min-h-10"
-            onClick={() => disconnect()}
+            className="min-h-12"
+            disabled={Boolean(busy) || !parsed}
+            aria-busy={Boolean(busy)}
+            onClick={() => void send()}
           >
-            Disconnect MetaMask
+            {busy ? (
+              <Spinner data-icon="inline-start" />
+            ) : (
+              <ArrowDownToLineIcon data-icon="inline-start" />
+            )}
+            {busy ? "Working" : "Send USDC from Base"}
           </Button>
         )}
-        <Button
-          type="button"
-          size="lg"
-          className="min-h-10"
-          disabled={busy || !parsedAmount}
-          aria-busy={busy}
-          onClick={() => {
-            void handleFund();
-          }}
-        >
-          {busy ? (
-            <Spinner data-icon="inline-start" />
-          ) : (
-            <ArrowDownToLineIcon data-icon="inline-start" />
-          )}
-          {busy ? STEP_LABEL[step] : "Fund Ready X"}
-        </Button>
-        {pendingMint ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="min-h-10"
-            onClick={() => {
-              void retryMint();
-            }}
-          >
-            Retry Starknet mint
-          </Button>
-        ) : null}
-      </CardFooter>
+      </CardContent>
     </Card>
   );
 }

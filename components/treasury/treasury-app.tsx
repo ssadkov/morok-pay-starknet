@@ -2,6 +2,7 @@
 
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { ConnectPanel } from "@/components/treasury/connect-panel";
+import { FundPanel } from "@/components/treasury/fund-panel";
 import { FlowSteps } from "@/components/treasury/flow-steps";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
@@ -45,6 +46,10 @@ export function TreasuryApp() {
       ) : (
         <>
           {!connected ? <ConnectPanel /> : null}
+          {/* The bridge belongs on the page whose job is topping up, not only
+              on the way in - the way in stops offering it exactly when
+              somebody wants to add funds a second time. */}
+          <FundPanel />
         </>
       )}
       <section className="flex flex-col gap-4" aria-labelledby="flow-heading">
