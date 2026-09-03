@@ -7,6 +7,14 @@ feature.
 Shipped work is described in [the README](../README.md); what was measured on
 mainnet rather than assumed is in [handoff.md](handoff.md).
 
+The largest item not in this list is
+[evm-escrow-invoices.md](evm-escrow-invoices.md) - paying an EVM address that
+has never touched Starknet, claimed with one MetaMask signature and no STRK.
+It has its own document because it changes section 1 below: a recipient who
+claims out publicly needs no funded onboarding at all, and can register in the
+pool later out of the money they just received. Sized at **days**, and it is
+where the sender-side fee from [fees.md](fees.md) becomes enforceable.
+
 ## 1. Arrive with USDC, never buy STRK by hand
 
 **The problem.** Someone holding USDC on Base and no Starknet wallet cannot

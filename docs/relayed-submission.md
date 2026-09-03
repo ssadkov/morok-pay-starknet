@@ -100,16 +100,38 @@ deposit's `TransferFrom.from_addr`.
 
 So on a pool built from current `main`, `MorokEscrow` or a DonationPot cannot
 credit an open note until StarkWare either sets a policy for that contract
-address or the screening service attests it. Which version is deployed on
-mainnet is not established here. Confirm it before committing to the helper
-rail; the private-transfer rail is unaffected either way.
+address or the screening service attests it. The private-transfer rail is
+unaffected either way.
+
+**Confirmed on chain, 2026-09-01, via `scripts/screening-policy-probe.mjs`:**
+`get_open_note_screening_policy` does not exist on the mainnet pool
+(`Requested entrypoint does not exist in the contract`) - mainnet still runs
+the old contract, so the helper rail is unaffected there for now. It **does**
+exist on the Sepolia pool - `get_open_note_screening_policy(pool_address)`
+returns `0` (`Required`, the documented default), one felt argument, called
+with no argument fails to deserialize. So Sepolia has already moved to the
+version with the screening-policy map.
+
+**Corrected on chain, 2026-09-03, via [scripts/escrow-rail-probe.mjs](../scripts/escrow-rail-probe.mjs):
+the conclusion drawn from that `0` was wrong.** An open-note deposit through
+`MorokEscrow` on Sepolia **succeeded** - `0x7954b7dafc00…7b87`, entry claimed,
+and the pool emitted the open-note deposit with `depositor` = the escrow. The
+same probe reads `0` back for the invoices helper and for an address that is
+not a contract at all, so `0` is the unset default for every address rather
+than an enforced `Required`. Either the variant order in the source reading is
+not the deployed pool's, or the policy is not enforced on this deployment.
+
+What survives is narrower: the map exists, and its values are the app
+governor's to set, so a helper rail is one StarkWare **can** close for a given
+contract address. Re-run the probe before shipping the helper rail on either
+network rather than trusting either reading of the source. Details and what it
+means for a product built on this rail are in
+[evm-escrow-invoices.md](evm-escrow-invoices.md).
 
 ## Not yet verified on chain
 
-The reading above is from source. Still to do, in one Sepolia transaction each:
+The reading above is from source except where marked confirmed above. Still
+to do:
 
 1. Submit a proven `apply_actions` from an account other than the payer, and
    confirm the pool accepts it and charges the submitter the fee.
-2. Call `get_open_note_screening_policy` on the deployed pools (mainnet and
-   Sepolia) - it exists only on the newer pool, so the call failing is itself
-   the answer.
