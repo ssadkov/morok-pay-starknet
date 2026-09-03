@@ -124,27 +124,26 @@ export function UnshieldButton() {
           Matures in {notes.remainingLabel}
         </p>
       ) : null}
-      <div className="flex gap-2">
-        {/* flex-1 so the amount field claims the room in this row - without
-            it, min-w-0 (needed so the field can shrink at all in a narrow
-            sidebar) let it collapse to a sliver once two more icon buttons
-            joined 50%/Max here. The buttons get shrink-0 so their own glyphs
-            never take the squeeze instead. */}
-        <Input
-          id="unshield-amount"
-          inputMode="decimal"
-          aria-label="USDC amount to unshield"
-          placeholder={!controlsDisabled ? formatUsdc(privateUsdc) : "0.00"}
-          value={amount}
-          disabled={controlsDisabled}
-          onChange={(event) => setAmount(event.target.value)}
-          className="min-w-0 flex-1"
-        />
+      {/* Own row for the field: five siblings (input + 50% + Max + dice +
+          info) never fit beside it in the sidebar's narrow column no matter
+          how much flex-1 claims - the buttons' combined minimum width alone
+          exceeds it. Giving the input the full row and moving every button
+          to a row underneath is the fix that holds at any width, not just
+          the one in the screenshot this was reported from. */}
+      <Input
+        id="unshield-amount"
+        inputMode="decimal"
+        aria-label="USDC amount to unshield"
+        placeholder={!controlsDisabled ? formatUsdc(privateUsdc) : "0.00"}
+        value={amount}
+        disabled={controlsDisabled}
+        onChange={(event) => setAmount(event.target.value)}
+      />
+      <div className="flex flex-wrap gap-2">
         <Button
           type="button"
           size="sm"
           variant="outline"
-          className="shrink-0"
           disabled={controlsDisabled}
           onClick={() => setAmount(formatUsdc(privateUsdc / BigInt(2)))}
         >
@@ -154,7 +153,6 @@ export function UnshieldButton() {
           type="button"
           size="sm"
           variant="outline"
-          className="shrink-0"
           disabled={controlsDisabled}
           onClick={() => setAmount(formatUsdc(privateUsdc))}
         >
