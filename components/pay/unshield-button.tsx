@@ -4,6 +4,7 @@ import { useState } from "react";
 import { DicesIcon, EyeOffIcon, InfoIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
@@ -19,9 +20,10 @@ import { recordActivity } from "@/lib/pay/activity";
 import { jitterUnshieldAmount } from "@/lib/pay/jitter";
 import { payoutToken } from "@/lib/starknet/actions";
 import { formatStrk20Error } from "@/lib/starknet/errors";
-import { formatUsdc } from "@/lib/starknet/status";
+import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 import { pollTransactionReceipt } from "@/lib/starknet/transaction-confirmation";
+import { ONBOARDING_MIN_STRK } from "@/lib/privacy/onboarding-limits";
 
 import { useUsdcMaturity } from "./use-usdc-maturity";
 
@@ -32,7 +34,12 @@ export function UnshieldButton() {
   const [amount, setAmount] = useState("");
   const [unshielding, setUnshielding] = useState(false);
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
+  const publicStrk = balances?.strkWei ?? BigInt(0);
   const notes = useUsdcMaturity(session?.address, privateUsdc);
+  /* Unshielding pays the pool fee and gas from public STRK on this rail,
+     the same as shield and registration - Ready X's own paymaster covers it
+     there instead, so this only ever gates the EVM rail. */
+  const evmGasShort = session?.kind === "evm" && publicStrk < ONBOARDING_MIN_STRK;
 
   if (!session) return null;
 
@@ -66,17 +73,11 @@ export function UnshieldButton() {
         address: session.address,
         txHash: response.transaction_hash,
       });
-      toast.success("Unshield submitted", {
-        description: response.transaction_hash,
-        action: {
-          label: "Voyager",
-          onClick: () =>
-            window.open(
-              `${starknet.explorer}/tx/${response.transaction_hash}`,
-              "_blank",
-              "noopener,noreferrer",
-            ),
-        },
+      txToast({
+        title: "Unshield submitted",
+        txHash: response.transaction_hash,
+        explorerUrl: `${starknet.explorer}/tx/${response.transaction_hash}`,
+        explorerLabel: "Voyager",
       });
       setAmount("");
       await pollTransactionReceipt({
@@ -90,7 +91,7 @@ export function UnshieldButton() {
     }
   }
 
-  const canUnshield = privateUsdc > BigInt(0) && notes.ready;
+  const canUnshield = privateUsdc > BigInt(0) && notes.ready && !evmGasShort;
 
   return (
     <div className="flex w-full flex-col gap-2">
@@ -98,6 +99,13 @@ export function UnshieldButton() {
           and re-reading never, and as standing paragraphs they pushed the
           controls off the card. The maturity line below stays visible, since
           it is the only one that says wait rather than explains. */}
+      {evmGasShort ? (
+        <p className="text-xs text-destructive">
+          This account holds {formatStrk(publicStrk)} public STRK. Unshielding
+          costs the pool fee plus gas here - about {formatStrk(ONBOARDING_MIN_STRK)}{" "}
+          is the safe amount to hold before trying. Top up public STRK first.
+        </p>
+      ) : null}
       {privateUsdc > BigInt(0) && !notes.ready ? (
         <p className="font-mono text-sm font-semibold tabular-nums">
           Matures in {notes.remainingLabel}

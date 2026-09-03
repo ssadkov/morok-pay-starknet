@@ -8,6 +8,7 @@ import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { DeployReadyButton } from "@/components/pay/deploy-ready-button";
 import { OnboardingSteps } from "@/components/pay/onboarding-steps";
 import { MOROK_MARK_SVG, QrCode, useQrMatrix } from "@/components/pay/qr-code";
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -69,7 +70,7 @@ function donationFor(
 }
 
 export function SellPanel() {
-  const { network } = useNetwork();
+  const { network, starknet } = useNetwork();
   const { session, balances } = useTreasury();
   const invoices = useInvoices(network);
   const [label, setLabel] = useState("");
@@ -139,8 +140,11 @@ export function SellPanel() {
         amount: receiveBalance,
         to: session.address,
       });
-      toast.success("Sent to your main account", {
-        description: result.transaction_hash,
+      txToast({
+        title: "Sent to your main account",
+        txHash: result.transaction_hash,
+        explorerUrl: `${starknet.explorer}/tx/${result.transaction_hash}`,
+        explorerLabel: "Voyager",
       });
       const [entry] = await receiveSession.balances([usdc.address]);
       setReceiveBalance(BigInt(entry?.balance ?? 0));

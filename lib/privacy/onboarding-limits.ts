@@ -44,20 +44,26 @@ export const ONBOARDING_MIN_USDC =
 export const ONBOARDING_SUGGESTED_USDC = BigInt(2_000_000);
 
 /**
- * How much STRK an account needs before the pool registration is safe to
- * attempt - the funding floor, not the price.
+ * How much public STRK an EVM account needs before any self-paid pool action
+ * is safe to attempt - registration, shield, or unshield - the funding floor,
+ * not the price of any one of them.
  *
- * The registration itself has measured 8.68 to 10.72 STRK across four runs on
- * mainnet: a fixed 6 STRK pool fee plus 2.68-4.72 of gas, a 76% swing on the
- * same operation. So 11 is the average bill and a coin flip as a threshold,
- * and the four STRK above it are deliberately bought headroom - the failure
- * they prevent is being told a number was enough and then running out
- * afterwards. See docs/who-pays.md.
+ * All three have been measured on mainnet in the same neighborhood: a fixed
+ * 6 STRK pool fee plus gas that has ranged 2.68-5.31 across the runs so far
+ * (registration 8.68-10.72 total, shield 1 USDC 11.31, unshield 1 USDC
+ * 10.41) - a swing of over 75% on the same class of operation. So the average
+ * bill is around 10-11 and a coin flip as a threshold, and the STRK above it
+ * is deliberately bought headroom. The failure being paid for is a specific
+ * one: telling somebody a number was enough, taking their money, and having
+ * them run out partway through with nothing to show for the gas already
+ * spent. See docs/who-pays.md.
  *
- * The screen and the deploy route disagreed about this, 11 against 15, so
- * funding an address by hand with 12 satisfied the screen and was refused by
- * the server. They now share this one, and it is the cautious number rather
- * than the cheap one.
+ * The screen and the deploy route once disagreed about this for registration
+ * specifically, 11 against 15, so funding an address by hand with 12
+ * satisfied the screen and was refused by the server. Shield had the same gap
+ * in the other direction - no check at all - which let a USDC shield reach
+ * the wallet and fail on-chain instead of being refused up front with a
+ * reason. Registration, shield, and unshield now all read this one.
  */
 export const ONBOARDING_MIN_STRK = BigInt(15) * BigInt(10) ** BigInt(18);
 

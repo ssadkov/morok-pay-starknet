@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { ShieldIcon } from "lucide-react";
 
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Spinner } from "@/components/ui/spinner";
 import { parseTokenAmount, parseUsdc } from "@/lib/amount";
 import { recordActivity } from "@/lib/pay/activity";
+import { ONBOARDING_MIN_STRK } from "@/lib/privacy/onboarding-limits";
 import { shieldAsset, shieldToken } from "@/lib/starknet/actions";
 import { STRK_ADDRESS } from "@/lib/starknet/constants";
 import { formatStrk20Error } from "@/lib/starknet/errors";
@@ -43,6 +45,15 @@ export function ShieldButton({
   // nothing and the wallet rejects it.
   const defaultFeeShield = poolFee * BigInt(2);
   const needsFeeStrk = token ? token === "strk" : shieldStrk;
+  /**
+   * Gas for this call comes out of public STRK no matter which asset is being
+   * shielded, and it is paid on top of whatever amount is entered - so a
+   * balance just over the pool fee still fails on-chain the moment gas is
+   * due. Ready X is not held to this: its shield/register calls have been
+   * paymaster-sponsored in every mainnet run seen so far, so the account
+   * itself owing nothing is the normal case there, not a balance to check.
+   */
+  const evmGasShort = session?.kind === "evm" && publicStrk < ONBOARDING_MIN_STRK;
 
   if (!session) return null;
 
@@ -113,17 +124,11 @@ export function ShieldButton({
           address: session.address,
           txHash: response.transaction_hash,
         });
-        toast.success("STRK shielded — private payments are on", {
-          description: response.transaction_hash,
-          action: {
-            label: "Voyager",
-            onClick: () =>
-              window.open(
-                `${starknet.explorer}/tx/${response.transaction_hash}`,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-          },
+        txToast({
+          title: "STRK shielded — private payments are on",
+          txHash: response.transaction_hash,
+          explorerUrl: `${starknet.explorer}/tx/${response.transaction_hash}`,
+          explorerLabel: "Voyager",
         });
       } else {
         if (publicUsdc <= BigInt(0)) {
@@ -151,17 +156,11 @@ export function ShieldButton({
           address: session.address,
           txHash: response.transaction_hash,
         });
-        toast.success("USDC shielded to payment wallet", {
-          description: response.transaction_hash,
-          action: {
-            label: "Voyager",
-            onClick: () =>
-              window.open(
-                `${starknet.explorer}/tx/${response.transaction_hash}`,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-          },
+        txToast({
+          title: "USDC shielded to payment wallet",
+          txHash: response.transaction_hash,
+          explorerUrl: `${starknet.explorer}/tx/${response.transaction_hash}`,
+          explorerLabel: "Voyager",
         });
       }
       setAmount("");
@@ -178,9 +177,11 @@ export function ShieldButton({
     }
   }
 
-  const canShield = needsFeeStrk
-    ? publicStrk > poolFee
-    : publicUsdc > BigInt(0);
+  const canShield = evmGasShort
+    ? false
+    : needsFeeStrk
+      ? publicStrk > poolFee
+      : publicUsdc > BigInt(0);
   const placeholder = needsFeeStrk
     ? formatStrk(defaultFeeShield)
     : publicUsdc > BigInt(0)
@@ -189,11 +190,20 @@ export function ShieldButton({
 
   return (
     <div className="flex w-full flex-col gap-2">
-      <p className="text-xs text-muted-foreground">
-        {needsFeeStrk
-          ? `Shield more than ${formatStrk(poolFee)} STRK. The deposit pays that fee itself and registers this account in the pool.`
-          : `Moves public USDC into the private wallet. The pool fee comes out of the amount, worth ${formatStrk(poolFee)} STRK.`}
-      </p>
+      {evmGasShort ? (
+        <p className="text-xs text-destructive">
+          This account holds {formatStrk(publicStrk)} public STRK. Shielding
+          costs the pool fee plus gas here - about {formatStrk(ONBOARDING_MIN_STRK)}{" "}
+          is the safe amount to hold before trying, or the deposit can fail
+          partway through. Top up public STRK first.
+        </p>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          {needsFeeStrk
+            ? `Shield more than ${formatStrk(poolFee)} STRK. The deposit pays that fee itself and registers this account in the pool.`
+            : `Moves public USDC into the private wallet. The pool fee comes out of the amount, worth ${formatStrk(poolFee)} STRK.`}
+        </p>
+      )}
       {token ? null : (
         <button
           type="button"

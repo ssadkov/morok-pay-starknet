@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ArrowDownIcon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -130,19 +131,16 @@ export function SwapPanel() {
         sellAmount,
         gasless,
       });
-      toast.success(`Swapped ${formatUsdc(sellAmount)} USDC for STRK`, {
-        action: hash
-          ? {
-              label: "Voyager",
-              onClick: () =>
-                window.open(
-                  `${starknet.explorer}/tx/${hash}`,
-                  "_blank",
-                  "noopener,noreferrer",
-                ),
-            }
-          : undefined,
-      });
+      if (hash) {
+        txToast({
+          title: `Swapped ${formatUsdc(sellAmount)} USDC for STRK`,
+          txHash: hash,
+          explorerUrl: `${starknet.explorer}/tx/${hash}`,
+          explorerLabel: "Voyager",
+        });
+      } else {
+        toast.success(`Swapped ${formatUsdc(sellAmount)} USDC for STRK`);
+      }
       setAmount("");
       setQuote(null);
       await refreshBalances({ private: false });

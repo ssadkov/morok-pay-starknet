@@ -14,6 +14,7 @@ import {
 } from "wagmi";
 import type { Address } from "viem";
 
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -160,14 +161,23 @@ export function StartPanel() {
    * so reading balances once straight afterwards reads the state from before.
    * That looked like the screen was stuck a step behind and only caught up
    * when the reader pressed Recheck themselves.
+   *
+   * The ceiling here is chain inclusion plus the public RPC node's own lag,
+   * neither of which this loop controls - so shortening it does not shorten
+   * the wait, only how promptly the screen notices once it is over. The tick
+   * matches `pollTransactionReceipt`'s 2s elsewhere; the attempt count is
+   * raised to hold the total ceiling steady rather than trade it away for a
+   * faster tick.
    */
+  const SETTLE_INTERVAL_MS = 2_000;
+  const SETTLE_ATTEMPTS = 30;
   const settle = useCallback(
     async (done: (snapshot: NonNullable<typeof state>) => boolean) => {
-      for (let attempt = 0; attempt < 20; attempt++) {
+      for (let attempt = 0; attempt < SETTLE_ATTEMPTS; attempt++) {
         const next = await refresh();
         if (next && done(next)) return;
         setBusy("Confirming on Starknet");
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, SETTLE_INTERVAL_MS));
       }
     },
     [refresh],
@@ -224,32 +234,26 @@ export function StartPanel() {
           writeContract: (config) => writeContractAsync(config as never),
           onProgress: setBusy,
           onBurn: (hash) =>
-            toast.success("Sent from Base", {
-              action: {
-                label: "Basescan",
-                onClick: () =>
-                  window.open(
-                    `${cctp.explorer}/tx/${hash}`,
-                    "_blank",
-                    "noopener,noreferrer",
-                  ),
-              },
+            txToast({
+              title: "Sent from Base",
+              txHash: hash,
+              explorerUrl: `${cctp.explorer}/tx/${hash}`,
+              explorerLabel: "Basescan",
             }),
         });
-        toast.success("USDC arrived on Starknet", {
-          description: "MorokPay paid the delivery fee",
-          action: transactionHash
-            ? {
-                label: "Voyager",
-                onClick: () =>
-                  window.open(
-                    `${starknet.explorer}/tx/${transactionHash}`,
-                    "_blank",
-                    "noopener,noreferrer",
-                  ),
-              }
-            : undefined,
-        });
+        if (transactionHash) {
+          txToast({
+            title: "USDC arrived on Starknet",
+            note: "MorokPay paid the delivery fee",
+            txHash: transactionHash,
+            explorerUrl: `${starknet.explorer}/tx/${transactionHash}`,
+            explorerLabel: "Voyager",
+          });
+        } else {
+          toast.success("USDC arrived on Starknet", {
+            description: "MorokPay paid the delivery fee",
+          });
+        }
         await settle((snapshot) => snapshot.usdc >= deliveredAtLeast);
       }
 
@@ -280,19 +284,16 @@ export function StartPanel() {
           gasBudget,
           onProgress: setBusy,
         });
-        toast.success("Bought STRK", {
-          action: hash
-            ? {
-                label: "Voyager",
-                onClick: () =>
-                  window.open(
-                    `${starknet.explorer}/tx/${hash}`,
-                    "_blank",
-                    "noopener,noreferrer",
-                  ),
-              }
-            : undefined,
-        });
+        if (hash) {
+          txToast({
+            title: "Bought STRK",
+            txHash: hash,
+            explorerUrl: `${starknet.explorer}/tx/${hash}`,
+            explorerLabel: "Voyager",
+          });
+        } else {
+          toast.success("Bought STRK");
+        }
         await refreshBalances({ private: false });
         await settle((snapshot) => snapshot.strk >= ACTIVATION_STRK);
       }

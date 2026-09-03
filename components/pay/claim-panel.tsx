@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { ConnectPanel } from "@/components/treasury/connect-panel";
 import { TestnetHint } from "@/components/pay/testnet-hint";
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -101,9 +102,16 @@ export function ClaimPanel() {
         txHash,
       });
       setClaimed(true);
-      toast.success("Claimed into your private wallet", {
-        description: txHash,
-      });
+      if (txHash) {
+        txToast({
+          title: "Claimed into your private wallet",
+          txHash,
+          explorerUrl: `${starknet.explorer}/tx/${txHash}`,
+          explorerLabel: "Voyager",
+        });
+      } else {
+        toast.success("Claimed into your private wallet");
+      }
       await refreshBalances({ private: true });
     } catch (caught) {
       setError(formatStrk20Error(caught, "pay"));

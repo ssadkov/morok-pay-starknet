@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { ArrowUpRightIcon } from "lucide-react";
 import { toast } from "sonner";
+
+import { txToast } from "@/components/pay/tx-toast";
 import { validateAndParseAddress } from "starknet";
 
 import { useNetwork } from "@/components/network-provider";
@@ -41,17 +43,12 @@ export function DeployReadyButton() {
         treasury,
         ACTIVATION_TIP,
       );
-      toast.success("Ready X activation submitted", {
-        description: "0.01 public STRK sent to MorokPay treasury",
-        action: {
-          label: "Voyager",
-          onClick: () =>
-            window.open(
-              `${starknet.explorer}/tx/${response.transaction_hash}`,
-              "_blank",
-              "noopener,noreferrer",
-            ),
-        },
+      txToast({
+        title: "Ready X activation submitted",
+        note: "0.01 public STRK sent to MorokPay treasury",
+        txHash: response.transaction_hash,
+        explorerUrl: `${starknet.explorer}/tx/${response.transaction_hash}`,
+        explorerLabel: "Voyager",
       });
       await refreshBalances({ private: false });
     } catch (error) {

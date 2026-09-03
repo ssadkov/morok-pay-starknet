@@ -15,6 +15,7 @@ import { toast } from "sonner";
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { OnboardingSteps } from "@/components/pay/onboarding-steps";
 import { ShieldButton } from "@/components/pay/shield-button";
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -356,20 +357,16 @@ export function PayPanel() {
       confirmation: "receipt" | "balance" | "wallet",
     ) => {
       updateActivity(pending.id, { txHash, status: "confirmed", confirmation });
-      toast.success("Donated privately", {
-        description: txHash,
-        action: txHash
-          ? {
-              label: "Voyager",
-              onClick: () =>
-                window.open(
-                  `${starknet.explorer}/tx/${txHash}`,
-                  "_blank",
-                  "noopener,noreferrer",
-                ),
-            }
-          : undefined,
-      });
+      if (txHash) {
+        txToast({
+          title: "Donated privately",
+          txHash,
+          explorerUrl: `${starknet.explorer}/tx/${txHash}`,
+          explorerLabel: "Voyager",
+        });
+      } else {
+        toast.success("Donated privately");
+      }
       await refreshPrivateSafely();
     };
 

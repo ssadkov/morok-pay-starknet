@@ -12,6 +12,7 @@ import {
 } from "wagmi";
 import type { Address } from "viem";
 
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -100,20 +101,19 @@ export function FundPanel() {
   const destination: string = derived;
 
   function announce(transactionHash: string) {
-    toast.success("USDC arrived on Starknet", {
-      description: "MorokPay paid the delivery fee",
-      action: transactionHash
-        ? {
-            label: "Voyager",
-            onClick: () =>
-              window.open(
-                `${starknet.explorer}/tx/${transactionHash}`,
-                "_blank",
-                "noopener,noreferrer",
-              ),
-          }
-        : undefined,
-    });
+    if (transactionHash) {
+      txToast({
+        title: "USDC arrived on Starknet",
+        note: "MorokPay paid the delivery fee",
+        txHash: transactionHash,
+        explorerUrl: `${starknet.explorer}/tx/${transactionHash}`,
+        explorerLabel: "Voyager",
+      });
+    } else {
+      toast.success("USDC arrived on Starknet", {
+        description: "MorokPay paid the delivery fee",
+      });
+    }
   }
 
   async function send() {
@@ -141,16 +141,11 @@ export function FundPanel() {
         writeContract: (config) => writeContractAsync(config as never),
         onProgress: setBusy,
         onBurn: (hash) =>
-          toast.success("Sent from Base", {
-            action: {
-              label: "Basescan",
-              onClick: () =>
-                window.open(
-                  `${cctp.explorer}/tx/${hash}`,
-                  "_blank",
-                  "noopener,noreferrer",
-                ),
-            },
+          txToast({
+            title: "Sent from Base",
+            txHash: hash,
+            explorerUrl: `${cctp.explorer}/tx/${hash}`,
+            explorerLabel: "Basescan",
           }),
         onAttested: setPending,
       });

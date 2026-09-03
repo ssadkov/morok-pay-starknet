@@ -5,6 +5,7 @@ import { SendIcon } from "lucide-react";
 import { toast } from "sonner";
 import { validateAndParseAddress } from "starknet";
 
+import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
@@ -126,20 +127,12 @@ export function SendButton({ mode = "public" }: { mode?: "public" | "private" } 
             to,
             parsed,
           );
-      toast.success(
-        `${format(parsed)} ${isPrivate ? "private USDC" : asset.toUpperCase()} sent`,
-        {
-        action: {
-          label: "Voyager",
-          onClick: () =>
-            window.open(
-              `${starknet.explorer}/tx/${response.transaction_hash}`,
-              "_blank",
-              "noopener,noreferrer",
-            ),
-        },
-        },
-      );
+      txToast({
+        title: `${format(parsed)} ${isPrivate ? "private USDC" : asset.toUpperCase()} sent`,
+        txHash: response.transaction_hash,
+        explorerUrl: `${starknet.explorer}/tx/${response.transaction_hash}`,
+        explorerLabel: "Voyager",
+      });
       setOpen(false);
       setAmount("");
       setRecipient("");
