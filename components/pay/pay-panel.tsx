@@ -9,7 +9,7 @@ import {
 } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ClipboardPasteIcon, CopyIcon } from "lucide-react";
+import { CircleCheckIcon, ClipboardPasteIcon, CopyIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
@@ -67,7 +67,11 @@ import { useAccountPresence } from "./use-account-presence";
 import { usePoolRegistration } from "./use-pool-registration";
 import { useUsdcMaturity } from "./use-usdc-maturity";
 
-const PRESETS = ["2", "5", "10", "25"];
+const DONATION_PRESETS = [
+  { label: "10%", numerator: BigInt(10) },
+  { label: "25%", numerator: BigInt(25) },
+  { label: "50%", numerator: BigInt(50) },
+] as const;
 const EMPTY_ACTIVITY: ActivityItem[] = [];
 
 function isOpenAmount(kind?: string, amount?: string) {
@@ -107,6 +111,14 @@ export function PayPanel() {
      failure, and it is the only place the app admits the link can go public. */
   const [publicLink, setPublicLink] = useState<string | null>(null);
   const [donationAmount, setDonationAmount] = useState("");
+  /**
+   * Set the moment a donation confirms, cleared only by an explicit "Donate
+   * again". A toast alone had already faded by the time a reader looked
+   * back at the page, and the amount field it left behind was still full and
+   * still enabled - which read as an unfinished form, not a finished
+   * donation, and invited a second submit of the same amount.
+   */
+  const [justSent, setJustSent] = useState<{ amount: string } | null>(null);
 
   const request = fromQuery ?? fromPaste;
   const openAmount = request
@@ -167,6 +179,7 @@ export function PayPanel() {
     setDonationAmount("");
     setError(null);
     setPublicLink(null);
+    setJustSent(null);
   }
 
   async function copyDonationLink() {
@@ -247,6 +260,12 @@ export function PayPanel() {
           confirmation: "receipt",
         });
         toast.success("Donation confirmed", { description: pending.txHash });
+        setJustSent({
+          amount: pending.amountRaw
+            ? formatUsdc(BigInt(pending.amountRaw))
+            : pending.amount,
+        });
+        setDonationAmount("");
         await refreshPrivateSafely();
         return;
       }
@@ -266,6 +285,12 @@ export function PayPanel() {
     });
     if (!stillPending) {
       toast.success("Donation confirmed from the private balance change");
+      setJustSent({
+        amount: pending.amountRaw
+          ? formatUsdc(BigInt(pending.amountRaw))
+          : pending.amount,
+      });
+      setDonationAmount("");
       return;
     }
     /*
@@ -367,6 +392,12 @@ export function PayPanel() {
       } else {
         toast.success("Donated privately");
       }
+      /* amountText/donationAmount are live state and can have moved on by
+         the time this resolves; `amount` is the bigint this specific
+         donation actually parsed and sent, captured in the closure at
+         submit time. */
+      setJustSent({ amount: formatUsdc(amount) });
+      setDonationAmount("");
       await refreshPrivateSafely();
     };
 
@@ -673,25 +704,62 @@ export function PayPanel() {
             </div>
           </CardHeader>
           <CardContent className="flex flex-col gap-3">
-            {openAmount ? (
+            {justSent ? (
+              <div className="flex flex-col items-start gap-2 rounded-xl border-2 border-primary/40 bg-primary/10 px-4 py-4">
+                <div className="flex items-center gap-2 text-primary">
+                  <CircleCheckIcon className="size-5" />
+                  <p className="text-base font-semibold">
+                    Thank you — {justSent.amount} USDC sent privately
+                  </p>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Nothing about you is on the chain. The creator sees a
+                  private balance grow, not who sent it.
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setJustSent(null)}
+                >
+                  Donate again
+                </Button>
+              </div>
+            ) : openAmount ? (
               <Field>
                 <FieldLabel htmlFor="payment-amount">Amount (USDC)</FieldLabel>
                 <div className="flex flex-wrap gap-2">
-                  {PRESETS.map((preset) => (
+                  {DONATION_PRESETS.map((preset) => (
                     <Button
-                      key={preset}
+                      key={preset.label}
                       type="button"
                       size="lg"
-                      variant={donationAmount === preset ? "default" : "outline"}
+                      variant="outline"
                       className="min-h-10 min-w-16"
+                      disabled={privateRaw <= BigInt(0)}
                       onClick={() => {
-                        setDonationAmount(preset);
+                        setDonationAmount(
+                          formatUsdc((privateRaw * preset.numerator) / BigInt(100)),
+                        );
                         setError(null);
                       }}
                     >
-                      {preset}
+                      {preset.label}
                     </Button>
                   ))}
+                  <Button
+                    type="button"
+                    size="lg"
+                    variant="outline"
+                    className="min-h-10 min-w-16"
+                    disabled={privateRaw <= BigInt(0)}
+                    onClick={() => {
+                      setDonationAmount(formatUsdc(privateRaw));
+                      setError(null);
+                    }}
+                  >
+                    Max
+                  </Button>
                 </div>
                 <Input
                   id="payment-amount"
@@ -791,7 +859,10 @@ export function PayPanel() {
             ) : null}
           </CardContent>
           <CardFooter className="border-t">
-            {session ? (
+            {/* The success card above already carries its own "Donate again"
+                - repeating the submit button here under a blank amount field
+                would just be a second, disabled-looking control next to it. */}
+            {justSent ? null : session ? (
               <div className="flex flex-col">
               <Button
                 type="button"
