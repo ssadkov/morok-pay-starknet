@@ -15,6 +15,7 @@ import {
 } from "starknet";
 import {
   createPrivateTransfers,
+  Open,
   SetupRequirement,
   type CallAndProof,
   type Note,
@@ -51,11 +52,37 @@ import { getAccountSnapshot } from "@/lib/starknet/status";
 const PROVING_BLOCK_DEPTH = 10;
 const PROOF1_VERSION = BigInt("0x50524f4f4631");
 
+/**
+ * `amount` is a decimal string of base units, except on a transfer, where
+ * `OPEN` asks for an open note - one whose amount a helper contract fills in
+ * later. That is how the escrow pays a claimer: the note is created empty in
+ * the same action set the escrow deposits into.
+ */
+export const OPEN_NOTE = "OPEN";
+
+/**
+ * Where a created open note's id belongs inside a helper's calldata. The id
+ * is not known until the action set is compiled, so the caller writes this
+ * marker and the account substitutes it.
+ */
+export const OPEN_NOTE_ID = "${openNoteIds[0]}";
+
 export type Strk20Action =
+  | { type: "register" }
+  | { type: "setup"; recipient: string }
   | { type: "deposit"; token: string; amount: string }
   | { type: "withdraw"; token: string; amount: string; recipient: string }
   | { type: "transfer"; token: string; amount: string; recipient: string }
   | { type: "invoke"; contract: string; calldata?: string[] };
+
+export type Strk20SubmitOptions = {
+  /**
+   * Submit through MorokPay's relayer and let it pay, instead of deciding
+   * from whether the calldata names anybody. An escrow claim always wants
+   * this: the whole point is that the claimer holds no STRK.
+   */
+  relay?: boolean;
+};
 
 /** Which wallet prompt is on screen, so the UI can explain the sequence. */
 export type SignatureProgress = {
@@ -67,7 +94,10 @@ export type SignatureProgress = {
 export type MorokPrivateAccount = {
   provider: RpcProvider;
   strk20Balances(tokens: string[]): Promise<{ token: string; balance: string }[]>;
-  strk20InvokeTransaction(actions: Strk20Action[]): Promise<{
+  strk20InvokeTransaction(
+    actions: Strk20Action[],
+    submit?: Strk20SubmitOptions,
+  ): Promise<{
     transaction_hash: string;
   }>;
   /**
@@ -128,6 +158,90 @@ function approvalCall(token: string, amount: bigint, poolAddress: string): Call 
     entrypoint: "approve",
     calldata: [poolAddress, value.low.toString(), value.high.toString()],
   };
+}
+
+/**
+ * What an action set has to spend, and what it may fund out of its own
+ * deposits.
+ *
+ * A deposit in the same set can pay for a withdrawal, so only the excess has
+ * to come out of notes the account already holds. But the set still has to
+ * spend *something*: one that nullifies nothing can be replayed, and the pool
+ * refuses it with `NO_REPLAY_PROTECTION` - measured on Sepolia. So a fully
+ * deposit-funded withdrawal still consumes one note, whose value comes
+ * straight back through `surplusTo`.
+ */
+export function spendPlan(actions: Strk20Action[]): {
+  spend: bigint;
+  deposited: bigint;
+  needed: bigint;
+} {
+  let spend = BigInt(0);
+  let deposited = BigInt(0);
+  for (const action of actions) {
+    if (action.type === "deposit") {
+      deposited += BigInt(action.amount);
+    } else if (action.type === "withdraw") {
+      spend += BigInt(action.amount);
+    } else if (action.type === "transfer" && action.amount !== OPEN_NOTE) {
+      spend += BigInt(action.amount);
+    }
+  }
+  return { spend, deposited, needed: spend > deposited ? spend - deposited : BigInt(0) };
+}
+
+/**
+ * Which notes to spend, smallest first so small notes get consolidated rather
+ * than stranded. Always returns at least one note when anything is spent, for
+ * the replay-protection reason above.
+ */
+export function selectSpendNotes(
+  notes: Note[],
+  needed: bigint,
+): { selected: Note[]; total: bigint; covered: boolean } {
+  const sorted = [...notes].sort((left, right) =>
+    left.amount < right.amount ? -1 : left.amount > right.amount ? 1 : 0,
+  );
+  const selected: Note[] = [];
+  let total = BigInt(0);
+  for (const note of sorted) {
+    if (total >= needed && selected.length) break;
+    selected.push(note);
+    total += note.amount;
+  }
+  return { selected, total, covered: total >= needed && selected.length > 0 };
+}
+
+/**
+ * The ERC-20 approvals the pool needs before it can pull anything.
+ *
+ * A deposit pulls its own token out of the public balance; the pool fee is
+ * always STRK. When STRK is itself deposited the two share one approval, so
+ * both sides of that lookup have to go through the same address normaliser -
+ * the constant is written short and the action's token arrives padded.
+ */
+export function poolApprovals(args: {
+  actions: Strk20Action[];
+  poolFee: bigint;
+  poolAddress: string;
+}): Call[] {
+  const deposits = new Map<string, bigint>();
+  for (const action of args.actions) {
+    if (action.type !== "deposit") continue;
+    const token = validateAndParseAddress(action.token);
+    deposits.set(token, (deposits.get(token) ?? BigInt(0)) + BigInt(action.amount));
+  }
+  const strk = validateAndParseAddress(STRK_ADDRESS);
+  return [
+    approvalCall(
+      STRK_ADDRESS,
+      (deposits.get(strk) ?? BigInt(0)) + args.poolFee,
+      args.poolAddress,
+    ),
+    ...[...deposits]
+      .filter(([token]) => token !== strk)
+      .map(([token, amount]) => approvalCall(token, amount, args.poolAddress)),
+  ];
 }
 
 export function createEvmStrk20Account(options: {
@@ -300,17 +414,29 @@ export function createEvmStrk20Account(options: {
         endRun();
       }
     },
-    async strk20InvokeTransaction(actions) {
-      if (actions.length !== 1) {
+    async strk20InvokeTransaction(actions, submit) {
+      /* One action per transaction was the old limit here, and it ruled out
+         every helper flow: parking money in the escrow is withdraw *and*
+         invoke, and claiming it back is a note *and* invoke. The pool allows
+         one invoke phase per transaction and any number of token actions
+         alongside it, so that is the shape enforced now. */
+      const invokes = actions.filter((item) => item.type === "invoke");
+      if (invokes.length > 1) {
         throw new Error(
-          "This EVM session can only submit one STRK20 action at a time.",
+          "The pool runs at most one contract invoke per transaction.",
         );
       }
-      const action = actions[0];
-      if (action.type !== "transfer" && action.type !== "deposit" && action.type !== "withdraw") {
-        throw new Error(
-          "This EVM session does not support this STRK20 action yet.",
-        );
+      const invoke = invokes[0];
+      const registers = actions.some((item) => item.type === "register");
+      const setups = actions.filter((item) => item.type === "setup");
+      const tokenActions = actions.filter(
+        (item) =>
+          item.type === "deposit" ||
+          item.type === "withdraw" ||
+          item.type === "transfer",
+      );
+      if (!tokenActions.length && !registers) {
+        throw new Error("This STRK20 transaction has nothing to do.");
       }
       /* Shield and unshield hand-roll the approvals and proof call that
          Ready X's extension normally does internally, and were held to Sepolia
@@ -327,9 +453,6 @@ export function createEvmStrk20Account(options: {
         "Approve reading your private balance",
       );
       try {
-      const amount = BigInt(action.amount);
-      const token = validateAndParseAddress(action.token);
-      const isStrk = BigInt(token) === BigInt(STRK_ADDRESS);
       const latestBlock = await provider.getBlockNumber();
       const provingBlock = latestBlock - PROVING_BLOCK_DEPTH;
       const poolFee = await readPoolFee(options.network);
@@ -351,10 +474,11 @@ export function createEvmStrk20Account(options: {
        * later transfers name nobody and the donor may as well pay their own
        * fee.
        */
-      if (action.type === "transfer") {
+      for (const action of tokenActions) {
+        if (action.type !== "transfer" || action.amount === OPEN_NOTE) continue;
         const requirement = await transfers.discoverRequirement(
           validateAndParseAddress(action.recipient),
-          token,
+          validateAndParseAddress(action.token),
         );
         if (requirement === SetupRequirement.Register) {
           throw new Error(
@@ -363,63 +487,96 @@ export function createEvmStrk20Account(options: {
         }
       }
 
-      let inputs: Note[] = [];
-      if (action.type !== "deposit") {
+      const byToken = new Map<string, typeof tokenActions>();
+      for (const action of tokenActions) {
+        const token = validateAndParseAddress(action.token);
+        byToken.set(token, [...(byToken.get(token) ?? []), action]);
+      }
+
+      const inputsByToken = new Map<string, Note[]>();
+      for (const [token, group] of byToken) {
+        const { deposited, spend, needed } = spendPlan(group);
+        if (spend === BigInt(0)) continue;
+
         const discovered = await transfers.discoverNotes({
           tokens: [BigInt(token)],
           blockIdentifier: provingBlock,
         });
-        const notes = discovered.notes.get(BigInt(token)) ?? [];
-        const selected: Note[] = [];
-        let total = BigInt(0);
-        // Smallest first, so small notes get consolidated instead of stranded.
-        for (const note of [...notes].sort((left, right) =>
-          left.amount < right.amount ? -1 : left.amount > right.amount ? 1 : 0,
-        )) {
-          selected.push(note);
-          total += note.amount;
-          if (total >= amount) break;
-        }
-        if (total < amount) {
-          /* Separate the two failures: being short of funds is not something
-             waiting fixes, while a note the proving block cannot see yet is. */
-          const latest = await transfers.discoverNotes({
-            tokens: [BigInt(token)],
-          });
-          const latestTotal = (latest.notes.get(BigInt(token)) ?? []).reduce(
+        const { selected, total, covered } = selectSpendNotes(
+          discovered.notes.get(BigInt(token)) ?? [],
+          needed,
+        );
+        if (!covered) {
+          /* Separate three failures that look alike from the outside: an
+             account short of funds, one whose note the proving block cannot
+             see yet, and one with no private balance at all - which cannot
+             even be replay-protected, however much public balance it has. */
+          const latest = await transfers.discoverNotes({ tokens: [BigInt(token)] });
+          const latestNotes = latest.notes.get(BigInt(token)) ?? [];
+          const latestTotal = latestNotes.reduce(
             (sum, note) => sum + note.amount,
             BigInt(0),
           );
+          if (!latestNotes.length && deposited > BigInt(0)) {
+            throw new Error(
+              "This account has no private balance yet, and a transaction that spends nothing cannot be replay-protected. Shield once on its own first.",
+            );
+          }
           throw new Error(
-            latestTotal < amount
-              ? `This account holds ${latestTotal} of the ${amount} needed for this ${action.type}.`
+            latestTotal < needed
+              ? `This account holds ${latestTotal} of the ${needed} it still needs for this transaction.`
               : `The balance is there, but proving block ${provingBlock} still sees only ${total}. Wait until the note is at least ${PROVING_BLOCK_DEPTH} blocks old, then try again.`,
           );
         }
-        inputs = selected;
+        inputsByToken.set(token, selected);
       }
 
-      const builder = transfers
-        .build({ autoSetup: true })
-        .with(token, (operations) => {
-          if (action.type === "deposit") {
-            operations.deposit({ amount });
-            return;
+      let builder = transfers.build({ autoSetup: true });
+      if (registers) builder = builder.register();
+      for (const action of setups) {
+        builder = builder.setup(validateAndParseAddress(action.recipient));
+      }
+      for (const [token, group] of byToken) {
+        builder = builder.with(token, (operations) => {
+          const inputs = inputsByToken.get(token) ?? [];
+          if (inputs.length) operations.inputs(...inputs);
+          /* A fresh account has neither a channel nor a per-token subchannel.
+             autoSetup covers the channel; without this the pool answers
+             SUBCHANNEL_NOT_FOUND. */
+          for (const action of setups) {
+            operations.setup(validateAndParseAddress(action.recipient));
           }
-          operations.inputs(...inputs);
-          if (action.type === "withdraw") {
-            operations.withdraw({
-              recipient: validateAndParseAddress(action.recipient),
-              amount,
-            });
-          } else {
-            operations.transfer({
-              recipient: validateAndParseAddress(action.recipient),
-              amount,
-            });
+          for (const action of group) {
+            if (action.type === "deposit") {
+              operations.deposit({ amount: BigInt(action.amount) });
+            } else if (action.type === "withdraw") {
+              operations.withdraw({
+                recipient: validateAndParseAddress(action.recipient),
+                amount: BigInt(action.amount),
+              });
+            } else {
+              operations.transfer({
+                recipient: validateAndParseAddress(action.recipient),
+                amount:
+                  action.amount === OPEN_NOTE ? Open : BigInt(action.amount),
+              });
+            }
           }
-        })
-        .surplusTo(options.starknetAddress);
+        });
+      }
+      if (invoke) {
+        builder = builder.invoke(({ openNotes }) => ({
+          contractAddress: validateAndParseAddress(invoke.contract),
+          /* The open note's id only exists once the set is compiled, so the
+             caller writes OPEN_NOTE_ID and it is substituted here. */
+          calldata: (invoke.calldata ?? []).map((value) =>
+            value === OPEN_NOTE_ID
+              ? num.toHex(openNotes[0]?.noteId ?? BigInt(0))
+              : value,
+          ),
+        }));
+      }
+      builder = builder.surplusTo(options.starknetAddress);
       phase = "Authorise the private transfer";
       const invocation = await builder.createProofInvocation({
         provingBlockId: provingBlock,
@@ -442,13 +599,18 @@ export function createEvmStrk20Account(options: {
          whether a channel is missing: the address either is in this calldata
          or it is not, and that is the leak itself rather than a prediction of
          it. The proof is built either way, so knowing later costs nothing. */
-      if (
-        action.type === "transfer" &&
-        namesRecipient(relayable, action.recipient)
-      ) {
+      const relayedTransfer = tokenActions.find(
+        (item) =>
+          item.type === "transfer" &&
+          item.amount !== OPEN_NOTE &&
+          namesRecipient(relayable, item.recipient),
+      );
+      if (submit?.relay || relayedTransfer) {
         /* MorokPay approves the fee from its own balance, because the pool
            charges get_caller_address(). Nothing else about this account goes
-           with the proof - and no Starknet signature is asked of the donor. */
+           with the proof - and no Starknet signature is asked of the donor.
+           An escrow claim asks for this explicitly rather than by inference:
+           the claimer has no STRK to pay with, which is the whole point. */
         reviseRunTotal(0);
         return relaySubmission({
           network: options.network,
@@ -457,18 +619,19 @@ export function createEvmStrk20Account(options: {
           proofFacts: callAndProof.proof.proofFacts.map(String),
         });
       }
-      /* Deposit pulls the deposited token out of the public balance, so it
-         needs its own approval unless the deposit is STRK itself - then one
-         approval covers the deposit and the fee together. Transfer and
-         withdraw only ever spend the pool fee out of public STRK. */
-      const strkSpend = action.type === "deposit" && isStrk ? amount + poolFee : poolFee;
-      const approvals: Call[] =
-        action.type === "deposit" && !isStrk
-          ? [
-              approvalCall(STRK_ADDRESS, poolFee, sdk.poolAddress),
-              approvalCall(token, amount, sdk.poolAddress),
-            ]
-          : [approvalCall(STRK_ADDRESS, strkSpend, sdk.poolAddress)];
+      const approvals = poolApprovals({
+        actions: tokenActions,
+        poolFee,
+        poolAddress: sdk.poolAddress,
+      });
+      const strkSpend =
+        spendPlan(
+          tokenActions.filter(
+            (item) =>
+              validateAndParseAddress(item.token) ===
+              validateAndParseAddress(STRK_ADDRESS),
+          ),
+        ).deposited + poolFee;
       const calls = [...approvals, callAndProof.call];
       const proofDetails = {
         proof: callAndProof.proof.data,

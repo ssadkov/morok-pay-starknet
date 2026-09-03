@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
-import { ConnectPanel } from "@/components/treasury/connect-panel";
+import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
@@ -71,22 +71,25 @@ export function ClaimPanel() {
   }, [request, network, starknet.escrow]);
 
   async function handleClaim() {
-    if (
-      !session ||
-      session.kind !== "ready" ||
-      !request ||
-      !starknet.escrow
-    ) return;
+    if (!session || !request || !starknet.escrow) return;
     setError(null);
     setClaiming(true);
     try {
       const usdc = getShieldToken("usdc", network);
+      /* On the EVM rail a claimer who has never touched Starknet can be
+         registered inside this same action set, and MorokPay submits and pays
+         for it - so collecting needs no STRK and no Starknet wallet. Ready X
+         registers itself and pays its own way, so neither applies there. */
+      const sponsored = session.kind === "evm";
       const response = await claimFromEscrow(
         session.account,
         usdc,
         session.address,
         starknet.escrow,
         request.secret,
+        sponsored
+          ? { register: !session.privacyReady, relay: true }
+          : undefined,
       );
       const txHash = extractTxHash(response);
       const amount = request.amount ?? (onChainAmount ? formatUsdc(onChainAmount) : "0");
@@ -132,13 +135,14 @@ export function ClaimPanel() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold tracking-tight">Claim privately</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          The link holds a secret, not an address. Connect Ready X, let it
-          register you in the pool, then pull the parked USDC into your own
-          note.
+          The link holds a secret, not an address. Connect MetaMask and the
+          parked USDC lands in your own private note - no Starknet wallet, no
+          STRK, and MorokPay pays for the transaction. Ready X works too, and
+          pays its own way.
         </p>
       </div>
       <TestnetHint />
-      {!session ? <ConnectPanel /> : null}
+      {!session ? <ConnectWalletChoices /> : null}
 
       {!request ? (
         <Alert>
@@ -191,7 +195,7 @@ export function ClaimPanel() {
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">
-                Connect Ready X above to claim.
+                Connect a wallet above to claim.
               </p>
             )}
           </CardFooter>

@@ -16,9 +16,11 @@ import { readPoolFee } from "./pool-fee";
 import type { ShieldToken } from "./tokens";
 import { WalletTimeoutError } from "./errors";
 import { WALLET_SUBMISSION_TIMEOUT_MS } from "./transaction-confirmation";
-import type {
-  MorokPrivateAccount,
-  Strk20Action,
+import {
+  OPEN_NOTE,
+  OPEN_NOTE_ID,
+  type MorokPrivateAccount,
+  type Strk20Action,
 } from "../privacy/evm-strk20-account";
 
 /**
@@ -327,9 +329,15 @@ export async function transferPrivate(
   );
 }
 
-/** Park private USDC in the escrow. The pool withdraws to the helper first. */
+/**
+ * Park private USDC in the escrow. The pool withdraws to the helper first.
+ *
+ * Both rails now. The EVM session used to reject this because it accepted one
+ * action per transaction and this is two - a withdrawal and the helper invoke
+ * that records what was parked.
+ */
 export async function depositToEscrow(
-  account: WalletAccountV6,
+  account: PrivateWalletAccount,
   token: ShieldToken,
   amount: bigint,
   escrow: string,
@@ -362,37 +370,58 @@ export async function depositToEscrow(
 }
 
 /**
- * Claim parked USDC into an open note. The recipient must already be
- * registered in the pool; that is the point of the delay.
+ * Claim parked funds into an open note.
+ *
+ * `register` folds the recipient's pool registration into the same action set,
+ * which is what lets somebody who has never touched Starknet collect: one
+ * proof, one transaction, and with `relay` it is MorokPay that submits and
+ * pays. Measured end to end in scripts/sponsored-claim-probe.mjs - the
+ * claimer's account never holds STRK.
+ *
+ * A fresh account needs both setups: `setup` here opens the channel, and the
+ * EVM account adds the per-token subchannel the pool also insists on.
  */
 export async function claimFromEscrow(
-  account: WalletAccountV6,
+  account: PrivateWalletAccount,
   token: ShieldToken,
   recipient: string,
   escrow: string,
   secret: string,
+  options?: { register?: boolean; relay?: boolean },
 ) {
   const contract = validateAndParseAddress(escrow);
+  const owner = validateAndParseAddress(recipient);
+  const actions: Strk20Action[] = [
+    ...(options?.register
+      ? ([{ type: "register" }, { type: "setup", recipient: owner }] as const)
+      : []),
+    {
+      type: "transfer",
+      token: token.address,
+      amount: OPEN_NOTE,
+      recipient: owner,
+    },
+    {
+      type: "invoke",
+      contract,
+      calldata: invokeCalldata([
+        "0x1",
+        "0x0",
+        "0x0",
+        "0x0",
+        secret,
+        OPEN_NOTE_ID,
+      ]),
+    },
+  ];
+  /* Only the EVM session takes submission options - Ready X's Wallet API has
+     no relayer to point at, and its method takes one argument. */
   return withWalletTimeout(
-    account.strk20InvokeTransaction([
-      {
-        type: "transfer",
-        token: token.address,
-        amount: "OPEN",
-        recipient: validateAndParseAddress(recipient),
-      },
-      {
-        type: "invoke",
-        contract,
-        calldata: invokeCalldata([
-          "0x1",
-          "0x0",
-          "0x0",
-          "0x0",
-          secret,
-          "${openNoteIds[0]}",
-        ]),
-      },
-    ]),
+    "signOutsideExecution" in account
+      ? account.strk20InvokeTransaction(actions, { relay: options?.relay })
+      : account.strk20InvokeTransaction(
+          actions as Strk20Action[] &
+            Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
+        ),
   );
 }
