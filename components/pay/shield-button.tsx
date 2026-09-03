@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { ShieldIcon } from "lucide-react";
+import { ShieldIcon, TriangleAlertIcon } from "lucide-react";
 
 import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
@@ -188,15 +188,24 @@ export function ShieldButton({
       ? formatUsdc(publicUsdc)
       : "0.00";
 
+  /* Shown once the reader has started typing, not the instant the field
+     appears - a warning ahead of any intent reads as the app already
+     broken, not as a heads-up about what is about to happen. The button
+     stays disabled either way; this only gates when the explanation shows. */
+  const showGasWarning = evmGasShort && amount.trim().length > 0;
+
   return (
     <div className="flex w-full flex-col gap-2">
-      {evmGasShort ? (
-        <p className="text-xs text-destructive">
-          This account holds {formatStrk(publicStrk)} public STRK. Shielding
-          costs the pool fee plus gas here - about {formatStrk(ONBOARDING_MIN_STRK)}{" "}
-          is the safe amount to hold before trying, or the deposit can fail
-          partway through. Top up public STRK first.
-        </p>
+      {showGasWarning ? (
+        <div className="flex items-start gap-2 rounded-lg bg-muted/40 px-2.5 py-2 ring-1 ring-foreground/10">
+          <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="text-xs text-muted-foreground">
+            This account holds {formatStrk(publicStrk)} public STRK. Shielding
+            costs the pool fee plus gas here - about{" "}
+            {formatStrk(ONBOARDING_MIN_STRK)} is the safe amount to hold
+            before trying. Top up public STRK first.
+          </p>
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">
           {needsFeeStrk
@@ -223,14 +232,20 @@ export function ShieldButton({
           aria-label={needsFeeStrk ? "STRK amount to shield" : "USDC amount to shield"}
           placeholder={placeholder}
           value={amount}
-          disabled={shielding || !canShield}
+          /* Left enabled through evmGasShort - the warning above only shows
+             once something has been typed, so disabling the field would
+             make that condition unreachable. Only the submit button below
+             enforces the actual gate. */
+          disabled={shielding}
           onChange={(event) => setAmount(event.target.value)}
+          className="min-w-0 flex-1"
         />
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={shielding || !canShield}
+          className="shrink-0"
+          disabled={shielding}
           onClick={fillHalf}
         >
           50%
@@ -239,7 +254,8 @@ export function ShieldButton({
           type="button"
           size="sm"
           variant="outline"
-          disabled={shielding || !canShield}
+          className="shrink-0"
+          disabled={shielding}
           onClick={fillMax}
         >
           Max

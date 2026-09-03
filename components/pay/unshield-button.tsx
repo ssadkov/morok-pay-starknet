@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { DicesIcon, EyeOffIcon, InfoIcon } from "lucide-react";
+import { DicesIcon, EyeOffIcon, InfoIcon, TriangleAlertIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { txToast } from "@/components/pay/tx-toast";
@@ -91,7 +91,16 @@ export function UnshieldButton() {
     }
   }
 
-  const canUnshield = privateUsdc > BigInt(0) && notes.ready && !evmGasShort;
+  /* Split from evmGasShort on purpose: "nothing to withdraw yet" and
+     "notes still maturing" are reasons to grey out every control, but a
+     short public-STRK balance is not - the reader needs to be able to type
+     an amount before the warning below has anything to attach to. Only the
+     submit button folds evmGasShort back in, since that is the one place a
+     doomed on-chain call would actually be sent. */
+  const controlsDisabled =
+    unshielding || privateUsdc <= BigInt(0) || !notes.ready;
+  const canUnshield = !controlsDisabled && !evmGasShort;
+  const showGasWarning = evmGasShort && amount.trim().length > 0;
 
   return (
     <div className="flex w-full flex-col gap-2">
@@ -99,12 +108,16 @@ export function UnshieldButton() {
           and re-reading never, and as standing paragraphs they pushed the
           controls off the card. The maturity line below stays visible, since
           it is the only one that says wait rather than explains. */}
-      {evmGasShort ? (
-        <p className="text-xs text-destructive">
-          This account holds {formatStrk(publicStrk)} public STRK. Unshielding
-          costs the pool fee plus gas here - about {formatStrk(ONBOARDING_MIN_STRK)}{" "}
-          is the safe amount to hold before trying. Top up public STRK first.
-        </p>
+      {showGasWarning ? (
+        <div className="flex items-start gap-2 rounded-lg bg-muted/40 px-2.5 py-2 ring-1 ring-foreground/10">
+          <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+          <p className="text-xs text-muted-foreground">
+            This account holds {formatStrk(publicStrk)} public STRK.
+            Unshielding costs the pool fee plus gas here - about{" "}
+            {formatStrk(ONBOARDING_MIN_STRK)} is the safe amount to hold
+            before trying. Top up public STRK first.
+          </p>
+        </div>
       ) : null}
       {privateUsdc > BigInt(0) && !notes.ready ? (
         <p className="font-mono text-sm font-semibold tabular-nums">
@@ -112,20 +125,27 @@ export function UnshieldButton() {
         </p>
       ) : null}
       <div className="flex gap-2">
+        {/* flex-1 so the amount field claims the room in this row - without
+            it, min-w-0 (needed so the field can shrink at all in a narrow
+            sidebar) let it collapse to a sliver once two more icon buttons
+            joined 50%/Max here. The buttons get shrink-0 so their own glyphs
+            never take the squeeze instead. */}
         <Input
           id="unshield-amount"
           inputMode="decimal"
           aria-label="USDC amount to unshield"
-          placeholder={canUnshield ? formatUsdc(privateUsdc) : "0.00"}
+          placeholder={!controlsDisabled ? formatUsdc(privateUsdc) : "0.00"}
           value={amount}
-          disabled={unshielding || !canUnshield}
+          disabled={controlsDisabled}
           onChange={(event) => setAmount(event.target.value)}
+          className="min-w-0 flex-1"
         />
         <Button
           type="button"
           size="sm"
           variant="outline"
-          disabled={unshielding || !canUnshield}
+          className="shrink-0"
+          disabled={controlsDisabled}
           onClick={() => setAmount(formatUsdc(privateUsdc / BigInt(2)))}
         >
           50%
@@ -134,7 +154,8 @@ export function UnshieldButton() {
           type="button"
           size="sm"
           variant="outline"
-          disabled={unshielding || !canUnshield}
+          className="shrink-0"
+          disabled={controlsDisabled}
           onClick={() => setAmount(formatUsdc(privateUsdc))}
         >
           Max
@@ -146,8 +167,9 @@ export function UnshieldButton() {
                 type="button"
                 size="icon"
                 variant="outline"
+                className="shrink-0"
                 aria-label="Pick an amount that matches nothing"
-                disabled={unshielding || !canUnshield}
+                disabled={controlsDisabled}
                 onClick={() =>
                   setAmount(formatUsdc(jitterUnshieldAmount(privateUsdc)))
                 }
@@ -170,6 +192,7 @@ export function UnshieldButton() {
                 type="button"
                 size="icon"
                 variant="ghost"
+                className="shrink-0"
                 aria-label="What becomes public when you withdraw"
               >
                 <InfoIcon />
