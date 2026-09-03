@@ -86,6 +86,16 @@ export type MorokPrivateAccount = {
     typedData: ReturnType<typeof eth712OutsideExecutionTypedData>;
     signature: string[];
   }>;
+  /**
+   * Who this account has opened a private channel to, from its own viewing
+   * key - not a log the app kept, a fact the pool's own state can still
+   * answer from any device. It cannot say how much or when: a channel only
+   * carries the recipient's public key and a per-token note count, because
+   * the notes it created are encrypted to the *recipient's* key material,
+   * not this account's. Ready X holds its own viewing key and does not
+   * expose this to the page, so it is EVM-only.
+   */
+  discoverChannels(): Promise<{ recipient: string; noteCount: number }[]>;
 };
 
 type SignTypedData = (typedData: Record<string, unknown>) => Promise<Hex>;
@@ -515,6 +525,31 @@ export function createEvmStrk20Account(options: {
             options.evmChainId,
           ) as string[],
         };
+      } finally {
+        endRun();
+      }
+    },
+    async discoverChannels() {
+      // Same cache, same first-prompt story as strk20Balances above - the
+      // key this needs is the same one, so a balance read earlier in the
+      // session means this asks for nothing new.
+      if (viewingKey === null) {
+        startRun(1, "Approve reading your private balance");
+      }
+      try {
+        const discovered = await transfers.discoverChannels("all");
+        const result: { recipient: string; noteCount: number }[] = [];
+        discovered.channels?.forEach((channel, recipient) => {
+          let noteCount = 0;
+          channel.tokens.forEach((tokenChannel) => {
+            noteCount += tokenChannel.noteNonce;
+          });
+          result.push({
+            recipient: validateAndParseAddress(num.toHex(recipient)),
+            noteCount,
+          });
+        });
+        return result;
       } finally {
         endRun();
       }

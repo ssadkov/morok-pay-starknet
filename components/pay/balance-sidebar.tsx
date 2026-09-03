@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { RefreshCwIcon, WalletIcon } from "lucide-react";
 
+import { HistoryModal } from "@/components/pay/history-modal";
 import { SendButton } from "@/components/pay/send-button";
 import { ShieldButton } from "@/components/pay/shield-button";
 import { UnshieldButton } from "@/components/pay/unshield-button";
@@ -133,7 +134,8 @@ export function BalanceSidebar() {
                 action={
                   <div className="flex flex-col gap-3">
                     <UnshieldButton />
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
+                      <HistoryModal />
                       <SendButton mode="private" />
                     </div>
                   </div>
