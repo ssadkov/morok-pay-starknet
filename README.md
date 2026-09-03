@@ -126,6 +126,33 @@ assumed - [scripts/calldata-leak-probe.mjs](scripts/calldata-leak-probe.mjs)
 asks the pool `get_public_key` about every felt in a transaction's calldata,
 so a registered account sitting there in the clear is visible.
 
+## Private donation contest
+
+Ran 2026-08-31 to 2026-09-01: $20 in USDC split by rank among however many
+people finished the entry - open MorokPay, activate STRK20, publish a
+donation QR - capped at 7. Four people finished, so the split rescaled to
+$7.50 / $5.00 / $3.75 / $3.75. Ranking came from
+`sha256(seed + entry-list-hash + address)`, where the seed was the first
+Starknet mainnet block produced after entries closed - a number nobody could
+know while entering. Full mechanism, the allocation script, and the terms are
+in [docs/private-contest.md](docs/private-contest.md).
+
+All four prizes were paid as private donations to the winners' own QR
+addresses, submitted from MorokPay's relayer - so the payout, like every
+first transfer to a new recipient, publishes only who received it, never what
+or from whom:
+
+| transaction |
+| --- |
+| `0x17c5185dd9599b25b447a56495407ace6a8a58ab108975f2ab6a305d3b10571` |
+| `0x460d5b8b37053b72f82faf1b7ae95e87da3549ea45ca97af334520b5337aa11` |
+| `0x6d39a179dbbc6a55423ab41b2b6e9e7b69cec590d4c103c3ad536f3c5e3a17b` |
+| `0x13896879c847ee87ff8fec808665c7b08d9786f539f43f79c9235d72ee4f035` |
+
+Consistent with the contest's own rule against publishing an address-to-prize
+table, no mapping is given here either - each winner can recompute their own
+rank from the published seed and entry-list hash.
+
 ## Current status
 
 - Both rails are live on mainnet, in the app: donation QR, private pay, private
@@ -139,8 +166,6 @@ so a registered account sitting there in the clear is visible.
 - The anonymous receive account is live on the MetaMask rail. On Ready X the
   signature it depends on is checked and reproducible, but the deploy path is
   not wired yet, so a Ready X QR still publishes that wallet's own address.
-- A live donation contest is documented in
-  [docs/private-contest.md](docs/private-contest.md).
 - MorokPay's fee is planned for the in-app unshield step, not for each private donation; see [docs/fees.md](docs/fees.md).
 - `lib/starknet/tokens.ts` already carries mainnet `strkBTC` alongside USDC, and
   amount parsing is decimals-aware. The donation request format is USDC-only, so
