@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
@@ -199,6 +200,23 @@ export function ClaimPanel() {
               </p>
             )}
           </CardFooter>
+          {request ? (
+            <CardFooter className="border-t">
+              {/* The commitment travels, never the secret: it is what lets the
+                  deploy route see that money is waiting and sponsor an account
+                  for somebody holding no STRK at all. */}
+              <p className="text-sm text-muted-foreground">
+                Never used Starknet?{" "}
+                <Link
+                  className="underline underline-offset-4"
+                  href={`/start?claim=${computeEscrowCommitment(request.secret)}`}
+                >
+                  Create your account first
+                </Link>{" "}
+                - MorokPay pays for it.
+              </p>
+            </CardFooter>
+          ) : null}
         </Card>
       )}
     </div>

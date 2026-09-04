@@ -16,6 +16,7 @@ import type { Address } from "viem";
 
 import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
+import { useSearchParams } from "next/navigation";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,9 @@ const STEPS: { id: StepId; title: string; detail: string }[] = [
 ];
 
 export function StartPanel() {
+  /* Set when the visitor came from a claim link. It is the escrow commitment,
+     a hash - the claim secret never leaves their browser. */
+  const claimCommitment = useSearchParams().get("claim");
   const { session, evmStarknetAddress, connectEvm, evmConnecting, refreshBalances } =
     useTreasury();
   const { network, starknet, cctp, baseChain } = useNetwork();
@@ -306,7 +310,16 @@ export function StartPanel() {
         const response = await fetch("/api/privacy-sdk/deploy", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ evmAddress, signature, network }),
+          /* A claimer arriving from a link holds no STRK, which is exactly
+             what mainnet's self-funded rule refuses. The commitment lets the
+             server check the escrow instead and sponsor the deploy when money
+             is genuinely waiting for this person. */
+          body: JSON.stringify({
+            evmAddress,
+            signature,
+            network,
+            ...(claimCommitment ? { claimCommitment } : {}),
+          }),
         });
         const body = await response.json().catch(() => null);
         if (!response.ok) throw new Error(body?.error ?? "The account was not created");

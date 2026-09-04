@@ -67,6 +67,38 @@ function relayerEnv(network: AppNetwork) {
       };
 }
 
+/**
+ * Is there funded, unclaimed money behind this commitment?
+ *
+ * Read straight from the escrow rather than trusted from the request: the
+ * caller picks the commitment, so believing it would let anyone mint free
+ * account deploys at MorokPay's expense.
+ */
+async function escrowEntryIsClaimable(args: {
+  rpc: RpcProvider;
+  escrow: string;
+  commitment: string | null;
+}): Promise<boolean> {
+  if (!args.commitment || !args.escrow) return false;
+  if (!/^0x[0-9a-fA-F]{1,64}$/.test(args.commitment)) return false;
+  try {
+    const result = await args.rpc.callContract({
+      contractAddress: args.escrow,
+      entrypoint: "get_entry",
+      calldata: [args.commitment],
+    });
+    const values = Array.isArray(result)
+      ? result
+      : ((result as { result?: string[] }).result ?? []);
+    const [token, amount, claimed] = values;
+    if (!token || BigInt(token) === BigInt(0)) return false;
+    if (BigInt(amount ?? "0x0") === BigInt(0)) return false;
+    return BigInt(claimed ?? "0x0") === BigInt(0);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: Request) {
   let network: AppNetwork = "sepolia";
   try {
@@ -159,7 +191,20 @@ export async function POST(request: Request) {
         chain.usdc,
         inspection.starknetAddress,
       );
-      if (balance < minimum && usdcBalance < ONBOARDING_MIN_USDC) {
+      /* Unless money is already waiting for them. A claimer arriving from a
+         link holds nothing by definition - that is the product - so the
+         balance rule written for self-funded onboarding would refuse exactly
+         the person it should serve. The escrow answers instead: sponsor the
+         deploy only when an entry under this commitment is funded and
+         unclaimed, which is also the rate limit, since creating an entry
+         costs the sender the pool fee. The commitment is a hash, so the
+         claim secret never reaches this server. */
+      const parked = await escrowEntryIsClaimable({
+        rpc,
+        escrow: chain.escrow,
+        commitment: typeof body?.claimCommitment === "string" ? body.claimCommitment : null,
+      });
+      if (!parked && balance < minimum && usdcBalance < ONBOARDING_MIN_USDC) {
         return Response.json(
           {
             error: `Fund ${inspection.starknetAddress} with at least ${(Number(minimum) / 1e18).toFixed(0)} public STRK, or bridge at least ${(Number(ONBOARDING_MIN_USDC) / 1e6).toFixed(2)} USDC to it, before deploying.`,
