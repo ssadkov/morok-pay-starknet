@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRightIcon, HeartIcon, QrCodeIcon } from "lucide-react";
+import { ArrowUpRightIcon, HeartIcon, LinkIcon, QrCodeIcon } from "lucide-react";
 
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { useNetwork } from "@/components/network-provider";
@@ -42,6 +42,12 @@ export function HomeDoors() {
           icon={<QrCodeIcon />}
           title="My QR"
           body="Create one durable donation QR. Share it anywhere. Receive private USDC in your donation wallet."
+        />
+        <Door
+          href="/stash"
+          icon={<LinkIcon />}
+          title="Send a link"
+          body="Park private USDC behind a one-time link. Whoever opens it collects with MetaMask alone - no Starknet wallet, no STRK."
         />
       </div>
     </div>
