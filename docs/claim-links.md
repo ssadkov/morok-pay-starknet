@@ -1,13 +1,24 @@
-# Legacy claim links
+# Claim links
 
-Claim links are retained only so previously issued links can still be redeemed. New claim-link creation is not part of the current private-donation UI.
+Claim links were legacy - kept only so old links could still be redeemed - until
+the claim side became worth showing on its own: whoever opens one now collects
+with MetaMask alone, holds no STRK, and MorokPay pays for their transaction.
+Creating one is `/stash`; redeeming one is `/claim`.
+
+The design this belongs to, and every measurement behind it, is
+[evm-escrow-invoices.md](evm-escrow-invoices.md).
 
 ## Deployment status
 
-- Sepolia `MorokEscrow`: deployed and supported by `/claim`.
-- Mainnet `MorokEscrow`: not deployed.
+- Sepolia `MorokEscrow`: `0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5`.
+- Mainnet `MorokEscrow`: `0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f`,
+  deployed 2026-09-04, declare `0x592d1c0c...`, deploy `0x741b45d3...`, 6.67 STRK
+  all in. Same class hash as Sepolia (`0x53fe2c18...`), so it is byte-for-byte
+  the contract the Sepolia probes exercised.
 
-Do not publish or promise new mainnet claim links until the helper is deployed, audited, and tested end to end through Ready.
+**Deployed is not audited.** Nothing here has had an external review, and the
+mainnet round trip has not been run end to end yet. Size what is parked
+accordingly.
 
 ## Why the route exists
 

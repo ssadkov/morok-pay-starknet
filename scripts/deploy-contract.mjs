@@ -19,7 +19,8 @@ import { resolveNetwork } from "./lib/networks.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TARGET = process.argv[2] ?? "escrow";
-const network = resolveNetwork(process.argv[3]);
+const network = resolveNetwork(process.argv.find((item, index) => index > 2 && !item.startsWith("--")));
+const SUBMIT = process.argv.includes("--submit");
 
 const CONTRACTS = {
   escrow: {
@@ -62,11 +63,52 @@ if (spec.constructor.length > 0) {
   console.log(`constructor ${spec.constructor.join(", ")}`);
 }
 console.log(`declareAndDeploy ${spec.name} from ${deployer.address}`);
-const result = await account.declareAndDeploy({
+
+const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+const [balanceLow, balanceHigh] = await provider.callContract({
+  contractAddress: STRK,
+  entrypoint: "balance_of",
+  calldata: [deployer.address],
+});
+const balance = BigInt(balanceLow) + (BigInt(balanceHigh ?? "0x0") << BigInt(128));
+const asStrk = (value) => `${(Number(value) / 1e18).toFixed(4)} STRK`;
+console.log(`deployer holds ${asStrk(balance)}`);
+
+const payload = {
   contract: sierra,
   casm,
   constructorCalldata: CallData.compile(spec.constructor),
-});
+};
+
+/* Estimating first is cheap and answers the only question that matters before
+   a mainnet declare: whether this account can actually pay for it. */
+let estimated = null;
+try {
+  const fees = await account.estimateDeclareFee({ contract: sierra, casm });
+  estimated = fees.overall_fee;
+  console.log(`declare fee ~${asStrk(estimated)} (deploy is charged on top)`);
+} catch (error) {
+  const reason = String(error?.message ?? error).split(/\r?\n/)[0];
+  console.log(`declare fee could not be estimated: ${reason}`);
+}
+
+if (SUBMIT) {
+  if (estimated !== null && balance < estimated) {
+    throw new Error(
+      `Deployer holds ${asStrk(balance)}, below the ~${asStrk(estimated)} declare alone would cost.`,
+    );
+  }
+} else {
+  console.log(`
+Dry run - nothing was submitted.${
+    network.name === "mainnet"
+      ? " Add --submit to spend real STRK."
+      : " Add --submit to declare and deploy."
+  }`);
+  process.exit(0);
+}
+
+const result = await account.declareAndDeploy(payload);
 
 const classHash = result.declare.class_hash;
 const address = result.deploy.contract_address ?? result.deploy.address;

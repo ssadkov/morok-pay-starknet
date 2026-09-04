@@ -11,7 +11,11 @@ const MAINNET = {
     "0x02EBB5777B6dD8B26ea11D68Fdf1D2c85cD2099335328Be845a28c77A8AEf183",
   tokenMessengerMinter:
     "0x07d421B9cA8aA32DF259965cDA8ACb93F7599F69209A41872AE84638B2A20F2a",
-  escrow: "",
+  // MorokEscrow, declared and deployed 2026-09-04 by
+  // scripts/deploy-contract.mjs. Same class hash as the Sepolia deployment
+  // (0x53fe2c18...), so it is the contract the Sepolia probes exercised.
+  escrow:
+    "0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f",
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_MAINNET_ADDRESS?.trim() ?? "",
   // Declared 2026-08-26 by scripts/deploy-eth712-factory.mjs, configured for

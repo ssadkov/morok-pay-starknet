@@ -4,12 +4,12 @@ Status: designed 2026-09-03, **not built** - but every mechanism it depends on
 has now been run end to end on Sepolia, by
 [escrow-rail-probe.mjs](../scripts/escrow-rail-probe.mjs) and
 [sponsored-claim-probe.mjs](../scripts/sponsored-claim-probe.mjs). Facts not
-measured here are cited to the document that verified them. No contract from
-this design has been deployed.
+measured here are cited to the document that verified them.
 The Cairo escrow that exists today is
-[contracts/src/escrow.cairo](../contracts/src/escrow.cairo), live on Sepolia
-only - mainnet `escrow` is still `""` in
-[lib/starknet/constants.ts](../lib/starknet/constants.ts).
+[contracts/src/escrow.cairo](../contracts/src/escrow.cairo), now live on
+**both** networks - mainnet `0x06199365a4...b698f`, deployed 2026-09-04 for
+6.67 STRK, same class hash as Sepolia. What is not built is the V2 below:
+ownership by EVM address, a public claim, expiry and refund.
 
 ## What this is
 
