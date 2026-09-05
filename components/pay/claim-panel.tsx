@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useSignMessage } from "wagmi";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { TestnetHint } from "@/components/pay/testnet-hint";
@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { recordActivity } from "@/lib/pay/activity";
+import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import {
   computeEscrowCommitment,
   parseClaimRequest,
@@ -35,13 +36,21 @@ import { getShieldToken } from "@/lib/starknet/tokens";
 export function ClaimPanel() {
   const searchParams = useSearchParams();
   const { network, setNetwork, starknet } = useNetwork();
-  const { session, refreshBalances } = useTreasury();
+  const {
+    session,
+    refreshBalances,
+    evmConnectedAddress,
+    evmGate,
+    connectEvm,
+  } = useTreasury();
+  const { signMessageAsync } = useSignMessage();
   const request = parseClaimRequest(searchParams, network);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [onChainAmount, setOnChainAmount] = useState<bigint | null>(null);
   const [claimed, setClaimed] = useState(false);
   const [missing, setMissing] = useState(false);
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (request && request.network !== network) {
@@ -70,6 +79,44 @@ export function ClaimPanel() {
       cancelled = true;
     };
   }, [request, network, starknet.escrow]);
+
+  /**
+   * Create the claimer's Starknet account, on MorokPay.
+   *
+   * This used to send them to /start, which is the wrong door: that flow
+   * exists for somebody funding themselves and opens by asking for two
+   * dollars of USDC to bridge. A claimer is not funding anything - the money
+   * is already parked - so the only step they need is the deploy, and the
+   * commitment is what tells the server to pay for it.
+   */
+  async function handleCreateAccount() {
+    if (!request || !evmConnectedAddress) return;
+    setError(null);
+    setCreating(true);
+    try {
+      const signature = await signMessageAsync({ message: OWNERSHIP_MESSAGE });
+      const response = await fetch("/api/privacy-sdk/deploy", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          evmAddress: evmConnectedAddress,
+          signature,
+          network,
+          claimCommitment: computeEscrowCommitment(request.secret),
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error ?? "The account was not created");
+      }
+      toast.success("Account created. Claiming is the next button.");
+      await connectEvm();
+    } catch (caught) {
+      setError(formatStrk20Error(caught, "pay"));
+    } finally {
+      setCreating(false);
+    }
+  }
 
   async function handleClaim() {
     if (!session || !request || !starknet.escrow) return;
@@ -123,6 +170,12 @@ export function ClaimPanel() {
       setClaiming(false);
     }
   }
+
+  /* The gate is the context's own read of the chain, so this button appears
+     for exactly the wallet that cannot claim yet and disappears once the
+     deploy lands. */
+  const needsAccount =
+    Boolean(evmConnectedAddress) && evmGate?.reason === "undeployed";
 
   const displayAmount =
     onChainAmount !== null
@@ -200,21 +253,25 @@ export function ClaimPanel() {
               </p>
             )}
           </CardFooter>
-          {request ? (
-            <CardFooter className="border-t">
-              {/* The commitment travels, never the secret: it is what lets the
-                  deploy route see that money is waiting and sponsor an account
-                  for somebody holding no STRK at all. */}
+          {needsAccount ? (
+            <CardFooter className="flex flex-col items-start gap-3 border-t">
               <p className="text-sm text-muted-foreground">
-                Never used Starknet?{" "}
-                <Link
-                  className="underline underline-offset-4"
-                  href={`/start?claim=${computeEscrowCommitment(request.secret)}`}
-                >
-                  Create your account first
-                </Link>{" "}
-                - MorokPay pays for it.
+                This wallet has no Starknet account yet. MorokPay creates it
+                and pays for it, because there is money here waiting for you.
               </p>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-10"
+                disabled={creating}
+                aria-busy={creating}
+                onClick={() => {
+                  void handleCreateAccount();
+                }}
+              >
+                {creating ? <Spinner data-icon="inline-start" /> : null}
+                {creating ? "Creating" : "Create my account"}
+              </Button>
             </CardFooter>
           ) : null}
         </Card>
