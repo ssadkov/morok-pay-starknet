@@ -36,6 +36,10 @@ import { privateBalanceFromEntries } from "@/lib/starknet/actions";
 import { starknetOf, STRK_ADDRESS } from "@/lib/starknet/constants";
 import { formatStrk20Error } from "@/lib/starknet/errors";
 import {
+  bounded,
+  WALLET_SUBMISSION_TIMEOUT_MS,
+} from "@/lib/starknet/transaction-confirmation";
+import {
   getAccountSnapshot,
   type AccountSnapshot,
 } from "@/lib/starknet/status";
@@ -184,7 +188,7 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     isConnected: evmConnected,
   } = useAccount();
   const { connectors: evmConnectors, connectAsync: connectEvmAsync } = useConnect();
-  const { disconnect: disconnectEvmWallet } = useEvmDisconnect();
+  const { disconnectAsync: disconnectEvmWallet } = useEvmDisconnect();
   const { signTypedDataAsync } = useSignTypedData();
   const tokens = useMemo(() => listShieldTokens(network), [network]);
   const [wallets, setWallets] = useState<WalletWithStarknetFeatures[]>([]);
@@ -209,6 +213,11 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
   // A restore runs at most once per network, and never after an explicit
   // disconnect - otherwise disconnecting would immediately reconnect.
   const restoreAttempted = useRef(false);
+  /* wagmi's disconnect resolves a tick later than the click. Until it lands,
+     useAccount still reports the old address, so a connect started in that
+     window would build a session that the disconnect then wipes - the click
+     would look like it did nothing at all. */
+  const disconnecting = useRef<Promise<unknown> | null>(null);
 
   const token = getShieldToken(
     network === "sepolia" && tokenId === "strkbtc" ? "usdc" : tokenId,
@@ -333,7 +342,16 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
        still needs onboarding leaves wagmi connected with no session at all -
        dismissing the gate used to strand it there, connected and
        undisconnectable, with the header showing the connect buttons again. */
-    if (evmConnected) disconnectEvmWallet();
+    if (evmConnected) {
+      disconnecting.current = disconnectEvmWallet()
+        .catch(() => {
+          // A wallet that refuses to disconnect still leaves the app logged
+          // out; the session below is cleared either way.
+        })
+        .finally(() => {
+          disconnecting.current = null;
+        });
+    }
     forgetReadyWallet();
     restoreAttempted.current = true;
     previousPrivateUsdc.current = null;
@@ -553,14 +571,33 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
     setConnectError(null);
     setEvmGate(null);
     try {
-      let evmAddress = connectedEvmAddress;
-      let evmChainId = connectedEvmChainId;
-      if (!evmConnected || !evmAddress || !evmChainId) {
+      /* Reconnecting straight after a disconnect is the common case - the
+         header offers the button the moment the session goes. useAccount is
+         still reporting the outgoing wallet until wagmi settles, so wait, and
+         then do not reuse that reading: it describes the wallet that was just
+         dropped. */
+      const afterDisconnect = disconnecting.current !== null;
+      if (disconnecting.current) await disconnecting.current;
+
+      let evmAddress = afterDisconnect ? undefined : connectedEvmAddress;
+      let evmChainId = afterDisconnect ? undefined : connectedEvmChainId;
+      if (afterDisconnect || !evmConnected || !evmAddress || !evmChainId) {
         const connector = evmConnectors.find((candidate) => candidate.type === "injected") ?? evmConnectors[0];
         if (!connector) throw new Error("No injected EVM wallet was found.");
-        const connected = await connectEvmAsync({ connector });
-        evmAddress = connected.accounts[0];
-        evmChainId = connected.chainId;
+        /* wallet_requestPermissions is bounded because a wallet that never
+           answers - its prompt suppressed behind an already-pending request,
+           say - would otherwise leave the button spinning until a reload. */
+        const connected = await bounded(
+          connectEvmAsync({ connector }),
+          WALLET_SUBMISSION_TIMEOUT_MS,
+        );
+        if (connected.status === "timed_out") {
+          throw new Error(
+            "The EVM wallet did not answer. Open it, clear any pending request, and try again.",
+          );
+        }
+        evmAddress = connected.value.accounts[0];
+        evmChainId = connected.value.chainId;
       }
       if (!evmAddress || !evmChainId) {
         throw new Error("The EVM wallet did not return an account.");
@@ -613,7 +650,18 @@ export function TreasuryProvider({ children }: { children: ReactNode }) {
         privacyReady: readiness.status === "ready",
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not connect EVM wallet";
+      /* -32002 is the wallet saying it already has this request open, usually
+         behind the browser window. Its own wording ("Resource unavailable")
+         explains nothing, and this is the case that reads as a dead button. */
+      const pending =
+        typeof error === "object" &&
+        error !== null &&
+        (error as { code?: number }).code === -32002;
+      const message = pending
+        ? "Your EVM wallet already has a connection request open. Finish or dismiss it there, then try again."
+        : error instanceof Error
+          ? error.message
+          : "Could not connect EVM wallet";
       setConnectError(message);
       setEvmGate({ address: "", reason: "error", message });
     } finally {

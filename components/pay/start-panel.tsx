@@ -100,8 +100,14 @@ export function StartPanel() {
   /* Set when the visitor came from a claim link. It is the escrow commitment,
      a hash - the claim secret never leaves their browser. */
   const claimCommitment = useSearchParams().get("claim");
-  const { session, evmStarknetAddress, connectEvm, evmConnecting, refreshBalances } =
-    useTreasury();
+  const {
+    session,
+    evmStarknetAddress,
+    connectEvm,
+    evmConnecting,
+    connectError,
+    refreshBalances,
+  } = useTreasury();
   const { network, starknet, cctp, baseChain } = useNetwork();
   const { address: evmAddress, chainId: evmChainId, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
@@ -386,6 +392,17 @@ export function StartPanel() {
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
+        {/* Outside the branch below: connectEvm reports its failures through
+            the context rather than throwing, and the alert further down only
+            renders once connected - so a refused or unanswered connection had
+            nowhere to appear on the one screen where it happens, and the
+            button looked simply dead. */}
+        {connectError ? (
+          <Alert variant="destructive">
+            <AlertTitle>Could not connect the wallet</AlertTitle>
+            <AlertDescription>{connectError}</AlertDescription>
+          </Alert>
+        ) : null}
         {!isConnected ? (
           <p className="text-sm text-muted-foreground">
             Connect an EVM wallet to begin.
