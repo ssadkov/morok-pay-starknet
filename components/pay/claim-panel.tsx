@@ -42,6 +42,7 @@ export function ClaimPanel() {
     evmConnectedAddress,
     evmGate,
     connectEvm,
+    signatureProgress,
   } = useTreasury();
   const { signMessageAsync } = useSignMessage();
   const request = parseClaimRequest(searchParams, network);
@@ -51,6 +52,7 @@ export function ClaimPanel() {
   const [claimed, setClaimed] = useState(false);
   const [missing, setMissing] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [claimTx, setClaimTx] = useState<string | null>(null);
 
   useEffect(() => {
     if (request && request.network !== network) {
@@ -153,6 +155,9 @@ export function ClaimPanel() {
         txHash,
       });
       setClaimed(true);
+      /* The toast goes away and the receipt is the one thing a claimer may
+         want an hour later, so it stays on the card too. */
+      if (txHash) setClaimTx(txHash);
       if (txHash) {
         txToast({
           title: "Claimed into your private wallet",
@@ -163,6 +168,11 @@ export function ClaimPanel() {
       } else {
         toast.success("Claimed into your private wallet");
       }
+      /* Claiming registers the account, so the session's own idea of whether
+         privacy is on is now stale - reconnecting re-reads it from the chain.
+         Without this the sidebar keeps offering "Activate privacy" for an
+         account the pool has already registered. */
+      await connectEvm();
       await refreshBalances({ private: true });
     } catch (caught) {
       setError(formatStrk20Error(caught, "pay"));
@@ -234,25 +244,58 @@ export function ClaimPanel() {
           </CardContent>
           <CardFooter className="border-t">
             {session ? (
-              <Button
-                type="button"
-                size="lg"
-                className="min-h-10"
-                disabled={claiming || claimed}
-                aria-busy={claiming}
-                onClick={() => {
-                  void handleClaim();
-                }}
-              >
-                {claiming ? <Spinner data-icon="inline-start" /> : null}
-                {claimed ? "Claimed" : claiming ? "Claiming" : "Claim into private USDC"}
-              </Button>
+              <div className="flex flex-col gap-2">
+                <Button
+                  type="button"
+                  size="lg"
+                  className="min-h-10"
+                  disabled={claiming || claimed}
+                  aria-busy={claiming}
+                  onClick={() => {
+                    void handleClaim();
+                  }}
+                >
+                  {claiming ? <Spinner data-icon="inline-start" /> : null}
+                  {claimed
+                    ? "Claimed"
+                    : claiming
+                      ? signatureProgress
+                        ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
+                        : "Claiming"
+                      : "Claim into private USDC"}
+                </Button>
+                {/* One STRK20 action costs several wallet prompts and a proof
+                    that takes its own time, and unexplained silence between
+                    them reads as a hang. Name the step. */}
+                {claiming ? (
+                  <p className="text-xs text-muted-foreground">
+                    {signatureProgress
+                      ? signatureProgress.label
+                      : "Proving and submitting - this takes up to a minute, and MorokPay pays for it."}
+                  </p>
+                ) : null}
+              </div>
             ) : (
               <p className="text-sm text-muted-foreground">
                 Connect a wallet above to claim.
               </p>
             )}
           </CardFooter>
+          {claimTx ? (
+            <CardFooter className="border-t">
+              <p className="text-sm text-muted-foreground">
+                Receipt:{" "}
+                <a
+                  className="underline underline-offset-4"
+                  href={`${starknet.explorer}/tx/${claimTx}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {`${claimTx.slice(0, 10)}…${claimTx.slice(-6)}`}
+                </a>
+              </p>
+            </CardFooter>
+          ) : null}
           {needsAccount ? (
             <CardFooter className="flex flex-col items-start gap-3 border-t">
               <p className="text-sm text-muted-foreground">
