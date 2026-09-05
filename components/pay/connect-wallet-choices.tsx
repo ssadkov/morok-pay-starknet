@@ -8,7 +8,12 @@ import { useTreasury } from "@/components/treasury/treasury-context";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 
-export function ConnectWalletChoices() {
+/**
+ * `sponsored` is for the one screen where the claim pays: on /claim the
+ * account is created on MorokPay, so the mainnet "funded by you" line would
+ * contradict the button right below it.
+ */
+export function ConnectWalletChoices({ sponsored = false }: { sponsored?: boolean }) {
   const { network } = useNetwork();
   const { connecting, evmConnecting, connectEvm } = useTreasury();
 
@@ -36,7 +41,11 @@ export function ConnectWalletChoices() {
           MetaMask or another injected EVM wallet - no Starknet wallet needed.
           MorokPay derives a Starknet account from your address and walks you
           through creating it
-          {network === "mainnet" ? ", funded by you on mainnet." : "."}
+          {sponsored
+            ? ", and pays for it."
+            : network === "mainnet"
+              ? ", funded by you on mainnet."
+              : "."}
         </p>
       </div>
     </div>

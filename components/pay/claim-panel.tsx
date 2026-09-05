@@ -196,7 +196,7 @@ export function ClaimPanel() {
         </p>
       </div>
       <TestnetHint />
-      {!session ? <ConnectWalletChoices /> : null}
+      {!session ? <ConnectWalletChoices sponsored /> : null}
 
       {!request ? (
         <Alert>

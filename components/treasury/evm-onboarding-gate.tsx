@@ -27,6 +27,14 @@ export function EvmOnboardingGate() {
 
   useEffect(() => {
     if (!evmGate) return;
+    /* /claim finishes the job itself, and cheaply: a claimer needs only the
+       deploy, which MorokPay pays for because money is already parked for
+       them. Sending them to /start instead opened with a request for two
+       dollars of USDC to bridge - the first step of a flow written for
+       somebody funding themselves, and pure noise here. The flag is left
+       standing rather than dismissed, because that page reads it to decide
+       what to offer. */
+    if (pathname === "/claim") return;
     /* Clearing it either way: on /start the flag has nothing left to do, and
        redirecting onto the current page would fight with whatever step the
        person is part-way through. */
