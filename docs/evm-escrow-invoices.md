@@ -525,16 +525,50 @@ struct EscrowEntry {
    `refund_owner`. Symmetric with the claim, so no new mechanism. **This ships
    in the first version.** Today a lost link is money gone forever, with no
    path back for anyone including us.
-4. **Discovery index** - `entries_of(owner) -> u32`, `entry_at(owner, i)`, so
-   connecting a wallet shows what is waiting without a link. Read
-   [risk 1](#1-who-has-money-waiting-becomes-publicly-enumerable) first: this
-   is the feature that makes "who has money waiting" publicly queryable, and
-   it is optional in a way the rest of this list is not.
+4. **No discovery index, and salted commitments.** Decided 2026-09-05; see
+   [Discovery belongs off chain](#discovery-belongs-off-chain).
 5. **A minimum entry amount.** See below - this one is now urgent rather than
    theoretical.
 6. Keep the funding assert. The balance-versus-totals check in
    `EscrowOperation::Deposit` is what stops a caller booking an entry the pool
    never funded, and it is the reason the mainnet deposit could be trusted.
+
+### Discovery belongs off chain
+
+The tempting version is `entries_of(owner)` on the contract, so connecting a
+wallet shows what is waiting with no link involved. It should not be built,
+and the reason is not subtle: contract storage is public and its readers are
+anyone.
+
+Every step of the lookup is open. EVM addresses are public. The factory maps
+one to a Starknet address deterministically and permissionlessly. So a
+stranger picks any address they care about - from a block explorer, an ENS
+name, a bio - derives it, and asks the index. What comes back is **whether
+that person has money waiting, how much, and in which token**. Not a
+theoretical inference: a lookup API, and a list of ten thousand addresses is
+an evening's script.
+
+What it does not leak is the sender. The pool hides that either way.
+
+The sharper point is that the leak is really about **what the commitment is
+made of**. `poseidon([TAG, owner])` is computable for any address, so it is
+enumerable with or without an index. `poseidon([TAG, owner, salt])` with a
+random salt is not - but then the recipient cannot find it either, and the
+index becomes the only way, which is the hole again.
+
+So: **salt the commitment, put the salt in the link, and serve discovery from
+our own side.** We already know the commitment-to-owner mapping the moment a
+sender creates an entry. The UX is identical - connect, see what is waiting -
+and the global lookup never exists.
+
+The honest cost is that this half is not permissionless. If MorokPay stops,
+somebody holding no link cannot find their entry. Two things blunt it: the
+link keeps working on its own, because it carries the salt, and the mapping
+can be published as a dump if we ever wind down.
+
+This is a one-way door, which is why it is decided before the deploy rather
+than after: a service can be added whenever, and a public lookup that has
+shipped cannot be withdrawn.
 
 ### Expiry semantics, so they need no second reading
 
@@ -571,21 +605,31 @@ relayer can submit `[approve, deposit_for_burn]` through
 `execute_from_outside_v2` exactly as it submits the claim. The claimer signs;
 we pay. No new mechanism.
 
-**The one genuinely new cost, and it is not on Starknet.** Circle requires
-somebody to call `receiveMessage` on the destination chain with the
-attestation, and that costs gas *there*. Today payout-panel has the user do it
-from MetaMask - fine for someone who already holds ETH on Base, and useless
-for a claimer whose wallet is empty, which is the whole population this design
-serves. Paying it for them means an **EVM relayer holding ETH on Base**: a
-second key, a second balance to monitor, a second thing to rate-limit. That is
-the honest price of "receives on their own chain and pays nothing", and it is
-infrastructure rather than a feature.
+**Who pays on the destination chain, settled 2026-09-05.** Circle requires
+somebody to call `receiveMessage` on the destination with the attestation, and
+that costs gas *there*. This was written up as needing an EVM relayer holding
+ETH on Base - a second key, a second balance, a second thing to rate-limit.
+That is now out of scope, because it answers a question this product does not
+ask.
+
+The audience is people who already hold an ordinary EVM wallet with gas in it.
+Onboarding exactly those people is the point of the project, so the claimer
+paying their own Base gas is not a gap - it is the one cost they are already
+equipped for, and `payout-panel` already has them do it from MetaMask.
+
+Which does not make the Starknet-side sponsorship redundant, and it is worth
+being clear why: someone holding ETH on Base still holds **no STRK**, and
+acquiring it is the drop-off this whole design exists to remove. We pay where
+they cannot; they pay where they already can.
+
+So the bridge-out leg needs **no new infrastructure at all** - it is a UI
+integration over code that exists.
 
 **Sequencing follows from that.** The public claim in V2 is the prerequisite -
 a claim into a private note cannot be bridged, because the money is in the
-pool rather than in an account. So: V2 first, then the sponsored burn, then
-the Base-side relayer if we decide to pay that leg. Each step is useful on its
-own.
+pool rather than in an account. So: V2 first, then the sponsored burn, and the
+claimer finishes on their own chain from their own wallet. Two steps, both
+useful alone.
 
 **Status of the surrounding claims.** CCTP inbound is Sepolia-only in the app
 today ([the README's table](../README.md) marks mainnet as `-`), and no
