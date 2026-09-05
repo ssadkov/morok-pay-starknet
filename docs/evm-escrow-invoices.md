@@ -479,6 +479,42 @@ positions MorokPay as an anonymity provider rather than an interface to a public
 pool, which is the framing that draws attention to a front-end. Same mechanism,
 same revenue, different exposure.
 
+## V2, deployed on Sepolia 2026-09-05
+
+`MorokEscrowV2` is at
+`0x0e46f6928dd046dffc803165afffd1fcc409e9c6e6797ab76a1843410983158`, class
+`0x131eebc1...`, declare `0x6417b816...`, deploy `0x2d6a8a84...`. It is not
+wired into the app and not on mainnet: `/stash` and `/claim` still use V1,
+which is the version with a mainnet round trip behind it.
+
+Verified by reading the constructor back: the pool address, a 1 USDC floor, a
+5 STRK floor, zero for an unlisted token, an empty index.
+
+Everything else is exercised by
+[scripts/escrow-v2-probe.mjs](../scripts/escrow-v2-probe.mjs), on chain,
+because it cannot be unit-tested here: snforge has no Windows binary (see
+`contracts/Scarb.toml`) and `scarb cairo-test` cannot deploy a contract, so
+the runnable Cairo tests only cover pure functions.
+
+**12 of 12 checks passed**, against two real entries:
+
+| what | result |
+| --- | --- |
+| a deposit records owner, refund owner, token, amount and expiry | pass - park `0x5ffb0a0f...` |
+| an indexed entry is listed under its owner | pass - `entry_count` 1 |
+| an unindexed entry is not listed | pass - still 1 after the second park `0x2a862c41...` |
+| a stranger claiming | refused, `CALLER_NOT_OWNER` |
+| a refund before the expiry | refused, `NOT_EXPIRED` |
+| the owner's claim pays the **named destination**, not the caller | pass - 5 STRK, `0x34cccbaf...` |
+| the entry is marked claimed and `escrowed_total` drops back | pass |
+| claiming the same entry twice | refused, `ALREADY_CLAIMED` |
+| the owner claiming after the expiry | refused, `EXPIRED` |
+| the refund owner taking it back after the expiry | pass - `0x32fc566d...` |
+
+The two rules that make V2 worth deploying are the ones that read as boring
+here: money can only leave to a destination the owner names, and after the
+expiry it can only go back. Neither existed in V1.
+
 ## V2: what to build next
 
 V1 is deployed on both networks and **holds nothing** - the mainnet round trip
