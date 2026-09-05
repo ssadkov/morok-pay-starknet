@@ -550,6 +550,21 @@ an evening's script.
 
 What it does not leak is the sender. The pool hides that either way.
 
+The direction is worth stating flatly, because it reads backwards at a glance:
+**the index is not a lock, it is a door.**
+
+| | a stranger can find it | the recipient can find it *without a link* |
+| --- | --- | --- |
+| index in the contract | **yes**, for any address | yes |
+| no index, salted commitment | **no** | only if we tell them |
+
+With a link the recipient is self-sufficient either way: the salt is in the
+link, so they compute the commitment themselves and need nothing from us -
+which is the flow already run on mainnet. The server is needed only for the
+second product, "give me your address and money will be waiting", where no
+link was ever sent and somebody has to supply the salt. Either the contract
+tells everyone, or we tell one person.
+
 The sharper point is that the leak is really about **what the commitment is
 made of**. `poseidon([TAG, owner])` is computable for any address, so it is
 enumerable with or without an index. `poseidon([TAG, owner, salt])` with a
