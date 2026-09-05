@@ -425,3 +425,101 @@ export async function claimFromEscrow(
         ),
   );
 }
+
+/**
+ * Park funds in MorokEscrowV2, owned by an address.
+ *
+ * The shape is V1's - the pool withdraws to the helper, then invokes it in the
+ * same action set - but what gets recorded is different: who may claim, who
+ * may take it back, when it stops being claimable, and whether the entry is
+ * listed under its owner.
+ *
+ * `indexed` is the one field the app must not set for convenience. It is what
+ * makes the entry findable from the owner's address alone, by the recipient
+ * and by any stranger asking about the same address, so it belongs only to the
+ * product that has no link to carry a seed.
+ */
+export async function depositToEscrowV2(
+  account: PrivateWalletAccount,
+  token: ShieldToken,
+  amount: bigint,
+  escrow: string,
+  entry: {
+    commitment: string;
+    owner: string;
+    refundOwner: string;
+    /** Unix seconds. Zero would make the entry permanent and unrefundable. */
+    expiresAt: bigint;
+    indexed: boolean;
+  },
+) {
+  const contract = validateAndParseAddress(escrow);
+  const tokenAddress = validateAndParseAddress(token.address);
+  const actions: Strk20Action[] = [
+    {
+      type: "withdraw",
+      token: tokenAddress,
+      amount: toFelt(amount),
+      recipient: contract,
+    },
+    {
+      type: "invoke",
+      contract,
+      calldata: invokeCalldata([
+        "0x0", // EscrowOperation::Deposit
+        entry.commitment,
+        tokenAddress,
+        toFelt(amount),
+        validateAndParseAddress(entry.owner),
+        validateAndParseAddress(entry.refundOwner),
+        toFelt(entry.expiresAt),
+        entry.indexed ? "0x1" : "0x0",
+      ]),
+    },
+  ];
+  return withWalletTimeout(
+    account.strk20InvokeTransaction(
+      actions as Strk20Action[] &
+        Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
+    ),
+  );
+}
+
+/**
+ * The call that takes the money out of MorokEscrowV2.
+ *
+ * Not a pool operation at all - no proof, no pool fee, no registration - which
+ * is why a V2 claim costs a fraction of V1's and needs nothing from the
+ * claimer but a signature. It is an ordinary external, and the contract's only
+ * question is whether the caller is the entry's owner.
+ */
+export function escrowV2ClaimCall(args: {
+  escrow: string;
+  commitment: string;
+  destination: string;
+}): Call {
+  return {
+    contractAddress: validateAndParseAddress(args.escrow),
+    entrypoint: "claim",
+    calldata: [
+      toCalldataFelt(args.commitment),
+      toCalldataFelt(validateAndParseAddress(args.destination)),
+    ],
+  };
+}
+
+/** The same, for a sender taking back an entry nobody claimed in time. */
+export function escrowV2RefundCall(args: {
+  escrow: string;
+  commitment: string;
+  destination: string;
+}): Call {
+  return {
+    contractAddress: validateAndParseAddress(args.escrow),
+    entrypoint: "refund",
+    calldata: [
+      toCalldataFelt(args.commitment),
+      toCalldataFelt(validateAndParseAddress(args.destination)),
+    ],
+  };
+}

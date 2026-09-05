@@ -16,6 +16,8 @@ const MAINNET = {
   // (0x53fe2c18...), so it is the contract the Sepolia probes exercised.
   escrow:
     "0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f",
+  // V2 lives on Sepolia only until its rules have been exercised there.
+  escrowV2: "",
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_MAINNET_ADDRESS?.trim() ?? "",
   // Declared 2026-08-26 by scripts/deploy-eth712-factory.mjs, configured for
@@ -38,6 +40,10 @@ const SEPOLIA = {
     "0x04bDdE1E09a4B09a2F95d893D94a967b7717eB85A3f6dEcA8c080Ee01fBc3370",
   escrow:
     "0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5",
+  // MorokEscrowV2, deployed 2026-09-05. Owned by an address rather than by a
+  // secret, with an expiry, a refund and a per-token minimum.
+  escrowV2:
+    "0x0156be9d273accc356b928a5ad56341f90fff7f7a671786f1cf4289b42e9d382",
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_SEPOLIA_ADDRESS?.trim() ??
     "0x00E5887fC74A11d10Ad5dd2f69D3911Fb352d9b811528a9281Ca8aBAc8498423",
