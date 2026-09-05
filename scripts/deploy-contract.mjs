@@ -15,12 +15,21 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Account, CallData, RpcProvider, json } from "starknet";
 
-import { resolveNetwork } from "./lib/networks.mjs";
+import { resolveNetwork, STRK } from "./lib/networks.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const TARGET = process.argv[2] ?? "escrow";
 const network = resolveNetwork(process.argv.find((item, index) => index > 2 && !item.startsWith("--")));
 const SUBMIT = process.argv.includes("--submit");
+
+/* Minimums are per token because one number cannot serve both: USDC has six
+   decimals and STRK eighteen. A token left out has no floor, which defeats the
+   floor's purpose - the sponsored account deploy is granted on any funded
+   unclaimed entry, whatever the token - so list every token the app accepts. */
+const MINIMUMS = [
+  [network.usdc, 1_000_000n],                    // 1 USDC
+  [STRK, 5n * 10n ** 18n],                       // 5 STRK
+];
 
 const CONTRACTS = {
   escrow: {
@@ -29,11 +38,21 @@ const CONTRACTS = {
     casm: "morok_pay_MorokEscrow.compiled_contract_class.json",
     constructor: [network.pool],
   },
+  escrowV2: {
+    name: "MorokEscrowV2",
+    sierra: "morok_pay_MorokEscrowV2.contract_class.json",
+    casm: "morok_pay_MorokEscrowV2.compiled_contract_class.json",
+    constructor: [
+      network.pool,
+      MINIMUMS.length,
+      ...MINIMUMS.flatMap(([token, minimum]) => [token, minimum.toString()]),
+    ],
+  },
 };
 
 const spec = CONTRACTS[TARGET];
 if (!spec) {
-  throw new Error(`Unknown target "${TARGET}". Use escrow.`);
+  throw new Error(`Unknown target "${TARGET}". Use escrow or escrowV2.`);
 }
 
 const store = json.parse(
@@ -64,7 +83,6 @@ if (spec.constructor.length > 0) {
 }
 console.log(`declareAndDeploy ${spec.name} from ${deployer.address}`);
 
-const STRK = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 const [balanceLow, balanceHigh] = await provider.callContract({
   contractAddress: STRK,
   entrypoint: "balance_of",

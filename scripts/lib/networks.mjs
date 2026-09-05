@@ -15,12 +15,14 @@ const NETWORKS = {
     rpcEnv: "STARKNET_SEPOLIA_RPC_URL",
     defaultRpc: "https://api.cartridge.gg/x/starknet/sepolia",
     pool: "0x0254a6b2997ef52e9f830ce1f543f6b29768295e8d17e2267d672c552cfe0d91",
+    usdc: "0x0512feAc6339Ff7889822cb5aA2a86C848e9D392bB0E3E237C008674feeD8343",
     explorer: "https://sepolia.voyager.online",
   },
   mainnet: {
     rpcEnv: "STARKNET_RPC_URL",
     defaultRpc: "https://rpc.starknet.lava.build",
     pool: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
+    usdc: "0x033068F6539f8e6e6b131e6B2B814e6c34A5224bC66947c47DaB9dFeE93b35fb",
     explorer: "https://voyager.online",
   },
 };

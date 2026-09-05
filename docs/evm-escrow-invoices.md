@@ -525,65 +525,58 @@ struct EscrowEntry {
    `refund_owner`. Symmetric with the claim, so no new mechanism. **This ships
    in the first version.** Today a lost link is money gone forever, with no
    path back for anyone including us.
-4. **No discovery index, and salted commitments.** Decided 2026-09-05; see
-   [Discovery belongs off chain](#discovery-belongs-off-chain).
+4. **A per-entry `indexed` flag, default off, and salted commitments always.**
+   See [The index is a per-entry choice](#the-index-is-a-per-entry-choice-not-a-protocol-wide-one).
 5. **A minimum entry amount.** See below - this one is now urgent rather than
    theoretical.
 6. Keep the funding assert. The balance-versus-totals check in
    `EscrowOperation::Deposit` is what stops a caller booking an entry the pool
    never funded, and it is the reason the mainnet deposit could be trusted.
 
-### Discovery belongs off chain
+### The index is a per-entry choice, not a protocol-wide one
 
-The tempting version is `entries_of(owner)` on the contract, so connecting a
-wallet shows what is waiting with no link involved. It should not be built,
-and the reason is not subtle: contract storage is public and its readers are
-anyone.
+Decided 2026-09-05, after arguing both extremes and finding each of them
+wrong.
 
-Every step of the lookup is open. EVM addresses are public. The factory maps
-one to a Starknet address deterministically and permissionlessly. So a
-stranger picks any address they care about - from a block explorer, an ENS
-name, a bio - derives it, and asks the index. What comes back is **whether
-that person has money waiting, how much, and in which token**. Not a
-theoretical inference: a lookup API, and a list of ten thousand addresses is
-an evening's script.
+**An index for everything** makes privacy cost money. Contract storage is
+public and its readers are anyone: EVM addresses are public, the factory maps
+one to a Starknet address deterministically and permissionlessly, so a
+stranger picks any address they care about and asks what is waiting - amount
+and token included. The only defence left to a recipient is a fresh EVM
+address per payment, and each of those needs its own account deploy and its
+own pool registration. That is **~$0.28 against ~$0.03** for a repeat claim on
+an account that already exists: we would be pushing people into the behaviour
+that costs us nine times more.
 
-What it does not leak is the sender. The pool hides that either way.
+**No index at all** breaks the other product. "Give me your address and money
+will be waiting" has no link to carry a salt, so somebody has to tell the
+recipient where to look - which means our server, a database, and a component
+the whole thing stops working without. It also stops being something another
+team can build on, which the sprint's own judging note rewards.
 
-The direction is worth stating flatly, because it reads backwards at a glance:
-**the index is not a lock, it is a door.**
+**So the flag rides on the entry.** Commitments are salted always; the deposit
+takes an `indexed` flag, default off, that decides whether the commitment is
+appended to the owner's list.
 
-| | a stranger can find it | the recipient can find it *without a link* |
+| | flag | who can find it |
 | --- | --- | --- |
-| index in the contract | **yes**, for any address | yes |
-| no index, salted commitment | **no** | only if we tell them |
+| bearer link | **off** | whoever holds the link - the salt is in it |
+| invoice to an address | **on** | the recipient without a link, and any stranger |
 
-With a link the recipient is self-sufficient either way: the salt is in the
-link, so they compute the commitment themselves and need nothing from us -
-which is the flow already run on mainnet. The server is needed only for the
-second product, "give me your address and money will be waiting", where no
-link was ever sent and somebody has to supply the salt. Either the contract
-tells everyone, or we tell one person.
+Both problems go: the private path costs nothing extra, so nobody needs a
+fresh address to hide, and no server is needed either, because address-keyed
+entries are found in the contract and link-keyed ones in the link.
 
-The sharper point is that the leak is really about **what the commitment is
-made of**. `poseidon([TAG, owner])` is computable for any address, so it is
-enumerable with or without an index. `poseidon([TAG, owner, salt])` with a
-random salt is not - but then the recipient cannot find it either, and the
-index becomes the only way, which is the hole again.
+What stays true, and must be said rather than buried: for an indexed entry the
+leak is real and permanent. The sender is still hidden - the pool sees to that
+- but the amount, the token and the fact of waiting money are not.
 
-So: **salt the commitment, put the salt in the link, and serve discovery from
-our own side.** We already know the commitment-to-owner mapping the moment a
-sender creates an entry. The UX is identical - connect, see what is waiting -
-and the global lookup never exists.
-
-The honest cost is that this half is not permissionless. If MorokPay stops,
-somebody holding no link cannot find their entry. Two things blunt it: the
-link keeps working on its own, because it carries the salt, and the mapping
-can be published as a dump if we ever wind down.
-
-This is a one-way door, which is why it is decided before the deploy rather
-than after: a service can be added whenever, and a public lookup that has
-shipped cannot be withdrawn.
+And the flag is set by the **sender**, while the privacy at risk is the
+**recipient's**. On chain there is no way for a recipient to consent before an
+entry exists, and in practice they asked for it by handing over an address.
+The app rule has to be strict anyway: set it only when there will be no link,
+which is when discovery is otherwise impossible. Never as a convenience
+default.
 
 ### Expiry semantics, so they need no second reading
 
