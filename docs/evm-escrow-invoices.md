@@ -71,6 +71,28 @@ living on borrowed time the way risk 4 said. The next probe took that further
 and made it the default: see
 [the sponsored private claim](#the-sponsored-private-claim-measured-end-to-end).
 
+## Done on mainnet, 2026-09-05
+
+A stranger with an empty MetaMask collected private USDC, and paid nothing.
+
+| | |
+| --- | --- |
+| escrow | `0x06199365a4...b698f`, entry `0x79a65b1e...`, 1.000000 USDC |
+| claim | `0x2f716fbf...346997` |
+| after | entry `claimed`, `escrowed_total` and the contract's own USDC balance both zero |
+| the claimer | registered in the pool by that same transaction, public key `0x5a151c6f...` |
+| paid by MorokPay | **9.56 STRK ≈ $0.26** for the account deploy and the claim together |
+
+Cheaper than the $0.27-0.33 extrapolated below, and the registration happened
+inside the claim exactly as the Sepolia probe said it would. The claimer's
+account never held STRK at any point.
+
+Three things the run exposed, all fixed in the same commit: the claim button
+said "Claiming" through two wallet prompts and a minute of proving; the
+session's `privacyReady` went stale the moment the claim registered the
+account, so the sidebar offered - and would have charged 6 STRK for - a second
+registration; and the receipt lived only in a toast that disappeared.
+
 ## The sponsored private claim, measured end to end
 
 [scripts/sponsored-claim-probe.mjs](../scripts/sponsored-claim-probe.mjs), run
@@ -457,27 +479,119 @@ positions MorokPay as an anonymity provider rather than an interface to a public
 pool, which is the framing that draws attention to a front-end. Same mechanism,
 same revenue, different exposure.
 
-## Contract changes
+## V2: what to build next
 
-A new `MorokEscrowV2`, not a migration - the current one is keyed by a secret
-commitment and approves the pool rather than transferring out.
+V1 is deployed on both networks and **holds nothing** - the mainnet round trip
+emptied it - so V2 is a clean new contract at a new address, not a migration
+and not an upgrade. V1 has no upgrade entry point and never will; anything
+parked in it stays claimable by its secret alone.
 
-1. **Key by owner.** `owner: ContractAddress` (the derived account) on the
-   entry, plus `expires_at`.
-2. **A public claim.** `claim(commitment, destination)`, external, asserting
-   `get_caller_address() == entry.owner`, `!entry.claimed` and not expired, then
-   `IERC20.transfer(destination, amount)`. The existing `privacy_invoke` claim
-   can stay for a later private tier; it is not the default path.
-3. **Discovery index.** `entries_of(owner) -> u32` and `entry_at(owner, i)`, so
-   connecting a wallet is enough to see what is waiting. Read
-   [risk 1](#1-who-has-money-waiting-becomes-publicly-enumerable) before
-   deciding this is free.
-4. **Refund.** A `refund_owner` on the entry, claimable by the same
-   caller-identity rule after `expires_at`. Symmetric with the claim, so it
-   needs no new mechanism - and it must ship in v1, not later.
-5. Keep the funding assert that already exists - the balance-versus-totals check
-   in `EscrowOperation::Deposit` is what stops a caller booking an entry the
-   pool never funded.
+### One rule, and it covers both products
+
+The whole design collapses to `get_caller_address() == entry.owner`. There is
+no separate bearer mode, because a bearer link's owner is simply an ephemeral
+EVM address derived from the link seed. "With a recipient address" and
+"without one" are the same entry shape and the same claim path; the only
+difference is whose address the sender puts in, and that is decided in the
+browser, not in Cairo.
+
+That is worth stating because it is the argument against the obvious
+alternative. Keeping V1's `poseidon([TAG, secret])` rule alongside an owner
+rule would be a second authorisation path in a contract holding money, and the
+secret-based one cannot be relayed safely: the claim reveals the secret in
+calldata and the destination is chosen by whoever submits, so a relayer can
+redirect it. One rule is both smaller and safer.
+
+### The entry
+
+```cairo
+struct EscrowEntry {
+    token: ContractAddress,
+    amount: u128,
+    owner: ContractAddress,        // who may claim
+    refund_owner: ContractAddress, // who may take it back after expiry
+    expires_at: u64,
+    claimed: bool,
+}
+```
+
+1. **`claim(commitment, destination)`** - external. Asserts caller is `owner`,
+   not claimed, not expired, then `IERC20::transfer(destination, amount)`.
+   The destination is a parameter rather than the caller so a claimer can send
+   straight on - to a bridge helper, an exchange, anywhere.
+2. **`privacy_invoke(Claim)` stays** for the private-note path. It is measured
+   and it works on both networks; it is a tier, not the default.
+3. **`refund(commitment)`** - external, after `expires_at`, caller must be
+   `refund_owner`. Symmetric with the claim, so no new mechanism. **This ships
+   in the first version.** Today a lost link is money gone forever, with no
+   path back for anyone including us.
+4. **Discovery index** - `entries_of(owner) -> u32`, `entry_at(owner, i)`, so
+   connecting a wallet shows what is waiting without a link. Read
+   [risk 1](#1-who-has-money-waiting-becomes-publicly-enumerable) first: this
+   is the feature that makes "who has money waiting" publicly queryable, and
+   it is optional in a way the rest of this list is not.
+5. **A minimum entry amount.** See below - this one is now urgent rather than
+   theoretical.
+6. Keep the funding assert. The balance-versus-totals check in
+   `EscrowOperation::Deposit` is what stops a caller booking an entry the pool
+   never funded, and it is the reason the mainnet deposit could be trusted.
+
+### Expiry semantics, so they need no second reading
+
+Before `expires_at`: `claim` works, `refund` does not. After: `claim` fails,
+`refund` works. No overlap, no grace period, nothing that depends on who asks
+first.
+
+### The hole a minimum would close, which is open right now
+
+The deploy route sponsors a Starknet account when it can see a funded,
+unclaimed entry behind the commitment
+(`app/api/privacy-sdk/deploy/route.ts`). There is **no floor on that entry**.
+Parking one cent buys a free account deploy at MorokPay's expense.
+
+It is not economic today - creating any entry costs the sender the 6 STRK pool
+fee (~$0.16) against a ~$0.03 deploy - so the attack loses money five times
+over. That is an accident of the pool's fee, not a defence we built, and it
+stops being true the moment the fee drops or we subsidise the sender side. A
+floor belongs in the contract, where it cannot be forgotten by a caller.
+
+## Receiving on an EVM chain, in the same screen
+
+Worth separating what exists from what does not, because most of it exists.
+
+**What is built.** `lib/cctp/` has both directions: `receiveMessageCall` for
+Starknet-inbound and `depositForBurnCall` for Starknet-outbound, both
+unit-tested, and `components/treasury/payout-panel.tsx` already drives
+unshield → burn on Starknet → mint on Base. The claim's `destination`
+parameter above is what lets the money go straight into that path instead of
+sitting in the claimer's account first.
+
+**What is sponsorable.** The Starknet burn is an ordinary public call, so the
+relayer can submit `[approve, deposit_for_burn]` through
+`execute_from_outside_v2` exactly as it submits the claim. The claimer signs;
+we pay. No new mechanism.
+
+**The one genuinely new cost, and it is not on Starknet.** Circle requires
+somebody to call `receiveMessage` on the destination chain with the
+attestation, and that costs gas *there*. Today payout-panel has the user do it
+from MetaMask - fine for someone who already holds ETH on Base, and useless
+for a claimer whose wallet is empty, which is the whole population this design
+serves. Paying it for them means an **EVM relayer holding ETH on Base**: a
+second key, a second balance to monitor, a second thing to rate-limit. That is
+the honest price of "receives on their own chain and pays nothing", and it is
+infrastructure rather than a feature.
+
+**Sequencing follows from that.** The public claim in V2 is the prerequisite -
+a claim into a private note cannot be bridged, because the money is in the
+pool rather than in an account. So: V2 first, then the sponsored burn, then
+the Base-side relayer if we decide to pay that leg. Each step is useful on its
+own.
+
+**Status of the surrounding claims.** CCTP inbound is Sepolia-only in the app
+today ([the README's table](../README.md) marks mainnet as `-`), and no
+Starknet → Base round trip is recorded on mainnet anywhere in these docs. The
+code exists and is tested; the mainnet evidence does not. Do not promise this
+leg until it has run once.
 
 ## What is already in the repo
 
