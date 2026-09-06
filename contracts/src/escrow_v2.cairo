@@ -16,7 +16,8 @@ pub struct EscrowEntry {
     /// account derived from the link's own seed, so "to an address" and "to a
     /// link" are one rule rather than two.
     pub owner: ContractAddress,
-    /// Takes it back after `expires_at`, and nobody else ever.
+    /// A fresh per-entry account controlled by a sender-only recovery key.
+    /// Public storage: NEVER put the sender's main wallet address here.
     pub refund_owner: ContractAddress,
     /// Unix seconds. Zero means the entry never expires and can never be
     /// refunded - deliberately expressible, deliberately not the default the
@@ -28,11 +29,12 @@ pub struct EscrowEntry {
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub enum EscrowOperation {
     Deposit,
+    Refund: felt252,
 }
 
 #[starknet::interface]
 pub trait IMorokEscrowV2<T> {
-    /// Called by the pool through `privacy_invoke`, and only for deposits.
+    /// Called by the pool for deposits and authorised open-note refunds.
     ///
     /// Claiming is not here: the pool does not tell a helper who authorised
     /// the action set it is running, so a claim reached this way could not be
@@ -56,18 +58,19 @@ pub trait IMorokEscrowV2<T> {
     /// rather than parking it in the account first.
     fn claim(ref self: T, commitment: felt252, destination: ContractAddress);
 
-    /// Take it back once it has expired. Caller must be `refund_owner`.
-    fn refund(ref self: T, commitment: felt252, destination: ContractAddress);
+    /// Authorise exactly one private note. The relayer batches this signed
+    /// call and the pool's refund in one transaction. No public payout exists.
+    fn authorize_refund(ref self: T, commitment: felt252, note_id: felt252);
+
+    fn refund_note(self: @T, commitment: felt252) -> felt252;
 
     fn get_entry(self: @T, commitment: felt252) -> EscrowEntry;
     fn escrowed_total(self: @T, token: ContractAddress) -> u128;
     fn minimum_amount(self: @T, token: ContractAddress) -> u128;
     fn privacy_contract(self: @T) -> ContractAddress;
 
-    /// Discovery, for entries whose sender opted into it. A salted commitment
-    /// is unfindable without the link that carries the salt; this hands it
-    /// over for the one product that has no link - and, unavoidably, to anyone
-    /// else who asks about the same address.
+    /// Convenience index only. Escrowed events and get_entry expose ALL
+    /// entries and their owners regardless of this index.
     fn entry_count(self: @T, owner: ContractAddress) -> u32;
     fn entry_at(self: @T, owner: ContractAddress, index: u32) -> felt252;
 }
@@ -91,11 +94,16 @@ pub mod errors {
     pub const NO_EXPIRY: felt252 = 'NO_EXPIRY';
     pub const BELOW_MINIMUM: felt252 = 'BELOW_MINIMUM';
     pub const INDEX_OUT_OF_RANGE: felt252 = 'INDEX_OUT_OF_RANGE';
+    pub const ZERO_NOTE: felt252 = 'ZERO_NOTE';
+    pub const REFUND_NOT_AUTHORIZED: felt252 = 'REFUND_NOT_AUTHORIZED';
+    pub const TOKEN_TRANSFER_FAILED: felt252 = 'TOKEN_TRANSFER_FAILED';
+    pub const TOKEN_APPROVE_FAILED: felt252 = 'TOKEN_APPROVE_FAILED';
 }
 
 #[starknet::interface]
 pub trait IERC20<T> {
     fn transfer(ref self: T, recipient: ContractAddress, amount: u256) -> bool;
+    fn approve(ref self: T, spender: ContractAddress, amount: u256) -> bool;
     fn balance_of(self: @T, account: ContractAddress) -> u256;
 }
 
@@ -109,8 +117,9 @@ pub trait IERC20<T> {
 /// could be replayed against them.
 ///
 /// The parked tokens are plain ERC-20, so the amount and the token are public
-/// between deposit and claim. Whether the *owner* is public is the sender's
-/// choice, through `indexed`.
+/// between deposit and claim. Both owner fields are public regardless of
+/// `indexed`. Sender privacy requires a separate per-entry refund account,
+/// relayed submission, and repayment to a private note rather than a wallet.
 #[starknet::contract]
 pub mod MorokEscrowV2 {
     use core::num::traits::Zero;
@@ -145,6 +154,7 @@ pub mod MorokEscrowV2 {
         totals: Map<ContractAddress, u128>,
         entry_counts: Map<ContractAddress, u32>,
         entry_index: Map<(ContractAddress, u32), felt252>,
+        refund_notes: Map<felt252, felt252>,
     }
 
     #[event]
@@ -155,9 +165,7 @@ pub mod MorokEscrowV2 {
         Refunded: Refunded,
     }
 
-    /// `owner` is deliberately absent. An indexed entry publishes it through
-    /// `entry_at` because it has to; an unindexed one should not have it
-    /// handed to a log reader for free.
+    /// Commitment lets observers read the complete entry, including owners.
     #[derive(Drop, starknet::Event)]
     pub struct Escrowed {
         #[key]
@@ -207,6 +215,10 @@ pub mod MorokEscrowV2 {
 
         fn get_entry(self: @ContractState, commitment: felt252) -> EscrowEntry {
             self.entries.read(commitment)
+        }
+
+        fn refund_note(self: @ContractState, commitment: felt252) -> felt252 {
+            self.refund_notes.read(commitment)
         }
 
         fn escrowed_total(self: @ContractState, token: ContractAddress) -> u128 {
@@ -279,6 +291,26 @@ pub mod MorokEscrowV2 {
                     self.emit(Escrowed { commitment, token, amount, expires_at });
                     [].span()
                 },
+                EscrowOperation::Refund(note_id) => {
+                    let entry = self.take(commitment);
+                    assert(entry.expires_at != 0, errors::NO_EXPIRY);
+                    assert(get_block_timestamp() >= entry.expires_at, errors::NOT_EXPIRED);
+                    assert(note_id.is_non_zero(), errors::ZERO_NOTE);
+                    assert(
+                        self.refund_notes.read(commitment) == note_id,
+                        errors::REFUND_NOT_AUTHORIZED,
+                    );
+                    self.entries.write(commitment, EscrowEntry { claimed: true, ..entry });
+                    self.totals.write(entry.token, self.totals.read(entry.token) - entry.amount);
+                    self.refund_notes.write(commitment, 0);
+                    assert(
+                        IERC20Dispatcher { contract_address: entry.token }
+                            .approve(pool, entry.amount.into()),
+                        errors::TOKEN_APPROVE_FAILED,
+                    );
+                    self.emit(Refunded { commitment });
+                    [OpenNoteDeposit { note_id, token: entry.token, amount: entry.amount }].span()
+                },
             }
         }
 
@@ -293,7 +325,7 @@ pub mod MorokEscrowV2 {
             self.emit(Claimed { commitment });
         }
 
-        fn refund(ref self: ContractState, commitment: felt252, destination: ContractAddress) {
+        fn authorize_refund(ref self: ContractState, commitment: felt252, note_id: felt252) {
             let entry = self.take(commitment);
             assert(get_caller_address() == entry.refund_owner, errors::CALLER_NOT_REFUND_OWNER);
             // An entry with no expiry is never refundable - the sender chose
@@ -301,8 +333,8 @@ pub mod MorokEscrowV2 {
             // offer it lightly.
             assert(entry.expires_at != 0, errors::NO_EXPIRY);
             assert(get_block_timestamp() >= entry.expires_at, errors::NOT_EXPIRED);
-            self.pay_out(commitment, entry, destination);
-            self.emit(Refunded { commitment });
+            assert(note_id.is_non_zero(), errors::ZERO_NOTE);
+            self.refund_notes.write(commitment, note_id);
         }
     }
 
@@ -328,8 +360,11 @@ pub mod MorokEscrowV2 {
             assert(destination.is_non_zero(), errors::ZERO_OWNER);
             self.entries.write(commitment, EscrowEntry { claimed: true, ..entry });
             self.totals.write(entry.token, self.totals.read(entry.token) - entry.amount);
-            IERC20Dispatcher { contract_address: entry.token }
-                .transfer(destination, entry.amount.into());
+            assert(
+                IERC20Dispatcher { contract_address: entry.token }
+                    .transfer(destination, entry.amount.into()),
+                errors::TOKEN_TRANSFER_FAILED,
+            );
         }
     }
 }

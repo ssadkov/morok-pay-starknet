@@ -53,10 +53,9 @@ export async function readEscrowV2Entry(args: {
 }
 
 /**
- * Everything waiting for an address, for entries whose sender opted into the
- * index. Unindexed entries are invisible here by design: they are found
- * through the link that carries their seed, and nothing else can find them -
- * which is the point.
+ * Convenience index for opted-in entries. Unindexed entries are still public:
+ * anyone can enumerate Escrowed events and call get_entry on each commitment.
+ * Never treat omission from this index as a sender privacy guarantee.
  */
 export async function readEscrowV2Entries(args: {
   network: AppNetwork;

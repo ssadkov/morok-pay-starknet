@@ -434,10 +434,8 @@ export async function claimFromEscrow(
  * may take it back, when it stops being claimable, and whether the entry is
  * listed under its owner.
  *
- * `indexed` is the one field the app must not set for convenience. It is what
- * makes the entry findable from the owner's address alone, by the recipient
- * and by any stranger asking about the same address, so it belongs only to the
- * product that has no link to carry a seed.
+ * All entry fields are public, including unindexed entries. Use a fresh
+ * sender-only refund key and relay the deposit to avoid naming the sender.
  */
 export async function depositToEscrowV2(
   account: PrivateWalletAccount,
@@ -448,11 +446,22 @@ export async function depositToEscrowV2(
     commitment: string;
     owner: string;
     refundOwner: string;
+    /** Local privacy check only; this address never goes into helper calldata. */
+    senderAddress: string;
+    network: AppNetwork;
     /** Unix seconds. Zero would make the entry permanent and unrefundable. */
     expiresAt: bigint;
     indexed: boolean;
   },
 ) {
+  if (BigInt(entry.refundOwner) === BigInt(entry.senderAddress) ||
+      BigInt(entry.refundOwner) === BigInt(entry.owner)) {
+    throw new Error("Use a separate sender-only recovery account for refunds");
+  }
+  if (!starknetOf(entry.network).escrowV2SupportsPrivateRefund ||
+      BigInt(escrow) !== BigInt(starknetOf(entry.network).escrowV2)) {
+    throw new Error("The private-refund escrow revision is not deployed");
+  }
   const contract = validateAndParseAddress(escrow);
   const tokenAddress = validateAndParseAddress(token.address);
   const actions: Strk20Action[] = [
@@ -477,11 +486,8 @@ export async function depositToEscrowV2(
       ]),
     },
   ];
-  return withWalletTimeout(
-    account.strk20InvokeTransaction(
-      actions as Strk20Action[] &
-        Parameters<WalletAccountV6["strk20InvokeTransaction"]>[0],
-    ),
+  return submitEscrowPrivateActions(account, actions, entry.senderAddress, (prepared) =>
+    relaySubmission({ network: entry.network, ...prepared }),
   );
 }
 
@@ -508,18 +514,52 @@ export function escrowV2ClaimCall(args: {
   };
 }
 
-/** The same, for a sender taking back an entry nobody claimed in time. */
-export function escrowV2RefundCall(args: {
+/** Signed by a separate recovery key; the output is a private note, not a wallet. */
+export function escrowV2AuthorizeRefundCall(args: {
   escrow: string;
   commitment: string;
-  destination: string;
+  noteId: string;
 }): Call {
   return {
     contractAddress: validateAndParseAddress(args.escrow),
-    entrypoint: "refund",
+    entrypoint: "authorize_refund",
     calldata: [
       toCalldataFelt(args.commitment),
-      toCalldataFelt(validateAndParseAddress(args.destination)),
+      toCalldataFelt(args.noteId),
     ],
   };
+}
+
+export type PreparedEscrowProof = {
+  call: ReturnType<typeof normalizeCall>;
+  proof: string;
+  proofFacts: string[];
+};
+
+/** Never fall back to a public submission or a proof naming the sender. */
+export async function submitEscrowPrivateActions(
+  account: PrivateWalletAccount,
+  actions: Strk20Action[],
+  senderAddress: string,
+  submit: (prepared: PreparedEscrowProof) => Promise<{ transaction_hash: string }>,
+) {
+  const checkedSubmit = (prepared: PreparedEscrowProof) => {
+    if (namesRecipient(prepared.call, senderAddress)) {
+      throw new PublicLinkError("This proof publishes your address. Prepare your private self-channel separately before using escrow; nothing was submitted.");
+    }
+    return submit(prepared);
+  };
+  if (canPrepareInvoke(account)) {
+    const prepared = await withWalletTimeout(account.strk20PrepareInvoke(
+      actions as Parameters<WalletAccountV6["strk20PrepareInvoke"]>[0],
+    ));
+    return checkedSubmit({
+      call: normalizeCall(prepared.call as Parameters<typeof normalizeCall>[0]),
+      proof: prepared.proof.data, proofFacts: prepared.proof.proof_facts.map(String),
+    });
+  }
+  if ("discoverChannels" in account) {
+    return withWalletTimeout(account.strk20InvokeTransaction(actions, { submitPrepared: checkedSubmit }));
+  }
+  throw new Error("This wallet cannot prepare a private escrow transaction for relaying");
 }

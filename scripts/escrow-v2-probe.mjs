@@ -2,10 +2,9 @@
  * Does MorokEscrowV2 actually enforce what it claims to?
  *
  * V2 replaced V1's "know the secret" rule with `get_caller_address() == owner`,
- * added an expiry, a refund, a per-token minimum and an opt-in index. None of
- * that was exercised before deployment: snforge has no Windows binary and
- * `scarb cairo-test` cannot deploy a contract, so the only verification after
- * the Sepolia deploy was reading the constructor back. This is the rest.
+ * added an expiry, a per-token minimum and an opt-in index. The 2026-09-06
+ * revision replaces public refund with authorization of a private open note.
+ * Local Foundry tests live in contracts/forge; this probe checks the real pool.
  *
  * Six things, in one run:
  *
@@ -14,7 +13,8 @@
  *   3. a stranger cannot claim                    -> CALLER_NOT_OWNER
  *   4. nobody can refund before the expiry        -> NOT_EXPIRED
  *   5. the owner can claim, to any destination
- *   6. after the expiry the refund_owner gets it back
+ *   6. after expiry, a relayed refund credits the sender's private balance,
+ *      rejecting absent authorization, a substituted note, and double refunds
  *
  * 5 and 6 need two entries, because an entry can only leave once.
  *
@@ -22,7 +22,8 @@
  * the first entry, `deployer` stands in for a stranger and for the refund
  * owner - ordinary accounts, deliberately, because what is under test is the
  * contract's rule rather than the EVM derivation that usually supplies the
- * owner. That half is already proven on mainnet.
+ * owner. The EVM recovery/API path is a separate opt-in test:
+ * scripts/escrow-v2-relay.live.test.ts.
  *
  * Usage:
  *   node scripts/escrow-v2-probe.mjs             # read-only
@@ -40,7 +41,7 @@ import {
   num,
   shortString,
 } from "starknet";
-import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
+import { createPrivateTransfers, Open } from "@starkware-libs/starknet-privacy-sdk";
 import { deriveViewingKey } from "@starkware-libs/starknet-privacy-client";
 import { Snip12CallSetSigner } from "@starkware-libs/starknet-privacy-client/signers";
 
@@ -180,6 +181,12 @@ function reasonOf(error) {
   return named ? named[1] : message.slice(-160);
 }
 
+// RPC errors otherwise dump the entire proof (hundreds of kilobytes).
+process.on("uncaughtException", (error) => {
+  console.error(reasonOf(error));
+  process.exit(1);
+});
+
 async function expectRejection(label, expected, run) {
   try {
     await run();
@@ -197,6 +204,14 @@ console.log(`escrow    ${ESCROW}`);
 console.log(`sender    spare     ${sender.address}`);
 console.log(`owner     payout    ${owner.address}`);
 console.log(`stranger  deployer  ${stranger.address}`);
+
+// The earlier V2 deployment has a public refund and is not this revision.
+// Refuse BEFORE parking any funds if the operator forgot to redeploy it.
+try {
+  await view("refund_note", ["0x1"]);
+} catch {
+  throw new Error("Private-refund revision is not deployed. Build and deploy the revised MorokEscrowV2 first; no funds were parked.");
+}
 
 const [poolOfEscrow] = await view("privacy_contract");
 const [minStrk] = await view("minimum_amount", [STRK]);
@@ -365,8 +380,8 @@ await expectRejection("refund before expiry is refused", "NOT_EXPIRED", () =>
   submitFrom(stranger, [
     {
       contractAddress: ESCROW,
-      entrypoint: "refund",
-      calldata: [first.commitment, stranger.address],
+      entrypoint: "authorize_refund",
+      calldata: [first.commitment, "0x123"],
     },
   ]),
 );
@@ -439,19 +454,56 @@ await expectRejection("the owner's claim after expiry is refused", "EXPIRED", ()
   ]),
 );
 
-const refundBefore = await publicStrk(stranger.address);
+const refundPublicBefore = await publicStrk(sender.address);
+const privateBalance = async () => {
+  const discovered = await transfers.discoverNotes({
+    tokens: [BigInt(STRK)], blockIdentifier: await reader.getBlockNumber(),
+  });
+  return (discovered.notes.get(BigInt(STRK)) ?? []).reduce((sum, note) => sum + note.amount, 0n);
+};
+const refundBefore = await privateBalance();
+let refundNote;
+const refundBuilder = transfers.build({ autoSetup: true })
+  .with(STRK, (operations) => operations.transfer({ recipient: sender.address, amount: Open }))
+  .invoke(({ openNotes }) => {
+    refundNote = felt(openNotes[0].noteId);
+    return { contractAddress: ESCROW,
+      calldata: ["0x1", refundNote, second.commitment, "0x0", "0x0", "0x0", "0x0", "0x0", "0x0"] };
+  })
+  .surplusTo(sender.address);
+const refundProof = await prove(transfers, refundBuilder, (await reader.getBlockNumber()) - PROVING_BLOCK_DEPTH);
+if (!refundNote) throw new Error("Refund proof created no note");
+if (refundProof.call.calldata.some((v) => BigInt(v) === BigInt(sender.address))) {
+  throw new Error("Refund proof publishes the sender address (missing self-channel/setup). Nothing was submitted.");
+}
+const proofDetails = { proof: refundProof.proof, proofFacts: refundProof.proofFacts };
+await expectRejection("private refund without authorization is refused", "REFUND_NOT_AUTHORIZED", () =>
+  submitFrom(stranger, [approvalCall(poolFee), refundProof.call], proofDetails),
+);
+await expectRejection("authorization cannot be substituted for another note", "REFUND_NOT_AUTHORIZED", () =>
+  submitFrom(stranger, [
+    { contractAddress: ESCROW, entrypoint: "authorize_refund", calldata: [second.commitment, felt(BigInt(refundNote) + 1n)] },
+    approvalCall(poolFee), refundProof.call,
+  ], proofDetails),
+);
+record("failed refund rolls back its authorization", BigInt((await view("refund_note", [second.commitment]))[0]) === 0n);
+await expectRejection("a stranger cannot authorize a refund", "CALLER_NOT_REFUND_OWNER", () =>
+  submitFrom(owner, [{ contractAddress: ESCROW, entrypoint: "authorize_refund", calldata: [second.commitment, refundNote] }]),
+);
 const refundTx = await submitFrom(stranger, [
-  {
-    contractAddress: ESCROW,
-    entrypoint: "refund",
-    calldata: [second.commitment, stranger.address],
-  },
-]);
+  { contractAddress: ESCROW, entrypoint: "authorize_refund", calldata: [second.commitment, refundNote] },
+  approvalCall(poolFee), refundProof.call,
+], proofDetails);
 console.log(`   tx ${refundTx}`);
 record(
-  "the refund owner gets it back after expiry",
-  (await publicStrk(stranger.address)) - refundBefore >= PARK_AMOUNT - BigInt(10) ** BigInt(18),
-  strk((await publicStrk(stranger.address)) - refundBefore),
+  "the refund returns to a private balance after expiry",
+  (await privateBalance()) - refundBefore === PARK_AMOUNT,
+);
+record("the sender's public balance does not change on refund", (await publicStrk(sender.address)) === refundPublicBefore);
+record("refund authorization is consumed", BigInt((await view("refund_note", [second.commitment]))[0]) === 0n);
+record("refund closes the entry", BigInt((await view("get_entry", [second.commitment]))[5]) === 1n);
+await expectRejection("a second refund authorization is refused", "ALREADY_CLAIMED", () =>
+  submitFrom(stranger, [{ contractAddress: ESCROW, entrypoint: "authorize_refund", calldata: [second.commitment, refundNote] }]),
 );
 
 step("summary");
