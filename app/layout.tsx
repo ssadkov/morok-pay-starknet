@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 
 import { Providers } from "@/components/providers";
+import { NETWORK_COOKIE, parseAppNetwork } from "@/lib/network";
 import "./globals.css";
 
 const inter = localFont({
@@ -25,7 +27,19 @@ export const metadata: Metadata = {
     "Send private USDC to any Ethereum wallet. The recipient collects with MetaMask alone - no Starknet wallet, no STRK, no gas.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  /* The visitor's network choice, read where the first paint happens. Without
+     it the server always rendered the default and the client corrected it a
+     frame later, so every network-dependent line flipped after load. */
+  let initialNetwork;
+  try {
+    initialNetwork = parseAppNetwork(
+      (await cookies()).get(NETWORK_COOKIE)?.value ?? null,
+    );
+  } catch {
+    initialNetwork = undefined;
+  }
+
   return (
     <html
       lang="en"
@@ -33,7 +47,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${inter.variable} ${jetBrainsMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <Providers>{children}</Providers>
+        <Providers initialNetwork={initialNetwork}>{children}</Providers>
         <Analytics />
       </body>
     </html>

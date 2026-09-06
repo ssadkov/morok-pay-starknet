@@ -1,6 +1,7 @@
 export type AppNetwork = "mainnet" | "sepolia";
 
 export const NETWORK_STORAGE_KEY = "morokpay.network.v2";
+export const NETWORK_COOKIE = "morokpay-network";
 export const NETWORK_CHANGE_EVENT = "morokpay-network";
 
 /**
@@ -37,9 +38,22 @@ export function readStoredNetwork(): AppNetwork {
   }
 }
 
+/**
+ * Mirrored into a cookie so the server can render the network the visitor
+ * actually chose. localStorage is invisible to the server, so without this
+ * the first paint always used the default and swapped a frame later - every
+ * network-dependent line on the page visibly changed after load.
+ */
 export function writeStoredNetwork(network: AppNetwork) {
   window.localStorage.setItem(NETWORK_STORAGE_KEY, network);
+  writeNetworkCookie(network);
   window.dispatchEvent(new Event(NETWORK_CHANGE_EVENT));
+}
+
+export function writeNetworkCookie(network: AppNetwork) {
+  // A year, SameSite=Lax: it decides which chain the copy describes, nothing
+  // more, and it is written by the browser rather than trusted from one.
+  document.cookie = `${NETWORK_COOKIE}=${network}; path=/; max-age=31536000; samesite=lax`;
 }
 
 export function subscribeNetwork(onStoreChange: () => void) {

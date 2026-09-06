@@ -2,6 +2,9 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { erc20Abi, type Address } from "viem";
+import { useReadContract } from "wagmi";
 import { ArrowDownToLineIcon, CoinsIcon, RefreshCwIcon, WalletIcon } from "lucide-react";
 
 import { HistoryModal } from "@/components/pay/history-modal";
@@ -30,9 +33,27 @@ export function BalanceSidebar() {
     refreshBalances,
     connectEvm,
     evmStarknetAddress,
+    evmConnectedAddress,
   } =
     useTreasury();
-  const { network } = useNetwork();
+  const { network, cctp, baseChain } = useNetwork();
+  const pathname = usePathname();
+  /* /start is the funding flow. Offering Top up and Get STRK beside it points
+     at two smaller versions of the steps already on the page. */
+  const showFunding = pathname !== "/start";
+
+  /* The balance that decides whether the first step is even possible, read
+     where somebody is looking at their empty Starknet one and wondering what
+     to do. Only Base: it is the chain MorokPay actually bridges from, so it
+     is the only number here that can be acted on. */
+  const { data: baseUsdc } = useReadContract({
+    address: cctp.usdc as Address,
+    abi: erc20Abi,
+    functionName: "balanceOf",
+    args: evmConnectedAddress ? [evmConnectedAddress as Address] : undefined,
+    chainId: baseChain.id,
+    query: { enabled: Boolean(evmConnectedAddress) },
+  });
   /* Deployed but not registered: everything public works, nothing private
      does. Re-running the connect check is what raises the activation flow, so
      this is a way back to it rather than a second copy of it. */
@@ -53,6 +74,7 @@ export function BalanceSidebar() {
      with no wallet at all. A connected wallet without a session keeps the
      card: its public side is real and its message is specific. */
   if (!session && !evmStarknetAddress) {
+    if (!showFunding) return null;
     return (
       <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
         <FundingLinks network={network} />
@@ -111,6 +133,32 @@ export function BalanceSidebar() {
               >
                 Activate privacy
               </Button>
+            </div>
+          ) : null}
+
+          {evmConnectedAddress ? (
+            /* Shown whether or not there is a session: a wallet that has not
+               finished onboarding is exactly the one whose owner needs to
+               know there is USDC waiting on Base to onboard with. */
+            <div className="rounded-xl bg-muted/40 px-3 py-3 ring-1 ring-foreground/10">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <WalletIcon className="size-3.5" />
+                <p className="text-xs font-medium uppercase tracking-wide">
+                  On {baseChain.name}
+                </p>
+              </div>
+              {baseUsdc === undefined ? (
+                <Skeleton className="mt-2 h-7 w-28" />
+              ) : (
+                <p className="mt-2 font-mono text-xl font-semibold tracking-tight tabular-nums">
+                  {formatUsdc(baseUsdc)} USDC
+                </p>
+              )}
+              <p className="mt-1 text-xs text-muted-foreground">
+                {baseUsdc !== undefined && baseUsdc > BigInt(0)
+                  ? "Bridgeable to Starknet with the delivery fee paid for you."
+                  : "In your EVM wallet, before bridging."}
+              </p>
             </div>
           ) : null}
 
@@ -177,9 +225,11 @@ export function BalanceSidebar() {
             </>
           )}
         </CardContent>
-        <div className="border-t px-6 py-4">
-          <FundingLinks network={network} />
-        </div>
+        {showFunding ? (
+          <div className="border-t px-6 py-4">
+            <FundingLinks network={network} />
+          </div>
+        ) : null}
       </Card>
       {/* The lab runs the same steps with the proof, the fee and the resource
           bounds shown one at a time. That is the right shape for diagnosing a
