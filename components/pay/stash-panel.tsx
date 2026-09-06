@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import type { Hex } from "viem";
 
@@ -8,6 +9,7 @@ import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { QrCode } from "@/components/pay/qr-code";
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { txToast } from "@/components/pay/tx-toast";
+import { useUsdcMaturity } from "@/components/pay/use-usdc-maturity";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -37,6 +39,13 @@ import {
 } from "@/lib/pay/escrow-v2-backup";
 import { claimV2Url } from "@/lib/pay/escrow-v2";
 import { createEscrowV2Keys, refundEscrowV2Privately } from "@/lib/privacy/escrow-refund-client";
+import {
+  ESCROW_SELF_CHANNEL_DUST,
+  ensureEscrowSelfChannel,
+  hasPrivateSelfChannel,
+  NOTE_MATURITY_MS,
+  sleep,
+} from "@/lib/privacy/escrow-self-channel";
 import { PublicLinkError, depositToEscrowV2 } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import { escrowV2Status, readEscrowV2Entry, readEscrowV2Minimum } from "@/lib/starknet/escrow-v2";
@@ -53,9 +62,12 @@ type Draft = {
   backup: EscrowV2Backup;
 };
 
+type Busy = "prepare" | "channel" | "wait" | "park" | "refund" | null;
+
 /**
  * One screen: amount → save recovery → park → share claim link.
- * Recovery stays on this page; the claim link never carries the refund seed.
+ * Opens a private self-channel automatically when missing so a fresh MetaMask
+ * account can park without a manual pre-step.
  */
 export function StashPanel() {
   const { network, starknet } = useNetwork();
@@ -64,7 +76,8 @@ export function StashPanel() {
   const [neverExpires, setNeverExpires] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [savedRecovery, setSavedRecovery] = useState(false);
-  const [busy, setBusy] = useState<"prepare" | "park" | "refund" | null>(null);
+  const [busy, setBusy] = useState<Busy>(null);
+  const [waitLabel, setWaitLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [backups, setBackups] = useState<EscrowV2Backup[]>([]);
@@ -73,6 +86,9 @@ export function StashPanel() {
 
   const privateUsdc = balances?.privateUsdc ?? BigInt(0);
   const v2Ready = Boolean(starknet.escrowV2 && starknet.escrowV2SupportsPrivateRefund);
+  const maturity = useUsdcMaturity(session?.address, privateUsdc);
+  const needsActivation = session?.kind === "evm" && !session.privacyReady;
+  const needsShield = Boolean(session) && !needsActivation && privateUsdc <= BigInt(0);
 
   function refreshBackups() {
     setBackups(listEscrowV2Backups(network));
@@ -89,16 +105,74 @@ export function StashPanel() {
     };
   }, [network]);
 
+  async function waitForNoteMaturity() {
+    const started = Date.now();
+    while (Date.now() - started < NOTE_MATURITY_MS) {
+      const left = NOTE_MATURITY_MS - (Date.now() - started);
+      setWaitLabel(`Waiting for private notes to mature… ${Math.ceil(left / 1000)}s`);
+      await sleep(1000);
+    }
+    setWaitLabel(null);
+  }
+
+  async function openSelfChannelIfNeeded(force = false) {
+    if (!session) return;
+    const usdc = getShieldToken("usdc", network);
+    setBusy("channel");
+    const ensured = await ensureEscrowSelfChannel({
+      account: session.account,
+      token: usdc,
+      senderAddress: session.address,
+      network,
+      force,
+    });
+    if (!ensured.opened) return;
+    if (ensured.txHash) {
+      recordActivity({
+        network,
+        kind: "pay",
+        source: "morok",
+        status: "confirmed",
+        amount: formatUsdc(ESCROW_SELF_CHANNEL_DUST),
+        amountRaw: ESCROW_SELF_CHANNEL_DUST.toString(),
+        label: "Opened private self-channel",
+        address: session.address,
+        txHash: ensured.txHash,
+      });
+      txToast({
+        title: "Private self-channel opened",
+        txHash: ensured.txHash,
+        explorerUrl: `${starknet.explorer}/tx/${ensured.txHash}`,
+        explorerLabel: "Voyager",
+      });
+    }
+    setBusy("wait");
+    await waitForNoteMaturity();
+    await refreshBalances({ private: true });
+  }
+
   async function handlePrepare() {
     if (!session || !v2Ready) return;
     setError(null);
     setBusy("prepare");
     try {
+      if (needsActivation) {
+        throw new Error("Activate privacy on Start first — registration cannot be relayed.");
+      }
+      if (!maturity.ready) {
+        throw new Error(
+          `Private USDC is still maturing (${maturity.remainingLabel}). Wait, then try again.`,
+        );
+      }
       const parsed = parseUsdc(amount.trim());
       if (parsed <= BigInt(0)) throw new Error("Enter an amount to park");
-      if (parsed > privateUsdc) {
+      const channel = await hasPrivateSelfChannel(session.account, session.address);
+      const reserved = channel === false ? ESCROW_SELF_CHANNEL_DUST : 0n;
+      if (parsed + reserved > privateUsdc) {
         throw new Error(
-          `This account holds ${formatUsdc(privateUsdc)} private USDC, less than the ${formatUsdc(parsed)} you are parking.`,
+          channel === false
+            ? `Need ${formatUsdc(parsed)} to park plus ${formatUsdc(ESCROW_SELF_CHANNEL_DUST)} to open your private self-channel. You hold ${formatUsdc(privateUsdc)}.`
+            : `This account holds ${formatUsdc(privateUsdc)} private USDC, less than the ${formatUsdc(parsed)} you are parking.`,
         );
       }
       const usdc = getShieldToken("usdc", network);
@@ -144,22 +218,36 @@ export function StashPanel() {
     }
   }
 
+  async function runParkDeposit() {
+    if (!session || !draft || !v2Ready) throw new Error("Not ready to park");
+    const parsed = BigInt(draft.backup.amountRaw);
+    const usdc = getShieldToken("usdc", network);
+    return depositToEscrowV2(session.account, usdc, parsed, starknet.escrowV2, {
+      commitment: draft.commitment,
+      owner: draft.owner,
+      refundOwner: draft.refundOwner,
+      senderAddress: session.address,
+      network,
+      expiresAt: BigInt(draft.expiresAt),
+      indexed: false,
+    });
+  }
+
   async function handlePark() {
     if (!session || !draft || !v2Ready || !savedRecovery) return;
     setError(null);
-    setBusy("park");
     try {
-      const parsed = BigInt(draft.backup.amountRaw);
-      const usdc = getShieldToken("usdc", network);
-      const response = await depositToEscrowV2(session.account, usdc, parsed, starknet.escrowV2, {
-        commitment: draft.commitment,
-        owner: draft.owner,
-        refundOwner: draft.refundOwner,
-        senderAddress: session.address,
-        network,
-        expiresAt: BigInt(draft.expiresAt),
-        indexed: false,
-      });
+      await openSelfChannelIfNeeded(false);
+      setBusy("park");
+      let response;
+      try {
+        response = await runParkDeposit();
+      } catch (caught) {
+        if (!(caught instanceof PublicLinkError)) throw caught;
+        await openSelfChannelIfNeeded(true);
+        setBusy("park");
+        response = await runParkDeposit();
+      }
       const txHash = extractTxHash(response);
       const claimLink = claimV2Url(window.location.origin, {
         network,
@@ -194,15 +282,10 @@ export function StashPanel() {
       await refreshBalances({ private: true });
       refreshBackups();
     } catch (caught) {
-      if (caught instanceof PublicLinkError) {
-        setError(
-          "This deposit would publish your address. Open a private self-channel first (send yourself a tiny private amount), then try again.",
-        );
-      } else {
-        setError(formatStrk20Error(caught, "pay"));
-      }
+      setError(formatStrk20Error(caught, "pay"));
     } finally {
       setBusy(null);
+      setWaitLabel(null);
     }
   }
 
@@ -210,15 +293,30 @@ export function StashPanel() {
     if (!session) return;
     setError(null);
     setRefunding(backup.commitment);
-    setBusy("refund");
     try {
-      const result = await refundEscrowV2Privately({
-        account: session.account,
-        network: backup.network,
-        senderAddress: session.address,
-        commitment: backup.commitment,
-        refundSeed: backup.refundSeed,
-      });
+      await openSelfChannelIfNeeded(false);
+      setBusy("refund");
+      let result;
+      try {
+        result = await refundEscrowV2Privately({
+          account: session.account,
+          network: backup.network,
+          senderAddress: session.address,
+          commitment: backup.commitment,
+          refundSeed: backup.refundSeed,
+        });
+      } catch (caught) {
+        if (!(caught instanceof PublicLinkError)) throw caught;
+        await openSelfChannelIfNeeded(true);
+        setBusy("refund");
+        result = await refundEscrowV2Privately({
+          account: session.account,
+          network: backup.network,
+          senderAddress: session.address,
+          commitment: backup.commitment,
+          refundSeed: backup.refundSeed,
+        });
+      }
       toast.success("Refunded into your private balance");
       if (result.transaction_hash) {
         txToast({
@@ -230,16 +328,11 @@ export function StashPanel() {
       }
       await refreshBalances({ private: true });
     } catch (caught) {
-      if (caught instanceof PublicLinkError) {
-        setError(
-          "Refund proof would publish your address. Prepare your private self-channel first.",
-        );
-      } else {
-        setError(formatStrk20Error(caught, "pay"));
-      }
+      setError(formatStrk20Error(caught, "pay"));
     } finally {
       setRefunding(null);
       setBusy(null);
+      setWaitLabel(null);
     }
   }
 
@@ -262,6 +355,8 @@ export function StashPanel() {
     setError(null);
   }
 
+  const busyParking = busy === "channel" || busy === "wait" || busy === "park";
+
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
@@ -269,7 +364,8 @@ export function StashPanel() {
         <p className="max-w-prose text-sm text-muted-foreground">
           Move private USDC into escrow. Whoever opens the link collects with
           MetaMask alone — no Starknet wallet, no STRK. MorokPay pays for their
-          claim. You keep a separate recovery file in case nobody claims.
+          claim. If you still need a private self-channel, this screen opens it
+          for you before parking.
         </p>
       </div>
       <TestnetHint />
@@ -282,7 +378,41 @@ export function StashPanel() {
             Switch the header to Sepolia. Mainnet V2 is not enabled yet.
           </AlertDescription>
         </Alert>
-      ) : link && draft ? (
+      ) : null}
+
+      {v2Ready && needsActivation ? (
+        <Alert>
+          <AlertTitle>Activate privacy first</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2">
+            <p>
+              Registration cannot be relayed. Finish Start (deploy → STRK →
+              activate), then shield USDC and come back here.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              nativeButton={false}
+              render={<Link href="/start" />}
+            >
+              Go to Start
+            </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {v2Ready && needsShield ? (
+        <Alert>
+          <AlertTitle>Shield some USDC</AlertTitle>
+          <AlertDescription>
+            Park spends private USDC. Shield at least 1 USDC from the Balances
+            sidebar, wait ~45s for the note to mature, then park here.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {v2Ready && link && draft ? (
         <Card>
           <CardHeader>
             <CardTitle>Share this claim link</CardTitle>
@@ -323,7 +453,9 @@ export function StashPanel() {
             </div>
           </CardContent>
         </Card>
-      ) : (
+      ) : null}
+
+      {v2Ready && !(link && draft) ? (
         <Card>
           <CardHeader>
             <CardTitle>Amount</CardTitle>
@@ -331,6 +463,9 @@ export function StashPanel() {
               {session
                 ? `${formatUsdc(privateUsdc)} private USDC available. Minimum 1 USDC.`
                 : "Connect a wallet with a private USDC balance."}
+              {session && !maturity.ready && privateUsdc > 0n
+                ? ` Notes still maturing (${maturity.remainingLabel}).`
+                : null}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
@@ -408,6 +543,9 @@ export function StashPanel() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             ) : null}
+            {waitLabel ? (
+              <p className="text-xs text-muted-foreground">{waitLabel}</p>
+            ) : null}
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-3 border-t sm:flex-row sm:items-center">
             {session ? (
@@ -417,7 +555,13 @@ export function StashPanel() {
                     type="button"
                     size="lg"
                     className="min-h-10"
-                    disabled={busy !== null || !amount.trim()}
+                    disabled={
+                      busy !== null ||
+                      !amount.trim() ||
+                      needsActivation ||
+                      needsShield ||
+                      !maturity.ready
+                    }
                     aria-busy={busy === "prepare"}
                     onClick={() => {
                       void handlePrepare();
@@ -432,17 +576,21 @@ export function StashPanel() {
                     size="lg"
                     className="min-h-10"
                     disabled={!savedRecovery || busy !== null}
-                    aria-busy={busy === "park"}
+                    aria-busy={busyParking}
                     onClick={() => {
                       void handlePark();
                     }}
                   >
-                    {busy === "park" ? <Spinner data-icon="inline-start" /> : null}
-                    {busy === "park"
-                      ? signatureProgress
-                        ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
-                        : "Parking"
-                      : "Park and make a link"}
+                    {busyParking ? <Spinner data-icon="inline-start" /> : null}
+                    {busy === "channel"
+                      ? "Opening private channel"
+                      : busy === "wait"
+                        ? "Waiting for notes"
+                        : busy === "park"
+                          ? signatureProgress
+                            ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
+                            : "Parking"
+                          : "Park and make a link"}
                   </Button>
                 )}
                 {draft ? (
@@ -467,7 +615,7 @@ export function StashPanel() {
             ) : null}
           </CardFooter>
         </Card>
-      )}
+      ) : null}
 
       {v2Ready ? (
         <Card>
