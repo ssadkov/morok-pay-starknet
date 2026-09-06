@@ -22,19 +22,220 @@ import {
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
 import { recordActivity } from "@/lib/pay/activity";
-import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import {
   computeEscrowCommitment,
   parseClaimRequest,
 } from "@/lib/pay/escrow";
+import {
+  commitmentFromSeed,
+  parseClaimV2Request,
+  type ClaimV2Request,
+} from "@/lib/pay/escrow-v2";
+import { claimEscrowV2 } from "@/lib/privacy/escrow-claim-client";
+import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import { claimFromEscrow } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import { readEscrowEntry } from "@/lib/starknet/escrow";
-import { formatUsdc } from "@/lib/starknet/status";
+import {
+  escrowV2Status,
+  readEscrowV2Entry,
+  type EscrowV2Status,
+} from "@/lib/starknet/escrow-v2";
+import { createProvider, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 
 export function ClaimPanel() {
   const searchParams = useSearchParams();
+  const { network } = useNetwork();
+  const v2 = parseClaimV2Request(searchParams, network);
+  const v1 = v2 ? null : parseClaimRequest(searchParams, network);
+  if (v2) return <ClaimV2Panel request={v2} />;
+  return <ClaimV1Panel request={v1} />;
+}
+
+function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
+  const { network, setNetwork, starknet } = useNetwork();
+  const { session } = useTreasury();
+  const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<EscrowV2Status | null>(null);
+  const [claimTx, setClaimTx] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (request.network !== network) setNetwork(request.network);
+  }, [request.network, network, setNetwork]);
+
+  useEffect(() => {
+    if (!starknet.escrowV2) return;
+    let cancelled = false;
+    const commitment = commitmentFromSeed(request.seed);
+    void (async () => {
+      try {
+        const entry = await readEscrowV2Entry({
+          network: request.network,
+          commitment,
+        });
+        const now = BigInt(
+          (await createProvider(request.network).getBlock("latest")).timestamp,
+        );
+        if (!cancelled) setStatus(escrowV2Status(entry, now));
+      } catch {
+        // Leave status null until RPC answers.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [request, starknet.escrowV2]);
+
+  async function handleClaim() {
+    if (!session) return;
+    setError(null);
+    setClaiming(true);
+    try {
+      const result = await claimEscrowV2({
+        network: request.network,
+        seed: request.seed,
+        destination: session.address,
+      });
+      setClaimTx(result.transactionHash);
+      setStatus({ state: "claimed" });
+      const amount =
+        request.amount ??
+        (status?.state === "claimable" ? formatUsdc(status.entry.amount) : "0");
+      recordActivity({
+        network: request.network,
+        kind: "receive",
+        source: "morok",
+        status: "confirmed",
+        amount,
+        amountRaw:
+          status?.state === "claimable" ? status.entry.amount.toString() : undefined,
+        label: "Claim V2",
+        address: session.address,
+        txHash: result.transactionHash,
+      });
+      txToast({
+        title: "Claimed to your public Starknet balance",
+        txHash: result.transactionHash,
+        explorerUrl: `${starknet.explorer}/tx/${result.transactionHash}`,
+        explorerLabel: "Voyager",
+      });
+    } catch (caught) {
+      setError(formatStrk20Error(caught, "pay"));
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  const displayAmount =
+    status?.state === "claimable" || status?.state === "expired"
+      ? formatUsdc(status.entry.amount)
+      : request.amount
+        ? request.amount
+        : "…";
+
+  const blocked =
+    status?.state === "missing" ||
+    status?.state === "claimed" ||
+    status?.state === "expired";
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-semibold tracking-tight">Claim with MetaMask</h1>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Connect MetaMask. The link authorises the payout; MorokPay pays gas.
+          Tokens land as a public balance on your derived Starknet account —
+          not a private note.
+        </p>
+      </div>
+      <TestnetHint />
+      {!session ? <ConnectWalletChoices sponsored /> : null}
+
+      {!starknet.escrowV2 ? (
+        <Alert variant="destructive">
+          <AlertTitle>No escrow V2 on this network</AlertTitle>
+          <AlertDescription>Switch to Sepolia to claim this link.</AlertDescription>
+        </Alert>
+      ) : status?.state === "missing" ? (
+        <Alert variant="destructive">
+          <AlertTitle>Nothing parked under this link</AlertTitle>
+          <AlertDescription>
+            The sender may not have funded it yet, or this is the wrong network.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>{displayAmount} USDC</CardTitle>
+            <CardDescription>
+              {status?.state === "claimed"
+                ? "Already claimed."
+                : status?.state === "expired"
+                  ? "Expired. Only the sender can reclaim with their recovery file."
+                  : "Waiting in escrow. One MetaMask connection is enough."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not claim</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+          </CardContent>
+          <CardFooter className="border-t">
+            {session ? (
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-10"
+                disabled={claiming || blocked || status === null}
+                aria-busy={claiming}
+                onClick={() => {
+                  void handleClaim();
+                }}
+              >
+                {claiming ? <Spinner data-icon="inline-start" /> : null}
+                {status?.state === "claimed"
+                  ? "Claimed"
+                  : claiming
+                    ? "Claiming"
+                    : "Claim to my account"}
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Connect a wallet above to claim.
+              </p>
+            )}
+          </CardFooter>
+          {claimTx ? (
+            <CardFooter className="border-t">
+              <p className="text-sm text-muted-foreground">
+                Receipt:{" "}
+                <a
+                  className="underline underline-offset-4"
+                  href={`${starknet.explorer}/tx/${claimTx}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {`${claimTx.slice(0, 10)}…${claimTx.slice(-6)}`}
+                </a>
+              </p>
+            </CardFooter>
+          ) : null}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ClaimV1Panel({
+  request,
+}: {
+  request: ReturnType<typeof parseClaimRequest>;
+}) {
   const { network, setNetwork, starknet } = useNetwork();
   const {
     session,
@@ -45,7 +246,6 @@ export function ClaimPanel() {
     signatureProgress,
   } = useTreasury();
   const { signMessageAsync } = useSignMessage();
-  const request = parseClaimRequest(searchParams, network);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [onChainAmount, setOnChainAmount] = useState<bigint | null>(null);
@@ -82,15 +282,6 @@ export function ClaimPanel() {
     };
   }, [request, network, starknet.escrow]);
 
-  /**
-   * Create the claimer's Starknet account, on MorokPay.
-   *
-   * This used to send them to /start, which is the wrong door: that flow
-   * exists for somebody funding themselves and opens by asking for two
-   * dollars of USDC to bridge. A claimer is not funding anything - the money
-   * is already parked - so the only step they need is the deploy, and the
-   * commitment is what tells the server to pay for it.
-   */
   async function handleCreateAccount() {
     if (!request || !evmConnectedAddress) return;
     setError(null);
@@ -126,10 +317,6 @@ export function ClaimPanel() {
     setClaiming(true);
     try {
       const usdc = getShieldToken("usdc", network);
-      /* On the EVM rail a claimer who has never touched Starknet can be
-         registered inside this same action set, and MorokPay submits and pays
-         for it - so collecting needs no STRK and no Starknet wallet. Ready X
-         registers itself and pays its own way, so neither applies there. */
       const sponsored = session.kind === "evm";
       const response = await claimFromEscrow(
         session.account,
@@ -155,8 +342,6 @@ export function ClaimPanel() {
         txHash,
       });
       setClaimed(true);
-      /* The toast goes away and the receipt is the one thing a claimer may
-         want an hour later, so it stays on the card too. */
       if (txHash) setClaimTx(txHash);
       if (txHash) {
         txToast({
@@ -168,10 +353,6 @@ export function ClaimPanel() {
       } else {
         toast.success("Claimed into your private wallet");
       }
-      /* Claiming registers the account, so the session's own idea of whether
-         privacy is on is now stale - reconnecting re-reads it from the chain.
-         Without this the sidebar keeps offering "Activate privacy" for an
-         account the pool has already registered. */
       await connectEvm();
       await refreshBalances({ private: true });
     } catch (caught) {
@@ -181,9 +362,6 @@ export function ClaimPanel() {
     }
   }
 
-  /* The gate is the context's own read of the chain, so this button appears
-     for exactly the wallet that cannot claim yet and disappears once the
-     deploy lands. */
   const needsAccount =
     Boolean(evmConnectedAddress) && evmGate?.reason === "undeployed";
 
@@ -264,9 +442,6 @@ export function ClaimPanel() {
                         : "Claiming"
                       : "Claim into private USDC"}
                 </Button>
-                {/* One STRK20 action costs several wallet prompts and a proof
-                    that takes its own time, and unexplained silence between
-                    them reads as a hang. Name the step. */}
                 {claiming ? (
                   <p className="text-xs text-muted-foreground">
                     {signatureProgress
