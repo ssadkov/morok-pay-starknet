@@ -21,7 +21,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
 
 export function BalanceSidebar() {
-  const { session, balances, balancesLoading, refreshBalances, connectEvm } =
+  const {
+    session,
+    balances,
+    balancesLoading,
+    refreshBalances,
+    connectEvm,
+    evmStarknetAddress,
+  } =
     useTreasury();
   /* Deployed but not registered: everything public works, nothing private
      does. Re-running the connect check is what raises the activation flow, so
@@ -92,8 +99,18 @@ export function BalanceSidebar() {
           ) : null}
 
           {!session ? (
+            /* A connected wallet with no session is not a disconnected one.
+               The session appears once the derived account is deployed on a
+               class this app can drive - a claim recipient may sit outside
+               that for good - and telling them to connect a wallet they have
+               already connected is how the claim page hid an invoice from the
+               only wallet that could take it. Private balances genuinely need
+               the session, because they need a viewing key; the public side
+               needs only an address. */
             <p className="text-sm text-muted-foreground">
-              Connect Ready X or an EVM wallet to see balances.
+              {evmStarknetAddress
+                ? "This wallet has no Starknet account this app can read yet. Public balances live at the address in the header menu; private ones need privacy activated."
+                : "Connect Ready X or an EVM wallet to see balances."}
             </p>
           ) : (
             <>

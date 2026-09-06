@@ -60,8 +60,20 @@ export function AppHeader() {
     connectWallet,
     connectEvm,
     evmConnectedAddress,
+    evmStarknetAddress,
     disconnect,
   } = useTreasury();
+
+  /* Both halves exist before a session does: the EVM address comes from the
+     wallet, and the Starknet one is derived from it. A session additionally
+     means the derived account is deployed on a class this app can drive,
+     which a claim recipient may never need. */
+  const evmAddress =
+    session?.kind === "evm" ? session.evmAddress : evmConnectedAddress;
+  const starknetAddress =
+    session?.kind === "ready" || session?.kind === "evm"
+      ? session.address
+      : evmStarknetAddress;
   const { network, setNetwork } = useNetwork();
   const nav = navFor(network);
   const wallet = wallets[0];
@@ -125,7 +137,7 @@ export function AppHeader() {
             sm:contents removes this wrapper at the flex breakpoint so it
             never affects the desktop layout. */}
         <div className="col-span-2 row-start-3 flex flex-wrap items-center gap-2 sm:col-auto sm:row-auto sm:contents">
-        {session ? (
+        {session || evmConnectedAddress ? (
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
@@ -133,38 +145,42 @@ export function AppHeader() {
               }
             >
               <span className="max-w-32 truncate">
-                {session.kind === "evm" ? "EVM · " : ""}
+                {session?.kind === "ready" ? "" : "EVM · "}
                 {shortenAddress(
-                  session.kind === "evm" ? session.evmAddress : session.address,
+                  session?.kind === "ready"
+                    ? session.address
+                    : (session?.kind === "evm" ? session.evmAddress : evmConnectedAddress) ?? "",
                 )}
               </span>
               <ChevronDownIcon data-icon="inline-end" />
             </DropdownMenuTrigger>
             <DropdownMenuContent>
-              {session.kind === "evm" ? (
+              {evmAddress ? (
                 <DropdownMenuGroup>
                   <DropdownMenuLabel>EVM address</DropdownMenuLabel>
                   <DropdownMenuItem
                     onClick={() => {
-                      void copyAddress(session.evmAddress, "EVM address copied");
+                      void copyAddress(evmAddress, "EVM address copied");
                     }}
                   >
                     <CopyIcon />
-                    {shortenAddress(session.evmAddress)}
+                    {shortenAddress(evmAddress)}
                   </DropdownMenuItem>
                 </DropdownMenuGroup>
               ) : null}
-              <DropdownMenuGroup>
-                <DropdownMenuLabel>Starknet address</DropdownMenuLabel>
-                <DropdownMenuItem
-                  onClick={() => {
-                    void copyAddress(session.address, "Starknet address copied");
-                  }}
-                >
-                  <CopyIcon />
-                  {shortenAddress(session.address)}
-                </DropdownMenuItem>
-              </DropdownMenuGroup>
+              {starknetAddress ? (
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>Starknet address</DropdownMenuLabel>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      void copyAddress(starknetAddress, "Starknet address copied");
+                    }}
+                  >
+                    <CopyIcon />
+                    {shortenAddress(starknetAddress)}
+                  </DropdownMenuItem>
+                </DropdownMenuGroup>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={disconnect}>
                 <LogOutIcon />
