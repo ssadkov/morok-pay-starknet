@@ -5,8 +5,6 @@ import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { useSignMessage, useSignTypedData } from "wagmi";
 
-import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
-import { TestnetHint } from "@/components/pay/testnet-hint";
 import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
@@ -190,7 +188,15 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
           no STRK. The payout arrives as public USDC on your Starknet account.
         </p>
       </div>
-      {!session ? <ConnectWalletChoices sponsored /> : null}
+      {!session ? (
+        <Alert>
+          <AlertTitle>Connect a wallet to continue</AlertTitle>
+          <AlertDescription>
+            Use Connect EVM wallet at the top of the page. MorokPay pays the
+            claim fee, so the wallet needs no STRK and no Starknet setup.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {!starknet.escrowV2 ? (
         <Alert variant="destructive">
@@ -401,7 +407,15 @@ function ClaimInvoiceInbox() {
           invoices and pays the claim fee. USDC arrives on Starknet.
         </p>
       </div>
-      {!session ? <ConnectWalletChoices sponsored /> : null}
+      {!session ? (
+        <Alert>
+          <AlertTitle>Connect a wallet to continue</AlertTitle>
+          <AlertDescription>
+            Use Connect EVM wallet at the top of the page. MorokPay pays the
+            claim fee, so the wallet needs no STRK and no Starknet setup.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {!starknet.escrowV2 ? (
         <Alert variant="destructive">
@@ -636,8 +650,15 @@ function ClaimV1Panel({
           pays its own way.
         </p>
       </div>
-      <TestnetHint />
-      {!session ? <ConnectWalletChoices sponsored /> : null}
+      {!session ? (
+        <Alert>
+          <AlertTitle>Connect a wallet to continue</AlertTitle>
+          <AlertDescription>
+            Use Connect EVM wallet at the top of the page. MorokPay pays the
+            claim fee, so the wallet needs no STRK and no Starknet setup.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {!request ? (
         <Alert>
