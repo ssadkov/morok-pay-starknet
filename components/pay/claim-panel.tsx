@@ -76,7 +76,10 @@ export function ClaimPanel() {
 
 function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
   const { network, setNetwork, starknet } = useNetwork();
-  const { session } = useTreasury();
+  /* A link's recipient may have no deployed account either. Ready X still
+     brings a session; MetaMask needs only its derived address, which exists
+     before the account does. */
+  const { session, evmConnectedAddress, evmStarknetAddress } = useTreasury();
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<EscrowV2Status | null>(null);
@@ -110,15 +113,17 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
     };
   }, [request, starknet.escrowV2]);
 
+  const payoutAddress = session?.address ?? evmStarknetAddress;
+
   async function handleClaim() {
-    if (!session) return;
+    if (!payoutAddress) return;
     setError(null);
     setClaiming(true);
     try {
       const result = await claimEscrowV2({
         network: request.network,
         seed: request.seed,
-        destination: session.address,
+        destination: payoutAddress,
       });
       setClaimTx(result.transactionHash);
       setConfirming(true);
@@ -140,7 +145,7 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
         amountRaw:
           status?.state === "claimable" ? status.entry.amount.toString() : undefined,
         label: "Claim V2",
-        address: session.address,
+        address: payoutAddress,
         txHash: result.transactionHash,
       });
       if (confirmation === "failed" || confirmation === "mismatch") {
@@ -188,7 +193,7 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
           no STRK. The payout arrives as public USDC on your Starknet account.
         </p>
       </div>
-      {!session ? (
+      {!payoutAddress ? (
         <Alert>
           <AlertTitle>Connect a wallet to continue</AlertTitle>
           <AlertDescription>
@@ -284,7 +289,13 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
 
 function ClaimInvoiceInbox() {
   const { network, starknet } = useNetwork();
-  const { session } = useTreasury();
+  /* Not `session`: that only exists once the derived account is deployed, and
+     a recipient who has never used Starknet has no deployed account - which is
+     the entire population this page serves. The address is computable from the
+     EVM address alone, the invoice is indexed under it, and the claim route
+     deploys the account itself. Gating on a session hid every invoice from
+     exactly the wallet it was addressed to. */
+  const { evmConnectedAddress, evmStarknetAddress } = useTreasury();
   const { signMessageAsync } = useSignMessage();
   const { signTypedDataAsync } = useSignTypedData();
   const [items, setItems] = useState<
@@ -296,11 +307,11 @@ function ClaimInvoiceInbox() {
 
   const canList =
     Boolean(starknet.escrowV2) &&
-    session?.kind === "evm" &&
-    Boolean(session.evmAddress);
+    Boolean(evmConnectedAddress) &&
+    Boolean(evmStarknetAddress);
 
   useEffect(() => {
-    if (!canList || !session) {
+    if (!canList || !evmStarknetAddress) {
       setItems([]);
       return;
     }
@@ -310,7 +321,7 @@ function ClaimInvoiceInbox() {
       try {
         const commitments = await readEscrowV2Entries({
           network,
-          owner: session.address,
+          owner: evmStarknetAddress,
           limit: 20,
         });
         const now = BigInt((await createProvider(network).getBlock("latest")).timestamp);
@@ -340,19 +351,21 @@ function ClaimInvoiceInbox() {
     return () => {
       cancelled = true;
     };
-  }, [canList, network, session]);
+  }, [canList, network, evmStarknetAddress]);
 
   async function handleClaim(commitment: string) {
-    if (!session || session.kind !== "evm" || !session.evmAddress) return;
+    if (!evmConnectedAddress || !evmStarknetAddress) return;
     setError(null);
     setClaiming(commitment);
     try {
       const result = await claimEscrowV2AsOwner({
         network,
         commitment,
-        destination: session.address,
-        evmAddress: session.evmAddress,
-        starknetAddress: session.address,
+        /* The payout is an ERC-20 transfer, and an address needs no code to
+           hold one, so this works whether or not the account exists yet. */
+        destination: evmStarknetAddress,
+        evmAddress: evmConnectedAddress,
+        starknetAddress: evmStarknetAddress,
         signTypedData: (data) =>
           signTypedDataAsync(data as Parameters<typeof signTypedDataAsync>[0]),
         signMessage: (message) => signMessageAsync({ message }),
@@ -376,7 +389,7 @@ function ClaimInvoiceInbox() {
         status: confirmation === "confirmed" ? "confirmed" : "pending",
         amount: "invoice",
         label: "Claim invoice V2",
-        address: session.address,
+        address: evmStarknetAddress,
         txHash: result.transactionHash,
       });
       txToast({
@@ -407,7 +420,7 @@ function ClaimInvoiceInbox() {
           invoices and pays the claim fee. USDC arrives on Starknet.
         </p>
       </div>
-      {!session ? (
+      {!evmConnectedAddress ? (
         <Alert>
           <AlertTitle>Connect a wallet to continue</AlertTitle>
           <AlertDescription>
@@ -422,7 +435,7 @@ function ClaimInvoiceInbox() {
           <AlertTitle>No escrow V2 on this network</AlertTitle>
           <AlertDescription>Switch to Sepolia to claim.</AlertDescription>
         </Alert>
-      ) : session && session.kind !== "evm" ? (
+      ) : !evmConnectedAddress ? (
         <Alert>
           <AlertTitle>Connect MetaMask for invoices</AlertTitle>
           <AlertDescription>
@@ -446,7 +459,7 @@ function ClaimInvoiceInbox() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             ) : null}
-            {!session ? (
+            {!evmConnectedAddress ? (
               <p className="text-sm text-muted-foreground">Connect above to see invoices.</p>
             ) : loading ? (
               <p className="flex items-center gap-2 text-sm text-muted-foreground">
