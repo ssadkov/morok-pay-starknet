@@ -451,11 +451,14 @@ export function StashPanel() {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Park it behind a link</h1>
+        {/* "Park it behind a link" named one of the two things this page does
+            and used our own word for it. The page addresses an entry to a
+            named EVM wallet just as readily. */}
+        <h1 className="text-3xl font-semibold tracking-tight">Send private USDC</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          Move private USDC into escrow. Whoever opens the link collects with
-          MetaMask alone — no Starknet wallet, no STRK. MorokPay pays for their
-          claim.
+          Share a one-time link, or address it to one MetaMask. Either way they
+          collect with an EVM wallet alone — no Starknet wallet, no STRK.
+          MorokPay pays for their claim.
         </p>
       </div>
       {!session ? <ConnectWalletChoices /> : null}
@@ -487,6 +490,43 @@ export function StashPanel() {
             >
               Go to Start
             </Button>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {/* handlePrepare refuses to park while channelReady is false, and until
+          now nothing on the page could clear that: the refactor that split
+          preparing out of the park never rendered the step it split off, so
+          the handler sat unreferenced and the park dead-ended on its own
+          error message. Same failure as every other half-wired thing on this
+          branch - the capability existed, the call site did not. */}
+      {v2Ready && session && !needsActivation && channelReady === false ? (
+        <Alert>
+          <AlertTitle>Prepare privacy once</AlertTitle>
+          <AlertDescription className="flex flex-col gap-2">
+            <p>
+              Sending privately needs a private channel to yourself, opened by
+              one public transaction. It is deliberately a separate step: doing
+              it moments before a park lines the two up in time for anyone
+              watching the chain.
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-fit"
+              disabled={busyParking}
+              aria-busy={busy === "channel"}
+              onClick={() => void handlePreparePrivacy()}
+            >
+              {busy === "channel" ? <Spinner data-icon="inline-start" /> : null}
+              {busy === "channel" ? "Preparing" : "Prepare privacy"}
+            </Button>
+            {channelSubmitted ? (
+              <p className="text-xs">
+                Submitted. Give it a few blocks, then park.
+              </p>
+            ) : null}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -580,7 +620,7 @@ export function StashPanel() {
         </Card>
       ) : null}
 
-      {v2Ready && !(link && draft) ? (
+      {v2Ready && session && !(link && draft) ? (
         <Card>
           <CardHeader>
             <CardTitle>Amount</CardTitle>
@@ -781,7 +821,9 @@ export function StashPanel() {
         </Card>
       ) : null}
 
-      {v2Ready ? (
+      {/* An empty recovery list in front of a disconnected visitor is a card
+          explaining a file they have not got for a park they have not made. */}
+      {v2Ready && (session || backups.length > 0) ? (
         <Card>
           <CardHeader>
             <CardTitle>Your recovery list</CardTitle>

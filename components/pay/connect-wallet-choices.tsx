@@ -18,13 +18,14 @@ export function ConnectWalletChoices({ sponsored = false }: { sponsored?: boolea
   const { connecting, evmConnecting, connectEvm } = useTreasury();
 
   return (
+    /* EVM first and primary. Ready X used to hold both positions, which told
+       every visitor the opposite of the pitch before they read the sentence
+       underneath saying no Starknet wallet is needed. */
     <div className="grid gap-3 sm:grid-cols-2">
-      <ConnectReady />
       <div className="flex flex-col gap-3">
         <Button
           type="button"
           size="lg"
-          variant="outline"
           className="min-h-12 w-full"
           disabled={connecting || evmConnecting}
           aria-busy={evmConnecting}
@@ -48,6 +49,7 @@ export function ConnectWalletChoices({ sponsored = false }: { sponsored?: boolea
               : "."}
         </p>
       </div>
+      <ConnectReady />
     </div>
   );
 }

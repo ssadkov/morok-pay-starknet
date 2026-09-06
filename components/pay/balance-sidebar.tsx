@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatStrk, formatUsdc } from "@/lib/starknet/status";
+import type { AppNetwork } from "@/lib/network";
 
 export function BalanceSidebar() {
   const {
@@ -45,6 +46,19 @@ export function BalanceSidebar() {
      must not do - it reads as "your money is gone" when it means "we could
      not look". */
   const privateUnknown = balances ? !balances.privateKnown : false;
+
+  /* Nothing connected means nothing to balance. The card used to sit there
+     restating the header's own invitation under a heading promising numbers
+     it had none of, so it stands down to the two things still worth doing
+     with no wallet at all. A connected wallet without a session keeps the
+     card: its public side is real and its message is specific. */
+  if (!session && !evmStarknetAddress) {
+    return (
+      <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
+        <FundingLinks network={network} />
+      </aside>
+    );
+  }
 
   return (
     <aside className="flex flex-col gap-4 lg:sticky lg:top-4">
@@ -163,34 +177,8 @@ export function BalanceSidebar() {
             </>
           )}
         </CardContent>
-        {/* Funding lives with the balance it changes. Both were top-level nav
-            items, which is a strange place for "my number is too small": you
-            only want them while looking at the number. Get STRK routes
-            through AVNU and there is no Sepolia liquidity to route against,
-            so it is mainnet only; Top up bridges on both. */}
-        <div className="flex flex-wrap gap-2 border-t px-6 py-4">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            nativeButton={false}
-            render={<Link href="/treasury" />}
-          >
-            <ArrowDownToLineIcon />
-            Top up
-          </Button>
-          {network === "mainnet" ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              nativeButton={false}
-              render={<Link href="/swap" />}
-            >
-              <CoinsIcon />
-              Get STRK
-            </Button>
-          ) : null}
+        <div className="border-t px-6 py-4">
+          <FundingLinks network={network} />
         </div>
       </Card>
       {/* The lab runs the same steps with the proof, the fee and the resource
@@ -249,6 +237,42 @@ function BalanceRow({
       <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{extra}</p>
       {action ? <div className="mt-3">{action}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * Funding lives with the balance it changes. Both were top-level nav items,
+ * which is a strange place for "my number is too small": you only want them
+ * while looking at the number. Get STRK routes through AVNU and there is no
+ * Sepolia liquidity to route against, so it is mainnet only; Top up bridges
+ * on both.
+ */
+function FundingLinks({ network }: { network: AppNetwork }) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        nativeButton={false}
+        render={<Link href="/treasury" />}
+      >
+        <ArrowDownToLineIcon />
+        Top up
+      </Button>
+      {network === "mainnet" ? (
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          nativeButton={false}
+          render={<Link href="/swap" />}
+        >
+          <CoinsIcon />
+          Get STRK
+        </Button>
+      ) : null}
     </div>
   );
 }

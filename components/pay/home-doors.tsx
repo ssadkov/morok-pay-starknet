@@ -25,8 +25,8 @@ export function HomeDoors() {
         </h1>
         <p className="max-w-2xl text-base leading-7 text-muted-foreground">
           {network === "sepolia"
-            ? "Testnet: send, claim or collect donations on Starknet Sepolia with MetaMask or Ready X. Switch the header to Mainnet for the contest."
-            : "The recipient collects with MetaMask alone - no Starknet wallet, no STRK, no gas. MorokPay deploys their account and pays for the claim in one transaction."}
+            ? "Testnet: send, claim or collect donations through the STRK20 privacy pool on Starknet Sepolia, with MetaMask or Ready X. Switch the header to Mainnet for the contest."
+            : "The recipient collects with MetaMask alone - no Starknet wallet, no STRK, no gas. MorokPay deploys their account and pays for the claim in one transaction. The money moves inside STRK20, Starknet's privacy pool, so amounts and senders stay off the public ledger."}
         </p>
       </div>
       <TestnetHint />

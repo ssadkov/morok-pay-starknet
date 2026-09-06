@@ -8,7 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import { READY_WALLET_URL } from "@/lib/starknet/constants";
 
-export function ConnectReady() {
+/**
+ * Secondary everywhere it appears beside the EVM choice. The pitch is that a
+ * Starknet wallet is optional, so the Starknet wallet cannot be the button
+ * wearing the primary colour.
+ */
+export function ConnectReady({ variant = "outline" }: { variant?: "default" | "outline" }) {
   const { wallets, connecting, connectError, connectWallet } = useTreasury();
 
   return (
@@ -19,6 +24,7 @@ export function ConnectReady() {
             key={wallet.name}
             type="button"
             size="lg"
+            variant={variant}
             className="min-h-12 w-full sm:w-auto"
             disabled={connecting}
             aria-busy={connecting}
@@ -38,6 +44,7 @@ export function ConnectReady() {
         <Button
           type="button"
           size="lg"
+          variant={variant}
           className="min-h-12 w-full sm:w-auto"
           nativeButton={false}
           render={
