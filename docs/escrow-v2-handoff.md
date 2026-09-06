@@ -37,12 +37,42 @@ Preserve V1 compatibility and historical addresses. A new deployment cannot migr
 
 ## Rules to preserve
 
+- **`session` means "the derived account is deployed on a class this app can
+  drive", not "a wallet is connected".** Use `evmConnectedAddress` for the
+  wallet and `evmStarknetAddress` for its address - both exist before any
+  account does. This single confusion produced four bugs on 2026-09-07, all
+  shaped alike and all invisible to typecheck and tests: the invoice inbox hid
+  every entry from the one wallet that could claim it; the header offered
+  "Connect EVM wallet" beside a Disconnect button naming that same address;
+  the balances panel told a connected wallet to connect; and the claim page
+  lost its dropdown and both copyable addresses. On Sepolia the factory still
+  hands out the legacy account class, so a recipient can be permanently
+  connected with no session at all - which is exactly the person this product
+  is for. A claim needs no deployed account at any step: the address is
+  derived, the payout is an ERC-20 transfer, and the relay route deploys the
+  account when it submits. Only private balances genuinely need a session,
+  because they need a viewing key.
 - Claim destination and refund note belong inside the signed intent.
 - `indexed: false` never means hidden owner fields.
 - Fresh accounts/channels may be invisible at proving block `latest - 10`. Recovery deployment is outside the proof and can be batched with SRC9 authorization; the refund note belongs to the established sender account.
 - Deposit action sets need replay protection by consuming an existing note. Public deposit followed by withdrawal alone yields `NO_REPLAY_PROTECTION`.
 - Private accounts need channel and token subchannel setup. Never hide public registration/setup inside a supposedly private escrow transaction.
 - Mainnet relay requires `MOROKPAY_MAINNET_RELAY_ENABLED=true`; Sepolia is enabled unless explicitly disabled.
+- **Never pin an EVM chain id into signed typed data.** viem refuses to sign a
+  domain naming a chain the wallet is not on, and nothing needs it fixed: the
+  server recovers the signer using the chain id the signature carries, and the
+  account does the same on chain. A hardcoded 11155111 meant only a MetaMask
+  sitting on Ethereum Sepolia could ever claim.
+- **A stale read is not a failed transaction.** Public RPCs answer from
+  whichever node takes the request, so state can lag a confirmed receipt by a
+  block. The first live mainnet-shaped claim moved the money and told its
+  recipient it had not, which invites a retry that can only fail with
+  ALREADY_CLAIMED. Retry the read before believing the answer.
+- **When a capability is added to a library, change the call sites in the same
+  commit.** Every half-finished item found on this branch failed this way -
+  `escrow` threaded through the refund client but not passed, the receipt
+  check imported but never called, a `refunded` state added but never narrowed
+  - and each one typechecks and tests clean while doing the old thing.
 
 ## Checks
 
