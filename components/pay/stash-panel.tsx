@@ -38,7 +38,11 @@ import {
   type EscrowV2Backup,
 } from "@/lib/pay/escrow-v2-backup";
 import { claimV2Url } from "@/lib/pay/escrow-v2";
-import { createEscrowV2Keys, refundEscrowV2Privately } from "@/lib/privacy/escrow-refund-client";
+import {
+  createEscrowV2Invoice,
+  createEscrowV2Keys,
+  refundEscrowV2Privately,
+} from "@/lib/privacy/escrow-refund-client";
 import {
   ESCROW_SELF_CHANNEL_DUST,
   ensureEscrowSelfChannel,
@@ -53,12 +57,15 @@ import { createProvider, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 
 type Draft = {
-  claimSeed: Hex;
+  mode: "link" | "invoice";
+  claimSeed?: Hex;
+  recipientEvm?: string;
   refundSeed: Hex;
   commitment: string;
   owner: string;
   refundOwner: string;
   expiresAt: number;
+  indexed: boolean;
   backup: EscrowV2Backup;
 };
 
@@ -73,6 +80,8 @@ export function StashPanel() {
   const { network, starknet } = useNetwork();
   const { session, balances, refreshBalances, signatureProgress } = useTreasury();
   const [amount, setAmount] = useState("1");
+  const [mode, setMode] = useState<"link" | "invoice">("link");
+  const [recipientEvm, setRecipientEvm] = useState("");
   const [neverExpires, setNeverExpires] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [savedRecovery, setSavedRecovery] = useState(false);
@@ -181,33 +190,65 @@ export function StashPanel() {
         throw new Error(`Park at least ${formatUsdc(minimum)} USDC`);
       }
 
-      const keys = await createEscrowV2Keys(network);
       const expiresAt = neverExpires
         ? 0
         : Math.floor(Date.now() / 1000) + DEFAULT_ESCROW_V2_EXPIRY_SECONDS;
-      const backup: EscrowV2Backup = {
-        version: 1,
-        network,
-        escrow: starknet.escrowV2,
-        commitment: keys.commitment,
-        refundSeed: keys.refundSeed,
-        expiresAt,
-        amount: formatUsdc(parsed),
-        amountRaw: parsed.toString(),
-        createdAt: Date.now(),
-        claimSeed: keys.claimSeed,
-      };
-      saveEscrowV2Backup(backup);
-      downloadEscrowV2Backup(backup);
-      setDraft({
-        claimSeed: keys.claimSeed,
-        refundSeed: keys.refundSeed,
-        commitment: keys.commitment,
-        owner: keys.owner,
-        refundOwner: keys.refundOwner,
-        expiresAt,
-        backup,
-      });
+
+      if (mode === "invoice") {
+        const invoice = await createEscrowV2Invoice(network, recipientEvm.trim());
+        const backup: EscrowV2Backup = {
+          version: 1,
+          network,
+          escrow: starknet.escrowV2,
+          commitment: invoice.commitment,
+          refundSeed: invoice.refundSeed,
+          expiresAt,
+          amount: formatUsdc(parsed),
+          amountRaw: parsed.toString(),
+          createdAt: Date.now(),
+          recipientEvm: invoice.recipientEvm,
+        };
+        saveEscrowV2Backup(backup);
+        downloadEscrowV2Backup(backup);
+        setDraft({
+          mode: "invoice",
+          recipientEvm: invoice.recipientEvm,
+          refundSeed: invoice.refundSeed,
+          commitment: invoice.commitment,
+          owner: invoice.owner,
+          refundOwner: invoice.refundOwner,
+          expiresAt,
+          indexed: true,
+          backup,
+        });
+      } else {
+        const keys = await createEscrowV2Keys(network);
+        const backup: EscrowV2Backup = {
+          version: 1,
+          network,
+          escrow: starknet.escrowV2,
+          commitment: keys.commitment,
+          refundSeed: keys.refundSeed,
+          expiresAt,
+          amount: formatUsdc(parsed),
+          amountRaw: parsed.toString(),
+          createdAt: Date.now(),
+          claimSeed: keys.claimSeed,
+        };
+        saveEscrowV2Backup(backup);
+        downloadEscrowV2Backup(backup);
+        setDraft({
+          mode: "link",
+          claimSeed: keys.claimSeed,
+          refundSeed: keys.refundSeed,
+          commitment: keys.commitment,
+          owner: keys.owner,
+          refundOwner: keys.refundOwner,
+          expiresAt,
+          indexed: false,
+          backup,
+        });
+      }
       setSavedRecovery(false);
       setLink(null);
       toast.success("Recovery file downloaded. Keep it before parking.");
@@ -229,7 +270,7 @@ export function StashPanel() {
       senderAddress: session.address,
       network,
       expiresAt: BigInt(draft.expiresAt),
-      indexed: false,
+      indexed: draft.indexed,
     });
   }
 
@@ -249,15 +290,20 @@ export function StashPanel() {
         response = await runParkDeposit();
       }
       const txHash = extractTxHash(response);
-      const claimLink = claimV2Url(window.location.origin, {
-        network,
-        seed: draft.claimSeed,
-        amount: draft.backup.amount,
-      });
       if (txHash) {
         updateEscrowV2Backup(network, draft.commitment, { txHash });
       }
-      setLink(claimLink);
+      if (draft.mode === "link" && draft.claimSeed) {
+        setLink(
+          claimV2Url(window.location.origin, {
+            network,
+            seed: draft.claimSeed,
+            amount: draft.backup.amount,
+          }),
+        );
+      } else {
+        setLink("invoice");
+      }
       recordActivity({
         network,
         kind: "pay",
@@ -265,19 +311,26 @@ export function StashPanel() {
         status: "confirmed",
         amount: draft.backup.amount,
         amountRaw: draft.backup.amountRaw,
-        label: "Parked in escrow V2",
+        label: draft.mode === "invoice" ? "Parked invoice V2" : "Parked in escrow V2",
         address: starknet.escrowV2,
         txHash,
       });
       if (txHash) {
         txToast({
-          title: "Parked. Share the claim link below.",
+          title:
+            draft.mode === "invoice"
+              ? "Parked for that MetaMask."
+              : "Parked. Share the claim link below.",
           txHash,
           explorerUrl: `${starknet.explorer}/tx/${txHash}`,
           explorerLabel: "Voyager",
         });
       } else {
-        toast.success("Parked. Share the claim link below.");
+        toast.success(
+          draft.mode === "invoice"
+            ? "Parked for that MetaMask."
+            : "Parked. Share the claim link below.",
+        );
       }
       await refreshBalances({ private: true });
       refreshBackups();
@@ -415,31 +468,67 @@ export function StashPanel() {
       {v2Ready && link && draft ? (
         <Card>
           <CardHeader>
-            <CardTitle>Share this claim link</CardTitle>
+            <CardTitle>
+              {draft.mode === "invoice" ? "Parked for MetaMask" : "Share this claim link"}
+            </CardTitle>
             <CardDescription>
-              Anyone with the link can collect once. Your recovery file is
-              separate — never put it in the same message as this link.
+              {draft.mode === "invoice"
+                ? "The recipient opens /claim with that MetaMask. Tokens land as a public Starknet balance. Keep your recovery file separate."
+                : "Anyone with the link can collect once. Your recovery file is separate — never put it in the same message as this link."}
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            <div className="flex justify-center">
-              <QrCode value={link} label="Claim link" />
-            </div>
-            <code className="block overflow-x-auto rounded-lg bg-muted p-3 text-xs">
-              {link}
-            </code>
+            {draft.mode === "invoice" ? (
+              <div className="flex flex-col gap-2 text-sm">
+                <p>
+                  Recipient MetaMask:{" "}
+                  <code className="rounded bg-muted px-1 text-xs">
+                    {draft.recipientEvm}
+                  </code>
+                </p>
+                <p className="text-muted-foreground">
+                  Tell them to open{" "}
+                  <code className="rounded bg-muted px-1 text-xs">/claim</code>{" "}
+                  with that wallet — the park shows up in their inbox.
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-center">
+                  <QrCode value={link} label="Claim link" />
+                </div>
+                <code className="block overflow-x-auto rounded-lg bg-muted p-3 text-xs">
+                  {link}
+                </code>
+              </>
+            )}
             <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                onClick={() => {
-                  void navigator.clipboard
-                    .writeText(link)
-                    .then(() => toast.success("Link copied"))
-                    .catch(() => toast.error("Could not copy — select it by hand"));
-                }}
-              >
-                Copy link
-              </Button>
+              {draft.mode === "link" ? (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard
+                      .writeText(link)
+                      .then(() => toast.success("Link copied"))
+                      .catch(() => toast.error("Could not copy — select it by hand"));
+                  }}
+                >
+                  Copy link
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={() => {
+                    const claimPage = `${window.location.origin}/claim`;
+                    void navigator.clipboard
+                      .writeText(claimPage)
+                      .then(() => toast.success("Claim page copied"))
+                      .catch(() => toast.error("Could not copy"));
+                  }}
+                >
+                  Copy claim page
+                </Button>
+              )}
               <Button
                 type="button"
                 variant="outline"
@@ -469,6 +558,38 @@ export function StashPanel() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant={mode === "link" ? "default" : "outline"}
+                disabled={Boolean(draft) || busy !== null}
+                onClick={() => setMode("link")}
+              >
+                Share a link
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant={mode === "invoice" ? "default" : "outline"}
+                disabled={Boolean(draft) || busy !== null}
+                onClick={() => setMode("invoice")}
+              >
+                Pay a MetaMask
+              </Button>
+            </div>
+            {mode === "invoice" ? (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="stash-recipient">Recipient MetaMask address</Label>
+                <Input
+                  id="stash-recipient"
+                  placeholder="0x…"
+                  value={recipientEvm}
+                  disabled={Boolean(draft) || busy !== null}
+                  onChange={(event) => setRecipientEvm(event.target.value)}
+                />
+              </div>
+            ) : null}
             <div className="flex flex-col gap-2">
               <Label htmlFor="stash-amount">USDC to park</Label>
               <Input
@@ -558,6 +679,7 @@ export function StashPanel() {
                     disabled={
                       busy !== null ||
                       !amount.trim() ||
+                      (mode === "invoice" && !recipientEvm.trim()) ||
                       needsActivation ||
                       needsShield ||
                       !maturity.ready

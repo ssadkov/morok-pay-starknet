@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { useSignMessage } from "wagmi";
+import { useSignMessage, useSignTypedData } from "wagmi";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { TestnetHint } from "@/components/pay/testnet-hint";
@@ -31,14 +31,16 @@ import {
   parseClaimV2Request,
   type ClaimV2Request,
 } from "@/lib/pay/escrow-v2";
-import { claimEscrowV2 } from "@/lib/privacy/escrow-claim-client";
+import { claimEscrowV2, claimEscrowV2AsOwner } from "@/lib/privacy/escrow-claim-client";
 import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import { claimFromEscrow } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import { readEscrowEntry } from "@/lib/starknet/escrow";
 import {
   escrowV2Status,
+  readEscrowV2Entries,
   readEscrowV2Entry,
+  type EscrowV2Entry,
   type EscrowV2Status,
 } from "@/lib/starknet/escrow-v2";
 import { createProvider, formatUsdc } from "@/lib/starknet/status";
@@ -50,7 +52,8 @@ export function ClaimPanel() {
   const v2 = parseClaimV2Request(searchParams, network);
   const v1 = v2 ? null : parseClaimRequest(searchParams, network);
   if (v2) return <ClaimV2Panel request={v2} />;
-  return <ClaimV1Panel request={v1} />;
+  if (v1) return <ClaimV1Panel request={v1} />;
+  return <ClaimInvoiceInbox />;
 }
 
 function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
@@ -229,10 +232,198 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
   );
 }
 
+function ClaimInvoiceInbox() {
+  const { network, starknet } = useNetwork();
+  const { session } = useTreasury();
+  const { signMessageAsync } = useSignMessage();
+  const { signTypedDataAsync } = useSignTypedData();
+  const [items, setItems] = useState<
+    { commitment: string; entry: EscrowV2Entry; refundable: boolean }[]
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const [claiming, setClaiming] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const canList =
+    Boolean(starknet.escrowV2) &&
+    session?.kind === "evm" &&
+    Boolean(session.evmAddress);
+
+  useEffect(() => {
+    if (!canList || !session) {
+      setItems([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      try {
+        const commitments = await readEscrowV2Entries({
+          network,
+          owner: session.address,
+        });
+        const now = BigInt((await createProvider(network).getBlock("latest")).timestamp);
+        const next: { commitment: string; entry: EscrowV2Entry; refundable: boolean }[] = [];
+        for (const commitment of commitments) {
+          const entry = await readEscrowV2Entry({ network, commitment });
+          const status = escrowV2Status(entry, now);
+          if (status.state === "claimable") {
+            next.push({
+              commitment,
+              entry: status.entry,
+              refundable: status.refundable,
+            });
+          }
+        }
+        if (!cancelled) setItems(next);
+      } catch (caught) {
+        if (!cancelled) setError(formatStrk20Error(caught, "pay"));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canList, network, session]);
+
+  async function handleClaim(commitment: string) {
+    if (!session || session.kind !== "evm" || !session.evmAddress) return;
+    setError(null);
+    setClaiming(commitment);
+    try {
+      const result = await claimEscrowV2AsOwner({
+        network,
+        commitment,
+        destination: session.address,
+        evmAddress: session.evmAddress,
+        starknetAddress: session.address,
+        signTypedData: (data) =>
+          signTypedDataAsync(data as Parameters<typeof signTypedDataAsync>[0]),
+        signMessage: (message) => signMessageAsync({ message }),
+      });
+      setItems((prev) => prev.filter((item) => item.commitment !== commitment));
+      recordActivity({
+        network,
+        kind: "receive",
+        source: "morok",
+        status: "confirmed",
+        amount: "invoice",
+        label: "Claim invoice V2",
+        address: session.address,
+        txHash: result.transactionHash,
+      });
+      txToast({
+        title: "Claimed to your public Starknet balance",
+        txHash: result.transactionHash,
+        explorerUrl: `${starknet.explorer}/tx/${result.transactionHash}`,
+        explorerLabel: "Voyager",
+      });
+    } catch (caught) {
+      setError(formatStrk20Error(caught, "pay"));
+    } finally {
+      setClaiming(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-3xl font-semibold tracking-tight">Claim with MetaMask</h1>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Open a claim link, or connect the MetaMask that was paid — indexed
+          invoices for that wallet show up here. Payout is a public Starknet
+          balance.
+        </p>
+      </div>
+      <TestnetHint />
+      {!session ? <ConnectWalletChoices sponsored /> : null}
+
+      {!starknet.escrowV2 ? (
+        <Alert variant="destructive">
+          <AlertTitle>No escrow V2 on this network</AlertTitle>
+          <AlertDescription>Switch to Sepolia to claim.</AlertDescription>
+        </Alert>
+      ) : session && session.kind !== "evm" ? (
+        <Alert>
+          <AlertTitle>Connect MetaMask for invoices</AlertTitle>
+          <AlertDescription>
+            Indexed invoices are claimed with the recipient MetaMask. Ready X
+            can still redeem bearer links that include a seed.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Waiting for you</CardTitle>
+            <CardDescription>
+              Indexed parks for this MetaMask. Connect the wallet the sender
+              paid.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not claim</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            {!session ? (
+              <p className="text-sm text-muted-foreground">Connect above to see invoices.</p>
+            ) : loading ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner /> Looking up indexed entries…
+              </p>
+            ) : items.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nothing waiting for this wallet. If you have a claim link, open
+                it instead.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {items.map((item) => (
+                  <li
+                    key={item.commitment}
+                    className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {formatUsdc(item.entry.amount)} USDC
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.refundable
+                          ? "Still claimable · sender can also reclaim"
+                          : "Claimable"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={claiming !== null}
+                      aria-busy={claiming === item.commitment}
+                      onClick={() => {
+                        void handleClaim(item.commitment);
+                      }}
+                    >
+                      {claiming === item.commitment ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : null}
+                      {claiming === item.commitment ? "Claiming" : "Claim"}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 function ClaimV1Panel({
   request,
 }: {
-  request: ReturnType<typeof parseClaimRequest>;
+  request: NonNullable<ReturnType<typeof parseClaimRequest>>;
 }) {
   const { network, setNetwork, starknet } = useNetwork();
   const {

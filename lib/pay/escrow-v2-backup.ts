@@ -20,6 +20,8 @@ export type EscrowV2Backup = {
   createdAt: number;
   txHash?: string;
   claimSeed?: Hex;
+  /** Present for invoice-to-MetaMask parks; omitted for bearer links. */
+  recipientEvm?: string;
 };
 
 function notify() {

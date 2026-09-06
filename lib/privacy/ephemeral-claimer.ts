@@ -96,20 +96,22 @@ export async function signEphemeralClaim(args: {
   ].map((value) => num.toHex(value));
 
   const struct = outsideExecutionCalldata(intent);
-  const calldata = [
-    struct.caller,
-    struct.nonce,
-    struct.execute_after,
-    struct.execute_before,
-    num.toHex(struct.calls.length),
-    ...struct.calls.flatMap((call) => [
-      call.to,
-      call.selector,
-      num.toHex(call.calldata.length),
-      ...call.calldata,
-    ]),
-    num.toHex(felts.length),
-    ...felts,
-  ];
-  return { calldata, signature: felts };
+  return {
+    calldata: [
+      struct.caller,
+      struct.nonce,
+      struct.execute_after,
+      struct.execute_before,
+      num.toHex(struct.calls.length),
+      ...struct.calls.flatMap((call) => [
+        call.to,
+        call.selector,
+        num.toHex(call.calldata.length),
+        ...call.calldata,
+      ]),
+      num.toHex(felts.length),
+      ...felts,
+    ],
+    signature: felts,
+  };
 }

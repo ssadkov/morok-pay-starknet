@@ -1,8 +1,13 @@
 import { hash } from "starknet";
-import type { Hex } from "viem";
+import { isAddress, getAddress, type Hex } from "viem";
 
 import type { AppNetwork } from "@/lib/network";
-import { commitmentFromSeed, randomSeed } from "@/lib/pay/escrow-v2";
+import {
+  commitmentFromSalt,
+  commitmentFromSeed,
+  randomSalt,
+  randomSeed,
+} from "@/lib/pay/escrow-v2";
 import { starknetOf } from "@/lib/starknet/constants";
 import { createProvider } from "@/lib/starknet/status";
 import { readEscrowV2Entry } from "@/lib/starknet/escrow-v2";
@@ -30,6 +35,35 @@ export async function createEscrowV2Keys(network: AppNetwork) {
   return {
     claimSeed, refundSeed, commitment: commitmentFromSeed(claimSeed),
     owner: owner.starknetAddress, refundOwner: refundOwner.starknetAddress,
+  };
+}
+
+/**
+ * Invoice to a MetaMask address: owner is the recipient's Eth712 account,
+ * indexed so they find it without a seed link. Recovery stays sender-only.
+ */
+export async function createEscrowV2Invoice(network: AppNetwork, recipientEvm: string) {
+  if (!isAddress(recipientEvm)) throw new Error("Enter a valid MetaMask (EVM) address");
+  const normalized = getAddress(recipientEvm) as Hex;
+  const refundSeed = randomSeed();
+  const salt = randomSalt();
+  const provider = createProvider(network);
+  const factory = privacySdkOf(network).accountFactory;
+  const [owner, refundOwner] = await Promise.all([
+    inspectEth712Account(normalized, provider, factory),
+    inspectEth712Account(ephemeralEvmAddress(refundSeed), provider, factory),
+  ]);
+  if (BigInt(owner.starknetAddress) === BigInt(refundOwner.starknetAddress)) {
+    throw new Error("Recipient and recovery accounts collided; try again");
+  }
+  return {
+    recipientEvm: normalized,
+    refundSeed,
+    salt,
+    commitment: commitmentFromSalt(salt),
+    owner: owner.starknetAddress,
+    refundOwner: refundOwner.starknetAddress,
+    indexed: true as const,
   };
 }
 

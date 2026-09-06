@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   claimV2Url,
+  commitmentFromSalt,
   commitmentFromSeed,
   ESCROW_V2_TAG,
   isSeed,
   parseClaimV2Request,
+  randomSalt,
   randomSeed,
   seedEvmAddress,
 } from "./escrow-v2";
@@ -92,5 +94,14 @@ describe("claim links", () => {
   it("falls back to the current network when the link omits one", () => {
     const parsed = parseClaimV2Request(new URLSearchParams(`k=${SEED}`), "mainnet");
     expect(parsed?.network).toBe("mainnet");
+  });
+});
+
+describe("commitmentFromSalt", () => {
+  it("is stable for a salt and different across salts", () => {
+    const a = randomSalt();
+    const b = randomSalt();
+    expect(commitmentFromSalt(a)).toBe(commitmentFromSalt(a));
+    expect(commitmentFromSalt(a)).not.toBe(commitmentFromSalt(b));
   });
 });

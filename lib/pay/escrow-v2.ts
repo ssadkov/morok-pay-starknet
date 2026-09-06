@@ -72,6 +72,11 @@ export function commitmentFromSalt(salt: string): string {
   ]);
 }
 
+/** Random felt used as the storage key salt for indexed (invoice) entries. */
+export function randomSalt(): string {
+  return num.toHex(BigInt(randomSeed()));
+}
+
 export type ClaimV2Request = {
   network: AppNetwork;
   seed: Hex;
