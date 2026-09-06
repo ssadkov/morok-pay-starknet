@@ -57,6 +57,10 @@ export async function claimEscrowV2(args: {
   network: AppNetwork;
   seed: Hex;
   destination: string;
+  /* The link signs with its own key in this tab, so no wallet is asked and any
+     value works - the account reads it back out of the signature. It is still
+     a parameter so a link claim and an invoice claim agree. */
+  evmChainId?: number;
 }): Promise<{ transactionHash: string }> {
   const commitment = commitmentFromSeed(args.seed);
   const { chain, provider, now, status, relayer } = await loadClaimable({
@@ -75,7 +79,7 @@ export async function claimEscrowV2(args: {
     seed: args.seed,
     starknetAddress: owner.starknetAddress,
     snChainName: sdk.snChainName,
-    evmChainId: args.network === "mainnet" ? 1 : 11155111,
+    evmChainId: args.evmChainId ?? (args.network === "mainnet" ? 1 : 11155111),
     caller: relayer,
     executeBefore: Number(now) + 600,
     call: {
@@ -113,6 +117,10 @@ export async function claimEscrowV2AsOwner(args: {
   destination: string;
   evmAddress: string;
   starknetAddress: string;
+  /* Whatever network MetaMask is actually on. viem refuses to sign typed data
+     naming a different one, and the server does not pin it - it recovers the
+     signer using the chain id the signature carries. */
+  evmChainId: number;
   signTypedData: (data: Record<string, unknown>) => Promise<Hex>;
   signMessage: (message: string) => Promise<Hex>;
 }): Promise<{ transactionHash: string }> {
@@ -124,7 +132,7 @@ export async function claimEscrowV2AsOwner(args: {
     throw new Error("This MetaMask does not own that escrow entry");
   }
   const sdk = privacySdkOf(args.network);
-  const evmChainId = args.network === "mainnet" ? 1 : 11155111;
+  const evmChainId = args.evmChainId;
   const destination = validateAndParseAddress(args.destination);
   const intent: OutsideExecutionIntent = {
     caller: relayer,

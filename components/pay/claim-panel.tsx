@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { useSignMessage, useSignTypedData } from "wagmi";
+import { useAccount, useSignMessage, useSignTypedData } from "wagmi";
 
 import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
@@ -298,6 +298,7 @@ function ClaimInvoiceInbox() {
   const { evmConnectedAddress, evmStarknetAddress } = useTreasury();
   const { signMessageAsync } = useSignMessage();
   const { signTypedDataAsync } = useSignTypedData();
+  const { chainId: walletChainId } = useAccount();
   const [items, setItems] = useState<
     { commitment: string; entry: EscrowV2Entry; refundable: boolean }[]
   >([]);
@@ -366,6 +367,7 @@ function ClaimInvoiceInbox() {
         destination: evmStarknetAddress,
         evmAddress: evmConnectedAddress,
         starknetAddress: evmStarknetAddress,
+        evmChainId: walletChainId ?? 1,
         signTypedData: (data) =>
           signTypedDataAsync(data as Parameters<typeof signTypedDataAsync>[0]),
         signMessage: (message) => signMessageAsync({ message }),

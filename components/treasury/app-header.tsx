@@ -191,22 +191,29 @@ export function AppHeader() {
               )}
               {connecting ? "Connecting" : "Connect Ready X"}
             </Button>
-            <Button
-              type="button"
-              size="lg"
-              variant="outline"
-              className="min-h-10 px-3 text-sm sm:px-4"
-              disabled={connecting || evmConnecting}
-              aria-busy={evmConnecting}
-              onClick={() => void connectEvm()}
-            >
-              {evmConnecting ? (
-                <Spinner data-icon="inline-start" />
-              ) : (
-                <BlocksIcon data-icon="inline-start" />
-              )}
-              {evmConnecting ? "Checking" : "Connect EVM wallet"}
-            </Button>
+            {/* Offering to connect a wallet that is already connected read as
+                the app not noticing - the Disconnect button beside it named
+                the very address it was asking for. A session is a different
+                thing again: the account may simply not be deployed yet, and
+                for a claim it does not need to be. */}
+            {evmConnectedAddress ? null : (
+              <Button
+                type="button"
+                size="lg"
+                variant="outline"
+                className="min-h-10 px-3 text-sm sm:px-4"
+                disabled={connecting || evmConnecting}
+                aria-busy={evmConnecting}
+                onClick={() => void connectEvm()}
+              >
+                {evmConnecting ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <BlocksIcon data-icon="inline-start" />
+                )}
+                {evmConnecting ? "Checking" : "Connect EVM wallet"}
+              </Button>
+            )}
             {/* A wallet can be connected with no session at all - dismissing
                 the onboarding gate leaves it exactly there. Without this the
                 only way back out is clearing site data. */}
