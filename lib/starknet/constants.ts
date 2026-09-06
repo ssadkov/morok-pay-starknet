@@ -16,10 +16,17 @@ const MAINNET = {
   // (0x53fe2c18...), so it is the contract the Sepolia probes exercised.
   escrow:
     "0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f",
-  // V2 lives on Sepolia only until its rules have been exercised there.
-  escrowV2: "",
-  escrowV2SupportsPrivateRefund: false,
-  escrowV2PrivateRefundHistory: [] as readonly string[],
+  // MorokEscrowV2, declared and deployed 2026-09-07. Class
+  // 0x7a5c3a64..., which is NOT the class Sepolia runs at 0x424e3e...:
+  // that one predates the EscrowState enum and the constructor/deposit
+  // assertions, so mainnet is the first network to run this source.
+  // Floors read back as 1 USDC, 5 STRK, 0.00001 strkBTC, zero elsewhere.
+  escrowV2:
+    "0x6314101ff10835af0bfef051ddb9fe456cb9541d073a0ff45326a0c654253a",
+  escrowV2SupportsPrivateRefund: true,
+  escrowV2PrivateRefundHistory: [
+    "0x6314101ff10835af0bfef051ddb9fe456cb9541d073a0ff45326a0c654253a",
+  ] as readonly string[],
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_MAINNET_ADDRESS?.trim() ?? "",
   // Declared 2026-08-26 by scripts/deploy-eth712-factory.mjs, configured for

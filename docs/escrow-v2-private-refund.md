@@ -80,6 +80,33 @@ Redeployed 2026-09-06 with claim-after-expiry (expiry unlocks refund only).
 
 [Contract on Voyager](https://sepolia.voyager.online/contract/0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654).
 
+## Mainnet — 2026-09-07
+
+| | |
+| --- | --- |
+| Contract | `0x6314101ff10835af0bfef051ddb9fe456cb9541d073a0ff45326a0c654253a` |
+| Class | `0x7a5c3a642f7b4244089a573916e0cda650f57034e5b60a01f076f52e6742fb7` |
+| Declare tx | `0x6a7108e1e40505fa5a18444b104a99c7e9aab10dc3cef493ad6837d828f3a61` |
+| Deploy tx | `0xba4730a32a1c74d2a6df65b5648cf64bcb257c28891698a7d46ff0d99831c0` |
+| Pool | `0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a` |
+| Floors | 1 USDC, 5 STRK, 0.00001 strkBTC; zero for anything else |
+
+Constructor read back on chain: pool, all three floors, zero for an unlisted
+token, a zero struct for an unknown commitment.
+
+**The mainnet class is not the Sepolia class.** Sepolia's `0x424e3e…` was
+declared before commit `cd13140`, so it still stores `claimed: bool` and lacks
+the constructor and deposit assertions added there — `EscrowState`,
+`TOKEN_NOT_SUPPORTED`, `OWNER_IS_REFUND_OWNER`, `INVALID_EXPIRY` and
+`INVALID_REFUND_ARGS`. Confirmed by reading both ABIs: `EscrowState` is present
+on mainnet and absent on Sepolia. Mainnet is therefore the first network to run
+this source, and a refund exercised against `0x424e3e…` does not validate the
+mainnet refund path. `readEscrowV2Entry` reads both shapes because a bool and
+the enum both serialise as 0/1 in the sixth slot.
+
+`escrow-refund-client.ts` already zeroes every field of the Refund operation,
+so `INVALID_REFUND_ARGS` does not change what the client sends.
+
 Historical (do not use): `0x3cdfdb8e…` blocked claim after expiry; `0x0156be9d…` had public refund.
 
 ## Verification
