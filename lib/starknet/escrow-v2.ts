@@ -176,11 +176,25 @@ export async function confirmEscrowV2Transaction(args: {
     timeoutMs: args.timeoutMs,
   });
   if (receipt !== "confirmed") return receipt;
-  const entry = await readEscrowV2Entry(args);
-  if (!entry) return "mismatch";
-  const matches =
-    args.expected === "closed"
-      ? entry.resolution !== "open"
-      : entry.resolution === args.expected;
-  return matches ? "confirmed" : "mismatch";
+
+  /* A confirmed receipt and a stale read are not the same thing, and calling
+     the second one a failure is worse than useless: the first live claim
+     moved the money, closed the entry, and still told its recipient it had
+     not - which invites a retry that can only fail with ALREADY_CLAIMED.
+     Public RPCs answer from whichever node takes the request, so the state
+     can lag the receipt by a block. Give it a few tries before saying no. */
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const entry = await readEscrowV2Entry(args);
+    if (entry) {
+      const matches =
+        args.expected === "closed"
+          ? entry.resolution !== "open"
+          : entry.resolution === args.expected;
+      if (matches) return "confirmed";
+    }
+    if (attempt < 4) {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+    }
+  }
+  return "mismatch";
 }

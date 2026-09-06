@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { CopyIcon } from "lucide-react";
 import { recordActivity } from "@/lib/pay/activity";
 import {
   computeEscrowCommitment,
@@ -287,6 +288,65 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
   );
 }
 
+
+/**
+ * Where the money is going, and where it came from, both copyable.
+ *
+ * A recipient is being asked to trust a payout to an address they have never
+ * seen, derived from their own wallet by rules they did not pick. Showing both
+ * ends - the MetaMask they recognise and the Starknet account it produces -
+ * is what makes that checkable rather than a leap, and it is the same block
+ * /start already shows.
+ */
+function ClaimAddresses(props: { evmAddress: string; starknetAddress: string | null }) {
+  function copy(value: string, what: string) {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => toast.success(`${what} copied`))
+      .catch(() => toast.error("Could not copy the address"));
+  }
+
+  return (
+    <div className="rounded-xl bg-muted/40 px-3 py-3 ring-1 ring-foreground/10">
+      <p className="text-xs text-muted-foreground">Paying out to your Starknet account</p>
+      <div className="mt-1 flex items-start gap-2">
+        <p className="min-w-0 flex-1 break-all font-mono text-xs">
+          {props.starknetAddress ?? "deriving…"}
+        </p>
+        {props.starknetAddress ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="shrink-0"
+            aria-label="Copy your Starknet address"
+            title="Copy address"
+            onClick={() => copy(props.starknetAddress!, "Starknet address")}
+          >
+            <CopyIcon />
+          </Button>
+        ) : null}
+      </div>
+      <div className="mt-2 flex items-start gap-2">
+        <p className="min-w-0 flex-1 break-all font-mono text-xs text-muted-foreground">
+          from {props.evmAddress}
+        </p>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="shrink-0"
+          aria-label="Copy your EVM address"
+          title="Copy EVM address"
+          onClick={() => copy(props.evmAddress, "EVM address")}
+        >
+          <CopyIcon />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 function ClaimInvoiceInbox() {
   const { network, starknet } = useNetwork();
   /* Not `session`: that only exists once the derived account is deployed, and
@@ -430,7 +490,12 @@ function ClaimInvoiceInbox() {
             claim fee, so the wallet needs no STRK and no Starknet setup.
           </AlertDescription>
         </Alert>
-      ) : null}
+      ) : (
+        <ClaimAddresses
+          evmAddress={evmConnectedAddress}
+          starknetAddress={evmStarknetAddress}
+        />
+      )}
 
       {!starknet.escrowV2 ? (
         <Alert variant="destructive">
