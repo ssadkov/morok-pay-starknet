@@ -20,9 +20,9 @@ const jetBrainsMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "MorokPay — private donations",
+  title: "MorokPay — private USDC on Starknet",
   description:
-    "Private USDC donations on Starknet. One QR, supporter-chosen amount, transfer inside STRK20.",
+    "Send private USDC to any Ethereum wallet. The recipient collects with MetaMask alone - no Starknet wallet, no STRK, no gas.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

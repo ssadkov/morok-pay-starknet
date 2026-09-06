@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowUpRightIcon, HeartIcon, LinkIcon, QrCodeIcon } from "lucide-react";
+import { ArrowUpRightIcon, HeartIcon, QrCodeIcon, SendIcon } from "lucide-react";
 
 import { TestnetHint } from "@/components/pay/testnet-hint";
 import { useNetwork } from "@/components/network-provider";
@@ -18,24 +18,27 @@ export function HomeDoors() {
       />
       <div className="flex flex-col gap-3">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-          Private donations on Starknet
+          Private USDC on Starknet
         </p>
         <h1 className="max-w-2xl text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">
-          Support a creator privately
+          Send private USDC to any Ethereum wallet
         </h1>
         <p className="max-w-2xl text-base leading-7 text-muted-foreground">
           {network === "sepolia"
-            ? "Testnet: create a donation QR or open one, then pay with Ready X or an EVM wallet on Starknet Sepolia. Switch the header to Mainnet for the contest."
-            : "One QR. The supporter chooses the amount. The transfer stays inside the STRK20 pool, so the shared link never shows how much was sent."}
+            ? "Testnet: send, claim or collect donations on Starknet Sepolia with MetaMask or Ready X. Switch the header to Mainnet for the contest."
+            : "The recipient collects with MetaMask alone - no Starknet wallet, no STRK, no gas. MorokPay deploys their account and pays for the claim in one transaction."}
         </p>
       </div>
       <TestnetHint />
       <div className="grid gap-4 sm:grid-cols-2">
+        {/* Sending leads. "Send a link" also undersold the page: it addresses
+            an entry to one EVM wallet just as readily as it mints a bearer
+            link, and the name only described the second. */}
         <Door
-          href="/pay"
-          icon={<HeartIcon />}
-          title="Donate"
-          body="Open a donation link or scan a QR. Pick an amount. Confirm in Ready X or an EVM wallet."
+          href="/stash"
+          icon={<SendIcon />}
+          title="Send privately"
+          body="Park private USDC behind a link, or address it to one EVM wallet. They collect with MetaMask or any EVM wallet - no Starknet wallet, no STRK."
         />
         <Door
           href="/sell"
@@ -44,10 +47,10 @@ export function HomeDoors() {
           body="Create one durable donation QR. Share it anywhere. Receive private USDC in your donation wallet."
         />
         <Door
-          href="/stash"
-          icon={<LinkIcon />}
-          title="Send a link"
-          body="Park private USDC behind a one-time link. Whoever opens it collects with MetaMask alone - no Starknet wallet, no STRK."
+          href="/pay"
+          icon={<HeartIcon />}
+          title="Donate"
+          body="Open a donation link or scan a QR. Pick an amount. Confirm in Ready X or an EVM wallet."
         />
       </div>
     </div>

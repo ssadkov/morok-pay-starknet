@@ -2,9 +2,10 @@
 
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { RefreshCwIcon, WalletIcon } from "lucide-react";
+import { ArrowDownToLineIcon, CoinsIcon, RefreshCwIcon, WalletIcon } from "lucide-react";
 
 import { HistoryModal } from "@/components/pay/history-modal";
+import { useNetwork } from "@/components/network-provider";
 import { SendButton } from "@/components/pay/send-button";
 import { ShieldButton } from "@/components/pay/shield-button";
 import { UnshieldButton } from "@/components/pay/unshield-button";
@@ -30,6 +31,7 @@ export function BalanceSidebar() {
     evmStarknetAddress,
   } =
     useTreasury();
+  const { network } = useNetwork();
   /* Deployed but not registered: everything public works, nothing private
      does. Re-running the connect check is what raises the activation flow, so
      this is a way back to it rather than a second copy of it. */
@@ -161,6 +163,35 @@ export function BalanceSidebar() {
             </>
           )}
         </CardContent>
+        {/* Funding lives with the balance it changes. Both were top-level nav
+            items, which is a strange place for "my number is too small": you
+            only want them while looking at the number. Get STRK routes
+            through AVNU and there is no Sepolia liquidity to route against,
+            so it is mainnet only; Top up bridges on both. */}
+        <div className="flex flex-wrap gap-2 border-t px-6 py-4">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/treasury" />}
+          >
+            <ArrowDownToLineIcon />
+            Top up
+          </Button>
+          {network === "mainnet" ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              nativeButton={false}
+              render={<Link href="/swap" />}
+            >
+              <CoinsIcon />
+              Get STRK
+            </Button>
+          ) : null}
+        </div>
       </Card>
       {/* The lab runs the same steps with the proof, the fee and the resource
           bounds shown one at a time. That is the right shape for diagnosing a

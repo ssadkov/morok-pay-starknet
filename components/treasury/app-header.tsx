@@ -24,22 +24,20 @@ import { cn } from "@/lib/utils";
 import { shortenAddress } from "@/lib/format";
 import type { AppNetwork } from "@/lib/network";
 
+/**
+ * Three doors, matching the home page. /stash had no nav entry at all - the
+ * newest page was reachable only from a card someone had to land on first.
+ *
+ * Get STRK and Top up left for the balances card. They are things you go
+ * looking for while staring at a number that is too small, which is exactly
+ * where that card is, and five items plus two connect buttons wrapped every
+ * label onto two lines at 1440px.
+ */
 const NAV = [
+  { href: "/stash", label: "Send" },
   { href: "/pay", label: "Donate" },
   { href: "/sell", label: "My QR" },
-  { href: "/swap", label: "Get STRK" },
-  { href: "/treasury", label: "Top up" },
 ] as const;
-
-/**
- * Get STRK routes through AVNU and there is no Sepolia liquidity to route
- * against, so it is a mainnet page only. Top up used to be hidden the other
- * way round, as a testnet faucet page; the Base bridge on it now delivers to
- * mainnet with the fee paid by the relayer, so it belongs on both.
- */
-function navFor(network: AppNetwork) {
-  return network === "mainnet" ? NAV : NAV.filter((item) => item.href !== "/swap");
-}
 
 async function copyAddress(value: string, message: string) {
   try {
@@ -75,7 +73,6 @@ export function AppHeader() {
       ? session.address
       : evmStarknetAddress;
   const { network, setNetwork } = useNetwork();
-  const nav = navFor(network);
   const wallet = wallets[0];
 
   return (
@@ -92,18 +89,18 @@ export function AppHeader() {
               <span className="text-sm font-medium tracking-tight">MorokPay</span>
               <span className="text-xs text-muted-foreground">
                 {network === "sepolia"
-                  ? "Private donations · testnet"
-                  : "Private donations"}
+                  ? "Private USDC · testnet"
+                  : "Private USDC on Starknet"}
               </span>
             </span>
           </Link>
           <nav aria-label="Primary" className="hidden items-center gap-1 sm:flex">
-            {nav.map((item) => (
+            {NAV.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
                 className={cn(
-                  "rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                  "rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
                   pathname === item.href && "bg-accent text-accent-foreground",
                 )}
               >
@@ -189,10 +186,40 @@ export function AppHeader() {
             </DropdownMenuContent>
           </DropdownMenu>
         ) : (
-          <div className="flex flex-1 flex-wrap items-center gap-2">
+          /* flex-1 here fought the logo group's own flex-1: at sm the wrapper
+             is `contents`, so the two became siblings splitting the free
+             space and the buttons sat at the left of their half. Sized to
+             content instead, the logo's flex-1 pushes them to the edge. */
+          <div className="flex flex-1 flex-wrap items-center gap-2 sm:flex-none sm:justify-end">
+            {/* EVM leads. The product's claim is that a Starknet wallet is
+                not required, and putting Ready X first in the primary colour
+                argued the opposite before anyone read a line of copy.
+                Offering to connect a wallet that is already connected read as
+                the app not noticing - the Disconnect button beside it named
+                the very address it was asking for. A session is a different
+                thing again: the account may simply not be deployed yet, and
+                for a claim it does not need to be. */}
+            {evmConnectedAddress ? null : (
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-10 px-3 text-sm sm:px-4"
+                disabled={connecting || evmConnecting}
+                aria-busy={evmConnecting}
+                onClick={() => void connectEvm()}
+              >
+                {evmConnecting ? (
+                  <Spinner data-icon="inline-start" />
+                ) : (
+                  <BlocksIcon data-icon="inline-start" />
+                )}
+                {evmConnecting ? "Checking" : "Connect EVM wallet"}
+              </Button>
+            )}
             <Button
               type="button"
               size="lg"
+              variant="outline"
               className="min-h-10 px-3 text-sm sm:px-4"
               disabled={!wallet || connecting || evmConnecting}
               aria-busy={connecting}
@@ -207,29 +234,6 @@ export function AppHeader() {
               )}
               {connecting ? "Connecting" : "Connect Ready X"}
             </Button>
-            {/* Offering to connect a wallet that is already connected read as
-                the app not noticing - the Disconnect button beside it named
-                the very address it was asking for. A session is a different
-                thing again: the account may simply not be deployed yet, and
-                for a claim it does not need to be. */}
-            {evmConnectedAddress ? null : (
-              <Button
-                type="button"
-                size="lg"
-                variant="outline"
-                className="min-h-10 px-3 text-sm sm:px-4"
-                disabled={connecting || evmConnecting}
-                aria-busy={evmConnecting}
-                onClick={() => void connectEvm()}
-              >
-                {evmConnecting ? (
-                  <Spinner data-icon="inline-start" />
-                ) : (
-                  <BlocksIcon data-icon="inline-start" />
-                )}
-                {evmConnecting ? "Checking" : "Connect EVM wallet"}
-              </Button>
-            )}
             {/* A wallet can be connected with no session at all - dismissing
                 the onboarding gate leaves it exactly there. Without this the
                 only way back out is clearing site data. */}
@@ -253,12 +257,12 @@ export function AppHeader() {
         aria-label="Primary"
         className="mx-auto flex max-w-6xl gap-1 px-4 pb-3 sm:hidden md:px-6"
       >
-        {nav.map((item) => (
+        {NAV.map((item) => (
           <Link
             key={item.href}
             href={item.href}
             className={cn(
-              "rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+              "rounded-lg px-3 py-2 text-sm font-medium whitespace-nowrap text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
               pathname === item.href && "bg-accent text-accent-foreground",
             )}
           >
