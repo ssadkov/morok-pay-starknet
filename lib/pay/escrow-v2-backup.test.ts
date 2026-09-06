@@ -46,6 +46,12 @@ describe("escrow v2 backup storage", () => {
     expect(listEscrowV2Backups("sepolia")).toEqual([]);
   });
 
+  it("does not keep the bearer claim key in localStorage", () => {
+    saveEscrowV2Backup({ ...SAMPLE, claimSeed: `0x${"22".repeat(32)}` });
+    expect(listEscrowV2Backups("sepolia")[0]?.claimSeed).toBeUndefined();
+    expect(store.get("morokpay.escrow-v2-backups")).not.toContain("22".repeat(32));
+  });
+
   it("imports a JSON backup and rejects junk", () => {
     const imported = importEscrowV2Backup(JSON.stringify(SAMPLE));
     expect(imported.commitment).toBe(SAMPLE.commitment);

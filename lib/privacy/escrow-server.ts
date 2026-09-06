@@ -17,7 +17,11 @@ import {
   type RelayWindow,
 } from "@/lib/privacy/relay-limits";
 import { readPublicStrkBalance, verifyOwnershipRequest } from "@/lib/privacy/onboarding-server";
-import { starknetOf, STRK_ADDRESS } from "@/lib/starknet/constants";
+import {
+  isSupportedPrivateRefundEscrow,
+  starknetOf,
+  STRK_ADDRESS,
+} from "@/lib/starknet/constants";
 
 type Operation = "claim" | "refund";
 
@@ -38,7 +42,8 @@ function relayerEnv(network: AppNetwork) {
 }
 
 export function escrowRelayInfo(request: Request, operation: Operation) {
-  const network = new URL(request.url).searchParams.get("n");
+  const url = new URL(request.url);
+  const network = url.searchParams.get("n");
   if (network !== "mainnet" && network !== "sepolia") {
     return Response.json({ error: "Invalid network" }, { status: 400 });
   }
@@ -47,10 +52,15 @@ export function escrowRelayInfo(request: Request, operation: Operation) {
   if (!relayEnabled(network) || !env.address || !env.privateKey) {
     return Response.json({ error: "Escrow relayer is unavailable" }, { status: 503 });
   }
-  if (!chain.escrowV2 || (operation === "refund" && !chain.escrowV2SupportsPrivateRefund)) {
+  const requestedEscrow = url.searchParams.get("e")?.trim() || chain.escrowV2;
+  if (
+    !requestedEscrow ||
+    (operation === "refund" && !isSupportedPrivateRefundEscrow(network, requestedEscrow)) ||
+    (operation === "claim" && BigInt(requestedEscrow) !== BigInt(chain.escrowV2))
+  ) {
     return Response.json({ error: "This escrow revision is not deployed" }, { status: 409 });
   }
-  return Response.json({ relayerAddress: env.address, escrow: chain.escrowV2 }, {
+  return Response.json({ relayerAddress: env.address, escrow: requestedEscrow }, {
     headers: { "cache-control": "no-store" },
   });
 }
@@ -82,7 +92,7 @@ async function claimableEntry(args: {
       ? result
       : ((result as { result?: string[] }).result ?? []);
     if (values.length !== 6) throw new Error("Unexpected escrow ABI");
-    const [token, amount, owner, refundOwner, expiresAt, claimed] = values;
+    const [token, amount, owner, refundOwner, expiresAt, state] = values;
     if (!token || BigInt(token) === BigInt(0)) {
       return { ok: false, reason: "Nothing is parked behind this link" };
     }
@@ -91,8 +101,8 @@ async function claimableEntry(args: {
     if (minimum === null || BigInt(amount) < minimum) {
       return { ok: false, reason: "This token or amount is not eligible for sponsorship" };
     }
-    if (BigInt(claimed ?? "0x0") !== BigInt(0)) {
-      return { ok: false, reason: "This link has already been claimed" };
+    if (BigInt(state ?? "0x0") !== BigInt(0)) {
+      return { ok: false, reason: "This escrow entry is already closed" };
     }
     const expiry = BigInt(expiresAt ?? "0x0");
     const now = BigInt((await args.rpc.getBlock("latest")).timestamp);
@@ -154,14 +164,22 @@ export async function handleEscrowRequest(request: Request, operation: Operation
     const ownership = await verifyOwnershipRequest(body);
 
     const chain = starknetOf(network);
-    if (operation === "refund" && !chain.escrowV2SupportsPrivateRefund) {
-      return Response.json({ error: "The private-refund escrow revision is not deployed" }, { status: 409 });
-    }
     if (!chain.escrowV2) {
       return Response.json(
         { error: `MorokEscrowV2 is not deployed on ${network}` },
         { status: 409 },
       );
+    }
+    const requestedEscrow =
+      typeof body.escrow === "string" && body.escrow.trim()
+        ? body.escrow.trim()
+        : chain.escrowV2;
+    if (
+      (operation === "refund" &&
+        !isSupportedPrivateRefundEscrow(network, requestedEscrow)) ||
+      (operation === "claim" && BigInt(requestedEscrow) !== BigInt(chain.escrowV2))
+    ) {
+      return Response.json({ error: "Unsupported escrow revision" }, { status: 409 });
     }
 
     const env = relayerEnv(network);
@@ -196,7 +214,13 @@ export async function handleEscrowRequest(request: Request, operation: Operation
         : env.rpc,
       ...(operation === "refund" ? { specVersion: "0.10.3" as const } : {}),
     });
-    const parked = await claimableEntry({ rpc, escrow: chain.escrowV2, commitment, network, operation });
+    const parked = await claimableEntry({
+      rpc,
+      escrow: requestedEscrow,
+      commitment,
+      network,
+      operation,
+    });
     if (!parked.ok) {
       return Response.json({ error: parked.reason }, { status: 409 });
     }
@@ -217,10 +241,10 @@ export async function handleEscrowRequest(request: Request, operation: Operation
     }
     const refund = operation === "refund" ? parseRelayRequest(body.refundProof, network) : null;
     const refundNote = refund ? refundNoteFromCalldata({
-      calldata: refund.call.calldata, escrow: chain.escrowV2, commitment, token: parked.token,
+      calldata: refund.call.calldata, escrow: requestedEscrow, commitment, token: parked.token,
     }) : undefined;
     const calldata = await verifyEscrowClaimIntent({
-      calldata: body.calldata, network, escrow: chain.escrowV2, commitment,
+      calldata: body.calldata, network, escrow: requestedEscrow, commitment,
       accountAddress: inspection.starknetAddress, evmAddress: ownership.evmAddress,
       relayer: env.address, now: parked.now, refundNote,
     });

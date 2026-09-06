@@ -7,7 +7,6 @@ import type { Hex } from "viem";
 
 import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
 import { QrCode } from "@/components/pay/qr-code";
-import { TestnetHint } from "@/components/pay/testnet-hint";
 import { txToast } from "@/components/pay/tx-toast";
 import { useUsdcMaturity } from "@/components/pay/use-usdc-maturity";
 import { useNetwork } from "@/components/network-provider";
@@ -26,13 +25,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Spinner } from "@/components/ui/spinner";
 import { parseUsdc } from "@/lib/amount";
-import { recordActivity } from "@/lib/pay/activity";
+import { recordActivity, updateActivity } from "@/lib/pay/activity";
 import {
   DEFAULT_ESCROW_V2_EXPIRY_SECONDS,
+  ESCROW_V2_EXPIRY_CHOICES,
   downloadEscrowV2Backup,
   ESCROW_V2_BACKUP_CHANGE,
   importEscrowV2Backup,
   listEscrowV2Backups,
+  removeEscrowV2Backup,
   saveEscrowV2Backup,
   updateEscrowV2Backup,
   type EscrowV2Backup,
@@ -47,12 +48,15 @@ import {
   ESCROW_SELF_CHANNEL_DUST,
   ensureEscrowSelfChannel,
   hasPrivateSelfChannel,
-  NOTE_MATURITY_MS,
-  sleep,
 } from "@/lib/privacy/escrow-self-channel";
 import { PublicLinkError, depositToEscrowV2 } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
-import { escrowV2Status, readEscrowV2Entry, readEscrowV2Minimum } from "@/lib/starknet/escrow-v2";
+import {
+  confirmEscrowV2Transaction,
+  escrowV2Status,
+  readEscrowV2Entry,
+  readEscrowV2Minimum,
+} from "@/lib/starknet/escrow-v2";
 import { createProvider, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 
@@ -69,7 +73,7 @@ type Draft = {
   backup: EscrowV2Backup;
 };
 
-type Busy = "prepare" | "channel" | "wait" | "park" | "refund" | null;
+type Busy = "prepare" | "channel" | "park" | "confirm" | "refund" | null;
 
 /**
  * One screen: amount → save recovery → park → share claim link.
@@ -82,11 +86,12 @@ export function StashPanel() {
   const [amount, setAmount] = useState("1");
   const [mode, setMode] = useState<"link" | "invoice">("link");
   const [recipientEvm, setRecipientEvm] = useState("");
-  const [neverExpires, setNeverExpires] = useState(false);
+  const [expirySeconds, setExpirySeconds] = useState(DEFAULT_ESCROW_V2_EXPIRY_SECONDS);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [savedRecovery, setSavedRecovery] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
-  const [waitLabel, setWaitLabel] = useState<string | null>(null);
+  const [channelReady, setChannelReady] = useState<boolean | null>(null);
+  const [channelSubmitted, setChannelSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [backups, setBackups] = useState<EscrowV2Backup[]>([]);
@@ -114,50 +119,63 @@ export function StashPanel() {
     };
   }, [network]);
 
-  async function waitForNoteMaturity() {
-    const started = Date.now();
-    while (Date.now() - started < NOTE_MATURITY_MS) {
-      const left = NOTE_MATURITY_MS - (Date.now() - started);
-      setWaitLabel(`Waiting for private notes to mature… ${Math.ceil(left / 1000)}s`);
-      await sleep(1000);
+  useEffect(() => {
+    if (!session) {
+      setChannelReady(null);
+      return;
     }
-    setWaitLabel(null);
-  }
+    let cancelled = false;
+    void hasPrivateSelfChannel(session.account, session.address)
+      .then((ready) => {
+        if (!cancelled) setChannelReady(ready);
+      })
+      .catch(() => {
+        if (!cancelled) setChannelReady(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
-  async function openSelfChannelIfNeeded(force = false) {
+  async function handlePreparePrivacy() {
     if (!session) return;
     const usdc = getShieldToken("usdc", network);
+    setError(null);
     setBusy("channel");
-    const ensured = await ensureEscrowSelfChannel({
-      account: session.account,
-      token: usdc,
-      senderAddress: session.address,
-      network,
-      force,
-    });
-    if (!ensured.opened) return;
-    if (ensured.txHash) {
-      recordActivity({
+    try {
+      const ensured = await ensureEscrowSelfChannel({
+        account: session.account,
+        token: usdc,
+        senderAddress: session.address,
         network,
-        kind: "pay",
-        source: "morok",
-        status: "confirmed",
-        amount: formatUsdc(ESCROW_SELF_CHANNEL_DUST),
-        amountRaw: ESCROW_SELF_CHANNEL_DUST.toString(),
-        label: "Opened private self-channel",
-        address: session.address,
-        txHash: ensured.txHash,
+        force: true,
       });
-      txToast({
-        title: "Private self-channel opened",
-        txHash: ensured.txHash,
-        explorerUrl: `${starknet.explorer}/tx/${ensured.txHash}`,
-        explorerLabel: "Voyager",
-      });
+      if (ensured.txHash) {
+        recordActivity({
+          network,
+          kind: "pay",
+          source: "morok",
+          status: "pending",
+          amount: formatUsdc(ESCROW_SELF_CHANNEL_DUST),
+          amountRaw: ESCROW_SELF_CHANNEL_DUST.toString(),
+          label: "Prepare escrow privacy",
+          address: session.address,
+          txHash: ensured.txHash,
+        });
+        txToast({
+          title: "Privacy setup submitted",
+          txHash: ensured.txHash,
+          explorerUrl: `${starknet.explorer}/tx/${ensured.txHash}`,
+          explorerLabel: "Voyager",
+        });
+      }
+      setChannelSubmitted(true);
+      setChannelReady(true);
+    } catch (caught) {
+      setError(formatStrk20Error(caught, "pay"));
+    } finally {
+      setBusy(null);
     }
-    setBusy("wait");
-    await waitForNoteMaturity();
-    await refreshBalances({ private: true });
   }
 
   async function handlePrepare() {
@@ -173,15 +191,16 @@ export function StashPanel() {
           `Private USDC is still maturing (${maturity.remainingLabel}). Wait, then try again.`,
         );
       }
+      if (channelReady === false) {
+        throw new Error(
+          "Prepare escrow privacy first, then return later to send. Keeping the two actions apart reduces timing linkage.",
+        );
+      }
       const parsed = parseUsdc(amount.trim());
       if (parsed <= BigInt(0)) throw new Error("Enter an amount to park");
-      const channel = await hasPrivateSelfChannel(session.account, session.address);
-      const reserved = channel === false ? ESCROW_SELF_CHANNEL_DUST : 0n;
-      if (parsed + reserved > privateUsdc) {
+      if (parsed > privateUsdc) {
         throw new Error(
-          channel === false
-            ? `Need ${formatUsdc(parsed)} to park plus ${formatUsdc(ESCROW_SELF_CHANNEL_DUST)} to open your private self-channel. You hold ${formatUsdc(privateUsdc)}.`
-            : `This account holds ${formatUsdc(privateUsdc)} private USDC, less than the ${formatUsdc(parsed)} you are parking.`,
+          `This account holds ${formatUsdc(privateUsdc)} private USDC, less than the ${formatUsdc(parsed)} you are sending.`,
         );
       }
       const usdc = getShieldToken("usdc", network);
@@ -190,9 +209,8 @@ export function StashPanel() {
         throw new Error(`Park at least ${formatUsdc(minimum)} USDC`);
       }
 
-      const expiresAt = neverExpires
-        ? 0
-        : Math.floor(Date.now() / 1000) + DEFAULT_ESCROW_V2_EXPIRY_SECONDS;
+      const blockTime = Number((await createProvider(network).getBlock("latest")).timestamp);
+      const expiresAt = expirySeconds === 0 ? 0 : blockTime + expirySeconds;
 
       if (mode === "invoice") {
         const invoice = await createEscrowV2Invoice(network, recipientEvm.trim());
@@ -278,20 +296,44 @@ export function StashPanel() {
     if (!session || !draft || !v2Ready || !savedRecovery) return;
     setError(null);
     try {
-      await openSelfChannelIfNeeded(false);
       setBusy("park");
+      /* No self-channel is opened here on purpose. Opening one moments before
+         parking publishes a public setup transaction whose timing lines up
+         with the escrow deposit, which is a linkage a watcher gets for free.
+         handlePrepare refuses to reach this point without one. */
       let response;
       try {
         response = await runParkDeposit();
       } catch (caught) {
         if (!(caught instanceof PublicLinkError)) throw caught;
-        await openSelfChannelIfNeeded(true);
-        setBusy("park");
-        response = await runParkDeposit();
+        setChannelReady(false);
+        throw new Error(
+          "This deposit would have named your wallet publicly. Prepare escrow privacy, then come back later to send.",
+        );
       }
       const txHash = extractTxHash(response);
       if (txHash) {
         updateEscrowV2Backup(network, draft.commitment, { txHash });
+      }
+      /* Nothing is shareable until the chain says the entry exists. A link
+         handed out on a transaction that later reverts is a link to nothing,
+         and the person holding it has no way to tell. */
+      if (txHash) {
+        setBusy("confirm");
+        const settled = await confirmEscrowV2Transaction({
+          network,
+          transactionHash: txHash,
+          commitment: draft.commitment,
+          escrow: starknet.escrowV2,
+          expected: "open",
+        });
+        if (settled !== "confirmed") {
+          throw new Error(
+            settled === "failed" || settled === "mismatch"
+              ? "The deposit did not land, so there is nothing to share. Nothing was parked."
+              : "The deposit is still pending. Reopen this screen once it confirms - the recovery file already has everything needed.",
+          );
+        }
       }
       if (draft.mode === "link" && draft.claimSeed) {
         setLink(
@@ -338,7 +380,6 @@ export function StashPanel() {
       setError(formatStrk20Error(caught, "pay"));
     } finally {
       setBusy(null);
-      setWaitLabel(null);
     }
   }
 
@@ -347,28 +388,26 @@ export function StashPanel() {
     setError(null);
     setRefunding(backup.commitment);
     try {
-      await openSelfChannelIfNeeded(false);
       setBusy("refund");
       let result;
       try {
+        /* The entry lives in whichever contract it was parked in, not in
+           whichever one is current. Three V2 addresses exist already, so
+           reading `escrowV2` here would strand every entry made before the
+           last redeploy. */
         result = await refundEscrowV2Privately({
           account: session.account,
           network: backup.network,
           senderAddress: session.address,
           commitment: backup.commitment,
           refundSeed: backup.refundSeed,
+          escrow: backup.escrow,
         });
       } catch (caught) {
         if (!(caught instanceof PublicLinkError)) throw caught;
-        await openSelfChannelIfNeeded(true);
-        setBusy("refund");
-        result = await refundEscrowV2Privately({
-          account: session.account,
-          network: backup.network,
-          senderAddress: session.address,
-          commitment: backup.commitment,
-          refundSeed: backup.refundSeed,
-        });
+        throw new Error(
+          "This refund would have named your wallet publicly. Prepare escrow privacy, then try the refund again.",
+        );
       }
       toast.success("Refunded into your private balance");
       if (result.transaction_hash) {
@@ -385,7 +424,6 @@ export function StashPanel() {
     } finally {
       setRefunding(null);
       setBusy(null);
-      setWaitLabel(null);
     }
   }
 
@@ -408,7 +446,7 @@ export function StashPanel() {
     setError(null);
   }
 
-  const busyParking = busy === "channel" || busy === "wait" || busy === "park";
+  const busyParking = busy === "channel" || busy === "park" || busy === "confirm";
 
   return (
     <div className="flex flex-col gap-8">
@@ -417,11 +455,9 @@ export function StashPanel() {
         <p className="max-w-prose text-sm text-muted-foreground">
           Move private USDC into escrow. Whoever opens the link collects with
           MetaMask alone — no Starknet wallet, no STRK. MorokPay pays for their
-          claim. If you still need a private self-channel, this screen opens it
-          for you before parking.
+          claim.
         </p>
       </div>
-      <TestnetHint />
       {!session ? <ConnectWalletChoices /> : null}
 
       {!v2Ready ? (
@@ -601,20 +637,29 @@ export function StashPanel() {
                 onChange={(event) => setAmount(event.target.value)}
               />
             </div>
-            <label className="flex items-start gap-2 text-sm leading-snug">
-              <input
-                type="checkbox"
-                className="mt-1"
-                checked={neverExpires}
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="stash-refund-after">Refund available after</Label>
+              <select
+                id="stash-refund-after"
+                className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                value={expirySeconds}
                 disabled={Boolean(draft) || busy !== null}
-                onChange={(event) => setNeverExpires(event.target.checked)}
-              />
-              <span>
-                Never refundable. Default is 7 days, after which you can also
-                reclaim privately — the claim link still works until one of you
-                takes the money.
+                onChange={(event) => setExpirySeconds(Number(event.target.value))}
+              >
+                {ESCROW_V2_EXPIRY_CHOICES.map((choice) => (
+                  <option key={choice.label} value={choice.seconds}>
+                    {choice.label}
+                  </option>
+                ))}
+              </select>
+              <span className="text-sm leading-snug text-muted-foreground">
+                {/* "Expiry" was the wrong word: nothing stops working. After
+                    this the sender may also reclaim, and whoever moves first
+                    takes the money. */}
+                The link never stops working. After this you may also reclaim
+                it privately — whichever of you goes first takes the money.
               </span>
-            </label>
+            </div>
 
             {draft ? (
               <div className="flex flex-col gap-3 rounded-lg border p-3">
@@ -664,9 +709,6 @@ export function StashPanel() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             ) : null}
-            {waitLabel ? (
-              <p className="text-xs text-muted-foreground">{waitLabel}</p>
-            ) : null}
           </CardContent>
           <CardFooter className="flex flex-col items-stretch gap-3 border-t sm:flex-row sm:items-center">
             {session ? (
@@ -706,8 +748,8 @@ export function StashPanel() {
                     {busyParking ? <Spinner data-icon="inline-start" /> : null}
                     {busy === "channel"
                       ? "Opening private channel"
-                      : busy === "wait"
-                        ? "Waiting for notes"
+                      : busy === "confirm"
+                        ? "Confirming on chain"
                         : busy === "park"
                           ? signatureProgress
                             ? `Signature ${signatureProgress.step} of ${signatureProgress.total}`
@@ -818,6 +860,9 @@ function BackupRow(props: {
           setRefundable(false);
         } else if (status.state === "claimed") {
           setLabel("Claimed");
+          setRefundable(false);
+        } else if (status.state === "refunded") {
+          setLabel("Refunded to you");
           setRefundable(false);
         } else if (status.refundable) {
           setLabel("Open · you can reclaim (claim still works)");

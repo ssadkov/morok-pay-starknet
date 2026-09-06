@@ -19,6 +19,7 @@ const MAINNET = {
   // V2 lives on Sepolia only until its rules have been exercised there.
   escrowV2: "",
   escrowV2SupportsPrivateRefund: false,
+  escrowV2PrivateRefundHistory: [] as readonly string[],
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_MAINNET_ADDRESS?.trim() ?? "",
   // Declared 2026-08-26 by scripts/deploy-eth712-factory.mjs, configured for
@@ -48,6 +49,12 @@ const SEPOLIA = {
   escrowV2:
     "0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654",
   escrowV2SupportsPrivateRefund: true,
+  // Every private-refund revision remains allowlisted so an exported recovery
+  // file keeps working after the active Sepolia deployment changes.
+  escrowV2PrivateRefundHistory: [
+    "0x3cdfdb8e26c8d05f54eee93e0c78617a018c36eb3f23ce71dce7d440dc507c",
+    "0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654",
+  ] as readonly string[],
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_SEPOLIA_ADDRESS?.trim() ??
     "0x00E5887fC74A11d10Ad5dd2f69D3911Fb352d9b811528a9281Ca8aBAc8498423",
@@ -62,6 +69,19 @@ const STARKNET = {
 
 export function starknetOf(network: AppNetwork) {
   return STARKNET[network];
+}
+
+export function isSupportedPrivateRefundEscrow(
+  network: AppNetwork,
+  address: string,
+): boolean {
+  try {
+    return starknetOf(network).escrowV2PrivateRefundHistory.some(
+      (candidate) => BigInt(candidate) === BigInt(address),
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Default network from env. The UI switcher overrides this at runtime. */

@@ -69,8 +69,11 @@ describe("claim links", () => {
     const parsed = parseClaimV2Request(
       new URLSearchParams(new URL(url).search),
       "mainnet",
+      new URL(url).hash,
     );
     expect(parsed).toEqual({ network: "sepolia", seed: SEED, amount: "1.5" });
+    expect(new URL(url).searchParams.has("k")).toBe(false);
+    expect(new URL(url).hash).toBe(`#k=${SEED}`);
   });
 
   it("ignores a V1 link entirely", () => {
@@ -92,8 +95,13 @@ describe("claim links", () => {
   });
 
   it("falls back to the current network when the link omits one", () => {
-    const parsed = parseClaimV2Request(new URLSearchParams(`k=${SEED}`), "mainnet");
+    const parsed = parseClaimV2Request(new URLSearchParams(), "mainnet", `#k=${SEED}`);
     expect(parsed?.network).toBe("mainnet");
+  });
+
+  it("keeps already-issued query-key links compatible", () => {
+    const parsed = parseClaimV2Request(new URLSearchParams(`n=sepolia&k=${SEED}`), "mainnet");
+    expect(parsed?.seed).toBe(SEED);
   });
 });
 

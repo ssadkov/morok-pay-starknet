@@ -38,6 +38,7 @@ import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import { readEscrowEntry } from "@/lib/starknet/escrow";
 import {
   escrowV2Status,
+  confirmEscrowV2Transaction,
   readEscrowV2Entries,
   readEscrowV2Entry,
   type EscrowV2Entry,
@@ -49,8 +50,27 @@ import { getShieldToken } from "@/lib/starknet/tokens";
 export function ClaimPanel() {
   const searchParams = useSearchParams();
   const { network } = useNetwork();
-  const v2 = parseClaimV2Request(searchParams, network);
+  const [fragment, setFragment] = useState<string | null>(null);
+
+  useEffect(() => {
+    const readFragment = () => setFragment(window.location.hash);
+    const legacySeed = searchParams.get("k");
+    if (legacySeed && !window.location.hash) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("k");
+      url.hash = new URLSearchParams({ k: legacySeed }).toString();
+      window.history.replaceState(null, "", url);
+    }
+    readFragment();
+    window.addEventListener("hashchange", readFragment);
+    return () => window.removeEventListener("hashchange", readFragment);
+  }, [searchParams]);
+
+  const v2 = parseClaimV2Request(searchParams, network, fragment ?? "");
   const v1 = v2 ? null : parseClaimRequest(searchParams, network);
+  if (fragment === null && !v1 && !searchParams.has("k")) {
+    return <p className="text-sm text-muted-foreground">Opening claim…</p>;
+  }
   if (v2) return <ClaimV2Panel request={v2} />;
   if (v1) return <ClaimV1Panel request={v1} />;
   return <ClaimInvoiceInbox />;
@@ -63,6 +83,7 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<EscrowV2Status | null>(null);
   const [claimTx, setClaimTx] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (request.network !== network) setNetwork(request.network);
@@ -102,7 +123,13 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
         destination: session.address,
       });
       setClaimTx(result.transactionHash);
-      setStatus({ state: "claimed" });
+      setConfirming(true);
+      const confirmation = await confirmEscrowV2Transaction({
+        network: request.network,
+        transactionHash: result.transactionHash,
+        commitment: commitmentFromSeed(request.seed),
+        expected: "claimed",
+      });
       const amount =
         request.amount ??
         (status?.state === "claimable" ? formatUsdc(status.entry.amount) : "0");
@@ -110,7 +137,7 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
         network: request.network,
         kind: "receive",
         source: "morok",
-        status: "confirmed",
+        status: confirmation === "confirmed" ? "confirmed" : "pending",
         amount,
         amountRaw:
           status?.state === "claimable" ? status.entry.amount.toString() : undefined,
@@ -118,8 +145,15 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
         address: session.address,
         txHash: result.transactionHash,
       });
+      if (confirmation === "failed" || confirmation === "mismatch") {
+        throw new Error("The claim transaction did not close this escrow entry");
+      }
+      if (confirmation === "confirmed") setStatus({ state: "claimed" });
       txToast({
-        title: "Claimed to your public Starknet balance",
+        title:
+          confirmation === "confirmed"
+            ? "USDC received"
+            : "Claim submitted — confirmation is still pending",
         txHash: result.transactionHash,
         explorerUrl: `${starknet.explorer}/tx/${result.transactionHash}`,
         explorerLabel: "Voyager",
@@ -127,6 +161,7 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
     } catch (caught) {
       setError(formatStrk20Error(caught, "pay"));
     } finally {
+      setConfirming(false);
       setClaiming(false);
     }
   }
@@ -138,20 +173,23 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
         ? request.amount
         : "…";
 
-  const blocked = status?.state === "missing" || status?.state === "claimed";
+  const blocked =
+    status?.state === "missing" ||
+    status?.state === "claimed" ||
+    status?.state === "refunded";
 
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Claim with MetaMask</h1>
+        <p className="text-xs font-medium uppercase tracking-wider text-primary">
+          Sepolia test payment
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">Receive USDC</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          Connect MetaMask. The link authorises the payout; MorokPay pays gas.
-          Tokens land as a public balance on your derived Starknet account —
-          not a private note. Expiry only lets the sender reclaim too — this
-          link still works until one of you takes it.
+          Connect MetaMask or Ready X. MorokPay pays the claim fee, so you need
+          no STRK. The payout arrives as public USDC on your Starknet account.
         </p>
       </div>
-      <TestnetHint />
       {!session ? <ConnectWalletChoices sponsored /> : null}
 
       {!starknet.escrowV2 ? (
@@ -172,7 +210,9 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
             <CardTitle>{displayAmount} USDC</CardTitle>
             <CardDescription>
               {status?.state === "claimed"
-                ? "Already claimed."
+                ? "Received by the recipient."
+                : status?.state === "refunded"
+                  ? "Returned to the sender."
                 : status?.state === "claimable" && status.refundable
                   ? "Still claimable. The sender can also reclaim now — first exit wins."
                   : "Waiting in escrow. One MetaMask connection is enough."}
@@ -192,18 +232,22 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
                 type="button"
                 size="lg"
                 className="min-h-10"
-                disabled={claiming || blocked || status === null}
-                aria-busy={claiming}
+                disabled={claiming || confirming || blocked || status === null}
+                aria-busy={claiming || confirming}
                 onClick={() => {
                   void handleClaim();
                 }}
               >
                 {claiming ? <Spinner data-icon="inline-start" /> : null}
                 {status?.state === "claimed"
-                  ? "Claimed"
+                  ? "Received"
+                  : status?.state === "refunded"
+                    ? "Returned to sender"
                   : claiming
-                    ? "Claiming"
-                    : "Claim to my account"}
+                    ? confirming
+                      ? "Confirming"
+                      : "Submitting"
+                    : `Receive ${displayAmount} USDC`}
               </Button>
             ) : (
               <p className="text-sm text-muted-foreground">
@@ -261,11 +305,16 @@ function ClaimInvoiceInbox() {
         const commitments = await readEscrowV2Entries({
           network,
           owner: session.address,
+          limit: 20,
         });
         const now = BigInt((await createProvider(network).getBlock("latest")).timestamp);
         const next: { commitment: string; entry: EscrowV2Entry; refundable: boolean }[] = [];
-        for (const commitment of commitments) {
-          const entry = await readEscrowV2Entry({ network, commitment });
+        const entries = await Promise.all(
+          commitments.map((commitment) => readEscrowV2Entry({ network, commitment })),
+        );
+        for (let index = 0; index < commitments.length; index += 1) {
+          const commitment = commitments[index];
+          const entry = entries[index] ?? null;
           const status = escrowV2Status(entry, now);
           if (status.state === "claimable") {
             next.push({
@@ -302,19 +351,33 @@ function ClaimInvoiceInbox() {
           signTypedDataAsync(data as Parameters<typeof signTypedDataAsync>[0]),
         signMessage: (message) => signMessageAsync({ message }),
       });
-      setItems((prev) => prev.filter((item) => item.commitment !== commitment));
+      const confirmation = await confirmEscrowV2Transaction({
+        network,
+        transactionHash: result.transactionHash,
+        commitment,
+        expected: "claimed",
+      });
+      if (confirmation === "failed" || confirmation === "mismatch") {
+        throw new Error("The claim transaction did not close this escrow entry");
+      }
+      if (confirmation === "confirmed") {
+        setItems((prev) => prev.filter((item) => item.commitment !== commitment));
+      }
       recordActivity({
         network,
         kind: "receive",
         source: "morok",
-        status: "confirmed",
+        status: confirmation === "confirmed" ? "confirmed" : "pending",
         amount: "invoice",
         label: "Claim invoice V2",
         address: session.address,
         txHash: result.transactionHash,
       });
       txToast({
-        title: "Claimed to your public Starknet balance",
+        title:
+          confirmation === "confirmed"
+            ? "USDC received"
+            : "Claim submitted — confirmation is still pending",
         txHash: result.transactionHash,
         explorerUrl: `${starknet.explorer}/tx/${result.transactionHash}`,
         explorerLabel: "Voyager",
@@ -329,14 +392,15 @@ function ClaimInvoiceInbox() {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold tracking-tight">Claim with MetaMask</h1>
+        <p className="text-xs font-medium uppercase tracking-wider text-primary">
+          Sepolia test payments
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">Receive USDC</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
-          Open a claim link, or connect the MetaMask that was paid — indexed
-          invoices for that wallet show up here. Payout is a public Starknet
-          balance.
+          Connect the MetaMask address the sender paid. MorokPay finds its
+          invoices and pays the claim fee. USDC arrives on Starknet.
         </p>
       </div>
-      <TestnetHint />
       {!session ? <ConnectWalletChoices sponsored /> : null}
 
       {!starknet.escrowV2 ? (

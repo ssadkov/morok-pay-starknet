@@ -86,9 +86,9 @@ export type ClaimV2Request = {
 export function claimV2Path(request: ClaimV2Request): string {
   const params = new URLSearchParams();
   params.set("n", request.network);
-  params.set("k", request.seed);
   if (request.amount) params.set("amount", request.amount);
-  return `/claim?${params.toString()}`;
+  const fragment = new URLSearchParams({ k: request.seed });
+  return `/claim?${params.toString()}#${fragment.toString()}`;
 }
 
 export function claimV2Url(origin: string, request: ClaimV2Request): string {
@@ -104,8 +104,13 @@ export function claimV2Url(origin: string, request: ClaimV2Request): string {
 export function parseClaimV2Request(
   params: URLSearchParams,
   fallbackNetwork: AppNetwork,
+  fragment = "",
 ): ClaimV2Request | null {
-  const seed = params.get("k")?.trim() ?? "";
+  const hashParams = new URLSearchParams(fragment.replace(/^#/, ""));
+  // Query fallback keeps the first issued V2 Sepolia links working. New links
+  // keep the bearer key in the fragment so browsers never send it to the app,
+  // analytics, access logs, or referrer headers.
+  const seed = hashParams.get("k")?.trim() ?? params.get("k")?.trim() ?? "";
   if (!isSeed(seed)) return null;
   const amount = params.get("amount")?.trim() ?? "";
   return {

@@ -1,4 +1,4 @@
-import type { Hex } from "viem";
+import { isAddress, type Hex } from "viem";
 
 import type { AppNetwork } from "@/lib/network";
 import { isSeed } from "@/lib/pay/escrow-v2";
@@ -43,7 +43,8 @@ function readAll(): EscrowV2Backup[] {
 }
 
 function writeAll(items: EscrowV2Backup[]) {
-  window.localStorage.setItem(ESCROW_V2_BACKUP_KEY, JSON.stringify(items));
+  const recoveryOnly = items.map(({ claimSeed: _claimSeed, ...item }) => item);
+  window.localStorage.setItem(ESCROW_V2_BACKUP_KEY, JSON.stringify(recoveryOnly));
   notify();
 }
 
@@ -53,14 +54,29 @@ export function isBackup(value: unknown): value is EscrowV2Backup {
   return (
     item.version === 1 &&
     (item.network === "sepolia" || item.network === "mainnet") &&
-    typeof item.escrow === "string" &&
-    typeof item.commitment === "string" &&
+    isFelt(item.escrow) &&
+    isFelt(item.commitment) &&
     isSeed(typeof item.refundSeed === "string" ? item.refundSeed : undefined) &&
-    typeof item.expiresAt === "number" &&
-    typeof item.amount === "string" &&
-    typeof item.amountRaw === "string" &&
-    typeof item.createdAt === "number"
+    Number.isSafeInteger(item.expiresAt) &&
+    Number(item.expiresAt) >= 0 &&
+    typeof item.amount === "string" && /^\d+(\.\d+)?$/.test(item.amount) &&
+    typeof item.amountRaw === "string" && /^[1-9]\d*$/.test(item.amountRaw) &&
+    Number.isSafeInteger(item.createdAt) &&
+    Number(item.createdAt) > 0 &&
+    (item.claimSeed === undefined ||
+      isSeed(typeof item.claimSeed === "string" ? item.claimSeed : undefined)) &&
+    (item.recipientEvm === undefined ||
+      (typeof item.recipientEvm === "string" && isAddress(item.recipientEvm)))
   );
+}
+
+function isFelt(value: unknown): value is string {
+  if (typeof value !== "string" || !/^0x[0-9a-fA-F]{1,64}$/.test(value)) return false;
+  try {
+    return BigInt(value) !== 0n;
+  } catch {
+    return false;
+  }
 }
 
 export function listEscrowV2Backups(network?: AppNetwork): EscrowV2Backup[] {
@@ -71,7 +87,11 @@ export function listEscrowV2Backups(network?: AppNetwork): EscrowV2Backup[] {
 export function saveEscrowV2Backup(backup: EscrowV2Backup) {
   const items = readAll().filter(
     (item) =>
-      !(item.network === backup.network && item.commitment === backup.commitment),
+      !(
+        item.network === backup.network &&
+        BigInt(item.escrow) === BigInt(backup.escrow) &&
+        BigInt(item.commitment) === BigInt(backup.commitment)
+      ),
   );
   items.unshift(backup);
   writeAll(items);
@@ -80,20 +100,32 @@ export function saveEscrowV2Backup(backup: EscrowV2Backup) {
 export function updateEscrowV2Backup(
   network: AppNetwork,
   commitment: string,
-  patch: Partial<Pick<EscrowV2Backup, "txHash" | "claimSeed">>,
+  patch: Partial<Pick<EscrowV2Backup, "txHash">>,
+  escrow?: string,
 ) {
   const items = readAll().map((item) =>
-    item.network === network && item.commitment === commitment
+    item.network === network &&
+    BigInt(item.commitment) === BigInt(commitment) &&
+    (!escrow || BigInt(item.escrow) === BigInt(escrow))
       ? { ...item, ...patch }
       : item,
   );
   writeAll(items);
 }
 
-export function removeEscrowV2Backup(network: AppNetwork, commitment: string) {
+export function removeEscrowV2Backup(
+  network: AppNetwork,
+  commitment: string,
+  escrow?: string,
+) {
   writeAll(
     readAll().filter(
-      (item) => !(item.network === network && item.commitment === commitment),
+      (item) =>
+        !(
+          item.network === network &&
+          BigInt(item.commitment) === BigInt(commitment) &&
+          (!escrow || BigInt(item.escrow) === BigInt(escrow))
+        ),
     ),
   );
 }
@@ -124,3 +156,15 @@ export function downloadEscrowV2Backup(backup: EscrowV2Backup) {
 
 /** Default claim window before the sender can reclaim privately. */
 export const DEFAULT_ESCROW_V2_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
+
+/**
+ * What the sender picks from. "Never" is expressible because the contract
+ * accepts zero, but it is last and it is not the default: an entry nobody
+ * claims and nobody can reclaim is money out of reach for everyone, forever.
+ */
+export const ESCROW_V2_EXPIRY_CHOICES: { label: string; seconds: number }[] = [
+  { label: "1 day", seconds: 24 * 60 * 60 },
+  { label: "7 days", seconds: DEFAULT_ESCROW_V2_EXPIRY_SECONDS },
+  { label: "30 days", seconds: 30 * 24 * 60 * 60 },
+  { label: "Never — you will not be able to reclaim it", seconds: 0 },
+];

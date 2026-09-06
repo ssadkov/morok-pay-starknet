@@ -1,5 +1,5 @@
 use morok_pay::escrow_v2::{
-    EscrowOperation, IMorokEscrowV2Dispatcher, IMorokEscrowV2DispatcherTrait,
+    EscrowOperation, EscrowState, IMorokEscrowV2Dispatcher, IMorokEscrowV2DispatcherTrait,
 };
 use snforge_std::{
     ContractClassTrait, DeclareResultTrait, declare,
@@ -85,15 +85,20 @@ mod TestToken {
     }
 }
 
-fn setup(expiry: u64) -> (IMorokEscrowV2Dispatcher, ITestTokenDispatcher) {
+fn fresh() -> (IMorokEscrowV2Dispatcher, ITestTokenDispatcher) {
     let (token_address, _) = declare("TestToken").unwrap().contract_class().deploy(@array![]).unwrap();
     let token = ITestTokenDispatcher { contract_address: token_address };
     let (escrow_address, _) = declare("MorokEscrowV2").unwrap().contract_class()
         .deploy(@array![0x100, 1, token_address.into(), 10]).unwrap();
     let escrow = IMorokEscrowV2Dispatcher { contract_address: escrow_address };
-    token.mint(escrow_address, 100);
-    start_cheat_caller_address(escrow_address, addr(0x100));
-    escrow.privacy_invoke(EscrowOperation::Deposit, 0xabc, token_address, 100, addr(0x200), addr(0x300), expiry, false);
+    (escrow, token)
+}
+
+fn setup(expiry: u64) -> (IMorokEscrowV2Dispatcher, ITestTokenDispatcher) {
+    let (escrow, token) = fresh();
+    token.mint(escrow.contract_address, 100);
+    start_cheat_caller_address(escrow.contract_address, addr(0x100));
+    escrow.privacy_invoke(EscrowOperation::Deposit, 0xabc, token.contract_address, 100, addr(0x200), addr(0x300), expiry, false);
     (escrow, token)
 }
 
@@ -113,6 +118,63 @@ fn unindexed_is_public_but_recovery_is_separate() {
 }
 
 #[test]
+#[should_panic(expected: 'OWNER_IS_REFUND_OWNER')]
+fn claim_and_refund_owners_must_be_separate() {
+    let (escrow, token) = fresh();
+    token.mint(escrow.contract_address, 100);
+    start_cheat_caller_address(escrow.contract_address, addr(0x100));
+    escrow.privacy_invoke(
+        EscrowOperation::Deposit,
+        0xabc,
+        token.contract_address,
+        100,
+        addr(0x200),
+        addr(0x200),
+        1000,
+        false,
+    );
+}
+
+#[test]
+#[should_panic(expected: 'TOKEN_NOT_SUPPORTED')]
+fn unlisted_token_cannot_be_parked() {
+    let (escrow, _) = fresh();
+    let (other_address, _) = declare("TestToken").unwrap().contract_class().deploy(@array![]).unwrap();
+    let other = ITestTokenDispatcher { contract_address: other_address };
+    other.mint(escrow.contract_address, 100);
+    start_cheat_caller_address(escrow.contract_address, addr(0x100));
+    escrow.privacy_invoke(
+        EscrowOperation::Deposit,
+        0xabc,
+        other_address,
+        100,
+        addr(0x200),
+        addr(0x300),
+        1000,
+        false,
+    );
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_EXPIRY')]
+fn already_expired_entry_cannot_be_created() {
+    let (escrow, token) = fresh();
+    token.mint(escrow.contract_address, 100);
+    start_cheat_block_timestamp(escrow.contract_address, 1000);
+    start_cheat_caller_address(escrow.contract_address, addr(0x100));
+    escrow.privacy_invoke(
+        EscrowOperation::Deposit,
+        0xabc,
+        token.contract_address,
+        100,
+        addr(0x200),
+        addr(0x300),
+        999,
+        false,
+    );
+}
+
+#[test]
 fn private_refund_only_approves_the_exact_authorized_note() {
     let (escrow, token) = setup(1000);
     authorize(escrow, 0x777);
@@ -123,7 +185,7 @@ fn private_refund_only_approves_the_exact_authorized_note() {
     assert(note.note_id == 0x777, 'bound note');
     assert(note.token == token.contract_address, 'bound token');
     assert(note.amount == 100, 'full refund');
-    assert(escrow.get_entry(0xabc).claimed, 'closed');
+    assert(escrow.get_entry(0xabc).state == EscrowState::Refunded, 'refunded');
     assert(escrow.escrowed_total(token.contract_address) == 0, 'obligations cleared');
     assert(escrow.refund_note(0xabc) == 0, 'authorization consumed');
     assert(token.balance_of(addr(0x300)) == 0, 'no public refund');
@@ -169,6 +231,24 @@ fn pool_cannot_redirect_refund_to_another_note() {
 }
 
 #[test]
+#[should_panic(expected: 'INVALID_REFUND_ARGS')]
+fn refund_rejects_unused_deposit_calldata() {
+    let (escrow, token) = setup(1000);
+    authorize(escrow, 0x777);
+    start_cheat_caller_address(escrow.contract_address, addr(0x100));
+    escrow.privacy_invoke(
+        EscrowOperation::Refund(0x777),
+        0xabc,
+        token.contract_address,
+        0,
+        addr(0),
+        addr(0),
+        0,
+        false,
+    );
+}
+
+#[test]
 #[should_panic(expected: 'CALLER_NOT_PRIVACY')]
 fn non_pool_cannot_consume_authorization() {
     let (escrow, _) = setup(1000);
@@ -192,7 +272,7 @@ fn claim_still_works_at_and_after_expiry() {
     start_cheat_block_timestamp(escrow.contract_address, 1000);
     start_cheat_caller_address(escrow.contract_address, addr(0x200));
     escrow.claim(0xabc, addr(0x999));
-    assert(escrow.get_entry(0xabc).claimed, 'claimed after expiry');
+    assert(escrow.get_entry(0xabc).state == EscrowState::Claimed, 'claimed after expiry');
 }
 
 #[test]
@@ -202,7 +282,7 @@ fn failed_transfer_preserves_entry_and_obligations() {
     start_cheat_block_timestamp(escrow.contract_address, 999);
     start_cheat_caller_address(escrow.contract_address, addr(0x200));
     assert(!harness().try_claim(escrow.contract_address), 'must fail');
-    assert(!escrow.get_entry(0xabc).claimed, 'rollback entry');
+    assert(escrow.get_entry(0xabc).state == EscrowState::Open, 'rollback entry');
     assert(escrow.escrowed_total(token.contract_address) == 100, 'rollback total');
 }
 
@@ -213,7 +293,7 @@ fn failed_approval_preserves_refund_authorization_and_funds() {
     token.set_failures(false, true);
     start_cheat_caller_address(escrow.contract_address, addr(0x100));
     assert(!harness().try_refund(escrow.contract_address), 'must fail');
-    assert(!escrow.get_entry(0xabc).claimed, 'rollback entry');
+    assert(escrow.get_entry(0xabc).state == EscrowState::Open, 'rollback entry');
     assert(escrow.refund_note(0xabc) == 0x777, 'rollback authorization');
     assert(escrow.escrowed_total(token.contract_address) == 100, 'rollback total');
 }

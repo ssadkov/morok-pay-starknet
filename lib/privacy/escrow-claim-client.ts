@@ -34,6 +34,12 @@ async function loadClaimable(args: {
   const status = escrowV2Status(entry, now);
   if (status.state === "missing") throw new Error("Nothing is parked behind this link");
   if (status.state === "claimed") throw new Error("This link has already been claimed");
+  /* A refunded entry is closed just as firmly as a claimed one, and saying so
+     plainly beats letting the contract answer ALREADY_CLAIMED to somebody
+     whose money simply went back to the sender. */
+  if (status.state === "refunded") {
+    throw new Error("The sender reclaimed this one, so there is nothing left to collect");
+  }
   const infoResponse = await fetch(`/api/escrow/claim?n=${args.network}`);
   const info = await infoResponse.json();
   if (!infoResponse.ok || !info.relayerAddress || BigInt(info.escrow) !== BigInt(chain.escrowV2)) {

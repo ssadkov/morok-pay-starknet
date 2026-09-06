@@ -22,7 +22,8 @@ vi.mock("@/lib/starknet/constants", async (original) => {
   const actual = await original<typeof import("@/lib/starknet/constants")>();
   return { ...actual, starknetOf: (network: "sepolia" | "mainnet") => ({
     ...actual.starknetOf(network), escrowV2: "0x123", escrowV2SupportsPrivateRefund: true,
-  }) };
+  }), isSupportedPrivateRefundEscrow: (_network: string, address: string) =>
+    BigInt(address) === 0x123n || BigInt(address) === 0x789n };
 });
 
 import { handleEscrowRequest } from "./escrow-server";
@@ -61,11 +62,11 @@ beforeEach(() => {
   mocks.estimate.mockResolvedValue({ resourceBounds: bounds });
   mocks.execute.mockResolvedValue({ transaction_hash: "0x999" });
 });
-async function body(entrypoint = "claim") {
+async function body(entrypoint = "claim", escrow = "0x123") {
   const intent = await signEphemeralClaim({
     seed, starknetAddress: "0x222", snChainName: "SN_SEPOLIA", evmChainId: 11155111,
     caller: "0x333", executeBefore: 1800000300,
-    call: { to: "0x123", selector: hash.getSelectorFromName(entrypoint), calldata: ["0x456", "0x987"] },
+    call: { to: escrow, selector: hash.getSelectorFromName(entrypoint), calldata: ["0x456", "0x987"] },
   });
   return { network: "sepolia", commitment: "0x456", evmAddress: signer.address,
     signature: await signer.signMessage({ message: OWNERSHIP_MESSAGE }), calldata: intent.calldata };
@@ -153,5 +154,22 @@ describe("escrow API never pays for unrelated work", () => {
       "deploy_account", "execute_from_outside_v2", "approve", "apply_actions",
     ]);
     expect(details.proof).toBe("test-proof");
+  });
+
+  it("accepts an allowlisted historical escrow only for refunds", async () => {
+    /* A revision the recovery file remembers but the app no longer points at:
+       the allowlist exists so a redeploy cannot strand entries parked in the
+       previous contract. 0x789 rather than 0x456, which is already the
+       commitment - an address doubling as one hides the mix-up this guards. */
+    const historical = "0x789";
+    entry[3] = "0x222"; entry[4] = "0x1";
+    const input = { ...await body("authorize_refund", historical), escrow: historical, refundProof: {
+      call: { contractAddress: starknetOf("sepolia").pool, entrypoint: "apply_actions",
+        calldata: ["0x2", "0x7", "0x11", "0x22", "0x33", token, "0x987",
+          "0xa", historical, "0x9", "0x1", "0x987", "0x456", "0x0", "0x0", "0x0", "0x0", "0x0", "0x0", "0x1"] },
+      proof: "test-proof", proofFacts: ["0x50524f4f4631", "0x1"],
+    } };
+    expect((await handleEscrowRequest(request(input), "refund")).status).toBe(200);
+    expect((await handleEscrowRequest(request({ ...await body(), escrow: historical }), "claim")).status).toBe(409);
   });
 });

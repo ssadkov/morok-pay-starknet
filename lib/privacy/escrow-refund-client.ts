@@ -8,7 +8,7 @@ import {
   randomSalt,
   randomSeed,
 } from "@/lib/pay/escrow-v2";
-import { starknetOf } from "@/lib/starknet/constants";
+import { isSupportedPrivateRefundEscrow, starknetOf } from "@/lib/starknet/constants";
 import { createProvider } from "@/lib/starknet/status";
 import { readEscrowV2Entry } from "@/lib/starknet/escrow-v2";
 import { submitEscrowPrivateActions } from "@/lib/starknet/actions";
@@ -73,13 +73,15 @@ export async function refundEscrowV2Privately(args: {
   senderAddress: string;
   commitment: string;
   refundSeed: Hex;
+  escrow?: string;
 }): Promise<{ transaction_hash: string }> {
   const chain = starknetOf(args.network);
-  if (!chain.escrowV2SupportsPrivateRefund || !chain.escrowV2) {
+  const escrow = args.escrow ?? chain.escrowV2;
+  if (!escrow || !isSupportedPrivateRefundEscrow(args.network, escrow)) {
     throw new Error("The private-refund escrow revision is not deployed");
   }
-  const entry = await readEscrowV2Entry(args);
-  if (!entry || entry.claimed) throw new Error("This escrow is unavailable");
+  const entry = await readEscrowV2Entry({ ...args, escrow });
+  if (!entry || entry.resolution !== "open") throw new Error("This escrow is unavailable");
   const provider = createProvider(args.network);
   const sdk = privacySdkOf(args.network);
   const evmAddress = ephemeralEvmAddress(args.refundSeed);
@@ -90,19 +92,21 @@ export async function refundEscrowV2Privately(args: {
   }
   const now = BigInt((await provider.getBlock("latest")).timestamp);
   if (entry.expiresAt === 0n || now < entry.expiresAt) throw new Error("This escrow has not expired");
-  const infoResponse = await fetch(`/api/escrow/refund?n=${args.network}`);
+  const infoResponse = await fetch(
+    `/api/escrow/refund?n=${args.network}&e=${encodeURIComponent(escrow)}`,
+  );
   const info = await infoResponse.json();
-  if (!infoResponse.ok || !info.relayerAddress || BigInt(info.escrow) !== BigInt(chain.escrowV2)) {
+  if (!infoResponse.ok || !info.relayerAddress || BigInt(info.escrow) !== BigInt(escrow)) {
     throw new Error(info.error ?? "Private refund relayer is unavailable");
   }
   const actions: Strk20Action[] = [
     { type: "transfer", token: entry.token, amount: "OPEN", recipient: args.senderAddress },
-    { type: "invoke", contract: chain.escrowV2,
+    { type: "invoke", contract: escrow,
       calldata: ["0x1", OPEN_NOTE_ID, args.commitment, "0x0", "0x0", "0x0", "0x0", "0x0", "0x0"] },
   ];
   return submitEscrowPrivateActions(args.account, actions, args.senderAddress, async (prepared) => {
     const noteId = refundNoteFromCalldata({
-      calldata: prepared.call.calldata, escrow: chain.escrowV2,
+      calldata: prepared.call.calldata, escrow,
       commitment: args.commitment, token: entry.token,
     });
     const timestamp = (await provider.getBlock("latest")).timestamp;
@@ -110,13 +114,13 @@ export async function refundEscrowV2Privately(args: {
       seed: args.refundSeed, starknetAddress: recovery.starknetAddress,
       snChainName: sdk.snChainName, evmChainId: args.network === "mainnet" ? 1 : 11155111,
       caller: info.relayerAddress, executeBefore: timestamp + 600,
-      call: { to: chain.escrowV2, selector: hash.getSelectorFromName("authorize_refund"),
+      call: { to: escrow, selector: hash.getSelectorFromName("authorize_refund"),
         calldata: [args.commitment, noteId] },
     });
     const signature = await signEphemeralOwnership(args.refundSeed, OWNERSHIP_MESSAGE);
     const response = await fetch("/api/escrow/refund", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ network: args.network, commitment: args.commitment,
+      body: JSON.stringify({ network: args.network, escrow, commitment: args.commitment,
         evmAddress, signature, calldata: intent.calldata, refundProof: prepared }),
     });
     const payload = await response.json();
