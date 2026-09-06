@@ -354,8 +354,9 @@ export function StashPanel() {
                 onChange={(event) => setNeverExpires(event.target.checked)}
               />
               <span>
-                Never expires (no refund later). Default is 7 days, then you can
-                reclaim privately with your recovery file.
+                Never refundable. Default is 7 days, after which you can also
+                reclaim privately — the claim link still works until one of you
+                takes the money.
               </span>
             </label>
 
@@ -548,16 +549,16 @@ function BackupRow(props: {
         } else if (status.state === "claimed") {
           setLabel("Claimed");
           setRefundable(false);
-        } else if (status.state === "expired") {
-          setLabel("Expired — you can reclaim");
+        } else if (status.refundable) {
+          setLabel("Open · you can reclaim (claim still works)");
           setRefundable(true);
         } else if (props.backup.expiresAt === 0) {
-          setLabel("Claimable · never expires");
+          setLabel("Claimable · never refundable");
           setRefundable(false);
         } else {
           const left = Number(status.entry.expiresAt - now);
           const days = Math.max(0, Math.ceil(left / 86_400));
-          setLabel(`Claimable · ~${days}d left`);
+          setLabel(`Claimable · refund in ~${days}d`);
           setRefundable(false);
         }
       } catch {

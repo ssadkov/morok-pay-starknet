@@ -13,9 +13,11 @@ not an upgrade of the previous V2 contract. Mainnet V1 is unchanged.
 2. Deposit from private notes through a relayer. Public escrow storage contains
    the two per-entry accounts, amount, token and expiry. Neither account is the
    sender's main wallet. `indexed: false` is not storage confidentiality.
-3. After expiry, prepare an open note addressed privately to the sender's
-   established STRK20 account. The recovery key signs
-   `authorize_refund(commitment,note_id)` with a pinned relayer and short expiry.
+3. After expiry, the recovery key may reclaim, but the claim link still works.
+   Prepare an open note addressed privately to the sender's established STRK20
+   account. The recovery key signs `authorize_refund(commitment,note_id)` with
+   a pinned relayer and short expiry. First successful exit (claim or refund)
+   wins.
 4. The relayer atomically submits factory deployment (if needed), the signed
    SRC9 call, fee approval and pool `apply_actions` proof. The pool calls
    `privacy_invoke(Refund(note_id),commitment,...)`. The helper consumes the
@@ -85,8 +87,10 @@ before V2 UI release.
 - TypeScript, targeted ESLint and production build pass.
 
 App constants on `feat/escrow-v2` point at this deployment with
-`escrowV2SupportsPrivateRefund: true`. Live probe and EVM/API results are
-recorded below after their receipts and balance checks complete.
-`scripts/escrow-v2-probe.mjs` uses ordinary Starknet accounts to test contract
-rules. `scripts/escrow-v2-relay.live.test.ts` additionally tests fresh EVM
-recovery and the real refund handler in-process, without HTTP or UI.
+`escrowV2SupportsPrivateRefund: true`. **Redeploy before relying on
+claim-after-expiry:** the rule change (expiry unlocks refund only; claim
+stays open) is in source and needs a new class/address. Live probe and
+EVM/API results are recorded below after their receipts and balance checks
+complete. `scripts/escrow-v2-probe.mjs` uses ordinary Starknet accounts to
+test contract rules. `scripts/escrow-v2-relay.live.test.ts` additionally tests
+fresh EVM recovery and the real refund handler in-process, without HTTP or UI.

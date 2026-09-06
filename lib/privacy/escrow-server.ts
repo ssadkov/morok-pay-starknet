@@ -56,13 +56,14 @@ export function escrowRelayInfo(request: Request, operation: Operation) {
 }
 
 /**
- * Is there funded, unclaimed, unexpired money behind this commitment?
+ * Is there funded, unclaimed money behind this commitment?
  *
  * Read from the escrow rather than trusted from the request. The caller picks
  * the commitment, so believing it would let anyone spend MorokPay's gas on an
  * account deploy and a relayed call for nothing. It is also the honest answer
  * to "why would you pay for a stranger's transaction": because the money is
- * already there and this is what delivering it costs.
+ * already there and this is what delivering it costs. Expiry does not block
+ * claims; it only opens the refund path for the recovery key.
  */
 async function claimableEntry(args: {
   rpc: RpcProvider;
@@ -95,11 +96,10 @@ async function claimableEntry(args: {
     }
     const expiry = BigInt(expiresAt ?? "0x0");
     const now = BigInt((await args.rpc.getBlock("latest")).timestamp);
+    // Claim stays valid after expiry; only refund requires the timeout.
     if (args.operation === "refund") {
-      if (expiry === 0n || now < expiry) return { ok: false, reason: "This entry is not refundable yet" };
-    } else if (expiry !== BigInt(0)) {
-      if (now >= expiry) {
-        return { ok: false, reason: "This link expired; a refund must be requested separately" };
+      if (expiry === 0n || now < expiry) {
+        return { ok: false, reason: "This entry is not refundable yet" };
       }
     }
     return { ok: true, owner: args.operation === "claim" ? owner : refundOwner, token, now };

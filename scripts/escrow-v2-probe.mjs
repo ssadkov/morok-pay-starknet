@@ -12,11 +12,13 @@
  *   2. the opt-in index lists the commitment under the owner
  *   3. a stranger cannot claim                    -> CALLER_NOT_OWNER
  *   4. nobody can refund before the expiry        -> NOT_EXPIRED
- *   5. the owner can claim, to any destination
+ *   5. the owner can claim, to any destination — including after expiry
  *   6. after expiry, a relayed refund credits the sender's private balance,
  *      rejecting absent authorization, a substituted note, and double refunds
+ *      (claim and refund race; first successful exit wins)
  *
- * 5 and 6 need two entries, because an entry can only leave once.
+ * 5 and 6 need separate entries after the late-claim check, because an entry
+ * can only leave once.
  *
  * `spare` is the sender: it is the registered pool participant. `payout` owns
  * the first entry, `deployer` stands in for a stranger and for the refund
@@ -194,6 +196,15 @@ async function expectRejection(label, expected, run) {
   } catch (error) {
     const reason = reasonOf(error);
     record(label, reason.includes(expected), reason);
+  }
+}
+
+async function expectAcceptance(label, run) {
+  try {
+    const detail = await run();
+    record(label, true, typeof detail === "string" ? detail : "accepted");
+  } catch (error) {
+    record(label, false, reasonOf(error));
   }
 }
 
@@ -444,15 +455,23 @@ for (;;) {
   await new Promise((resolve) => setTimeout(resolve, 15_000));
 }
 
-await expectRejection("the owner's claim after expiry is refused", "EXPIRED", () =>
-  submitFrom(owner, [
+// Smoke the post-expiry claim path without consuming `second` (needed for refund).
+const lateClaim = await park({
+  ownerAddress: owner.address,
+  refundAddress: stranger.address,
+  expiresAt: soon,
+  indexed: false,
+});
+await expectAcceptance("the owner's claim still works after expiry", async () => {
+  const tx = await submitFrom(owner, [
     {
       contractAddress: ESCROW,
       entrypoint: "claim",
-      calldata: [second.commitment, owner.address],
+      calldata: [lateClaim.commitment, owner.address],
     },
-  ]),
-);
+  ]);
+  return `tx ${tx}`;
+});
 
 const refundPublicBefore = await publicStrk(sender.address);
 const privateBalance = async () => {

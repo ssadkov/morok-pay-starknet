@@ -35,9 +35,7 @@ export async function claimEscrowV2(args: {
   const status = escrowV2Status(entry, now);
   if (status.state === "missing") throw new Error("Nothing is parked behind this link");
   if (status.state === "claimed") throw new Error("This link has already been claimed");
-  if (status.state === "expired") {
-    throw new Error("This link expired and is back with the sender");
-  }
+  // Claim remains allowed after expiry; refund is a parallel exit for the sender.
 
   const infoResponse = await fetch(`/api/escrow/claim?n=${args.network}`);
   const info = await infoResponse.json();

@@ -187,12 +187,12 @@ fn refund_cannot_be_repeated() {
 }
 
 #[test]
-#[should_panic(expected: 'EXPIRED')]
-fn claim_is_refused_at_the_exact_expiry_boundary() {
+fn claim_still_works_at_and_after_expiry() {
     let (escrow, _) = setup(1000);
     start_cheat_block_timestamp(escrow.contract_address, 1000);
     start_cheat_caller_address(escrow.contract_address, addr(0x200));
     escrow.claim(0xabc, addr(0x999));
+    assert(escrow.get_entry(0xabc).claimed, 'claimed after expiry');
 }
 
 #[test]

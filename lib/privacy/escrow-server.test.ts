@@ -108,14 +108,18 @@ describe("escrow API never pays for unrelated work", () => {
     expect(mocks.call).not.toHaveBeenCalled();
     expect(mocks.execute).not.toHaveBeenCalled();
   });
-  it.each(["unknown-token", "dust", "claimed", "expired", "bad-abi"])("rejects %s entries", async (scenario) => {
+  it.each(["unknown-token", "dust", "claimed", "bad-abi"])("rejects %s entries", async (scenario) => {
     if (scenario === "unknown-token") entry[0] = "0xdead";
     if (scenario === "dust") entry[1] = "0x1";
     if (scenario === "claimed") entry[5] = "0x1";
-    if (scenario === "expired") entry[4] = "0x1";
     if (scenario === "bad-abi") entry.pop();
     expect((await handleEscrowRequest(request(await body()), "claim")).status).toBe(409);
     expect(mocks.execute).not.toHaveBeenCalled();
+  });
+  it("still sponsors a claim after the refund window opens", async () => {
+    entry[4] = "0x1";
+    expect((await handleEscrowRequest(request(await body()), "claim")).status).toBe(200);
+    expect(mocks.execute).toHaveBeenCalledOnce();
   });
   it("does not sponsor an account running unrecognized code", async () => {
     mocks.inspect.mockResolvedValue({ starknetAddress: "0x222", deployed: true, deployedClassHash: "0xbad" });

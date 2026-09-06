@@ -12,16 +12,16 @@ pub const ESCROW_V2_TAG: felt252 = 'MOROK_ESCROW:V2';
 pub struct EscrowEntry {
     pub token: ContractAddress,
     pub amount: u128,
-    /// Claims before `expires_at`. For a bearer link this is an ephemeral
-    /// account derived from the link's own seed, so "to an address" and "to a
-    /// link" are one rule rather than two.
+    /// May claim at any time until the entry is closed. For a bearer link this
+    /// is an ephemeral account derived from the link's own seed, so "to an
+    /// address" and "to a link" are one rule rather than two.
     pub owner: ContractAddress,
     /// A fresh per-entry account controlled by a sender-only recovery key.
     /// Public storage: NEVER put the sender's main wallet address here.
     pub refund_owner: ContractAddress,
-    /// Unix seconds. Zero means the entry never expires and can never be
-    /// refunded - deliberately expressible, deliberately not the default the
-    /// app offers.
+    /// Unix seconds after which the refund owner may also reclaim. Claim stays
+    /// allowed: expiry unlocks a race, it does not kill the link. Zero means
+    /// never refundable - deliberately expressible, not the app default.
     pub expires_at: u64,
     pub claimed: bool,
 }
@@ -89,7 +89,6 @@ pub mod errors {
     pub const CALLER_NOT_OWNER: felt252 = 'CALLER_NOT_OWNER';
     pub const CALLER_NOT_REFUND_OWNER: felt252 = 'CALLER_NOT_REFUND_OWNER';
     pub const NOT_FUNDED: felt252 = 'NOT_FUNDED';
-    pub const EXPIRED: felt252 = 'EXPIRED';
     pub const NOT_EXPIRED: felt252 = 'NOT_EXPIRED';
     pub const NO_EXPIRY: felt252 = 'NO_EXPIRY';
     pub const BELOW_MINIMUM: felt252 = 'BELOW_MINIMUM';
@@ -317,10 +316,9 @@ pub mod MorokEscrowV2 {
         fn claim(ref self: ContractState, commitment: felt252, destination: ContractAddress) {
             let entry = self.take(commitment);
             assert(get_caller_address() == entry.owner, errors::CALLER_NOT_OWNER);
-            // Zero means no expiry at all, so it can never be too late.
-            if entry.expires_at != 0 {
-                assert(get_block_timestamp() < entry.expires_at, errors::EXPIRED);
-            }
+            // Expiry does not block claim: a late recipient with the seed can
+            // still collect. After expires_at the sender may also refund; the
+            // first successful exit wins via `claimed`.
             self.pay_out(commitment, entry, destination);
             self.emit(Claimed { commitment });
         }

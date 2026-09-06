@@ -129,16 +129,13 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
   }
 
   const displayAmount =
-    status?.state === "claimable" || status?.state === "expired"
+    status?.state === "claimable"
       ? formatUsdc(status.entry.amount)
       : request.amount
         ? request.amount
         : "…";
 
-  const blocked =
-    status?.state === "missing" ||
-    status?.state === "claimed" ||
-    status?.state === "expired";
+  const blocked = status?.state === "missing" || status?.state === "claimed";
 
   return (
     <div className="flex flex-col gap-8">
@@ -147,7 +144,8 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
         <p className="max-w-prose text-sm text-muted-foreground">
           Connect MetaMask. The link authorises the payout; MorokPay pays gas.
           Tokens land as a public balance on your derived Starknet account —
-          not a private note.
+          not a private note. Expiry only lets the sender reclaim too — this
+          link still works until one of you takes it.
         </p>
       </div>
       <TestnetHint />
@@ -172,8 +170,8 @@ function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
             <CardDescription>
               {status?.state === "claimed"
                 ? "Already claimed."
-                : status?.state === "expired"
-                  ? "Expired. Only the sender can reclaim with their recovery file."
+                : status?.state === "claimable" && status.refundable
+                  ? "Still claimable. The sender can also reclaim now — first exit wins."
                   : "Waiting in escrow. One MetaMask connection is enough."}
             </CardDescription>
           </CardHeader>

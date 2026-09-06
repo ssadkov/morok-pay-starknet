@@ -10,7 +10,7 @@ export type EscrowV2Entry = {
   amount: bigint;
   owner: string;
   refundOwner: string;
-  /** Unix seconds. Zero means it never expires and can never be refunded. */
+  /** Unix seconds after which refund becomes available. Claim stays allowed. Zero = never refundable. */
   expiresAt: bigint;
   claimed: boolean;
 };
@@ -111,12 +111,16 @@ export async function readEscrowV2Minimum(args: {
 export type EscrowV2Status =
   | { state: "missing" }
   | { state: "claimed" }
-  | { state: "expired"; entry: EscrowV2Entry }
-  | { state: "claimable"; entry: EscrowV2Entry };
+  | {
+      state: "claimable";
+      entry: EscrowV2Entry;
+      /** Sender may also reclaim; claim still works until one exit wins. */
+      refundable: boolean;
+    };
 
 /**
- * The four states a claimer can be in, decided in one place so the UI does not
- * re-derive them and get the expiry boundary subtly wrong.
+ * Claim is never killed by expiry — only by a successful claim or refund.
+ * `refundable` means the recovery key may race the claimer after expires_at.
  *
  * `nowSeconds` is passed in rather than read from the clock here: the contract
  * compares against the block timestamp, and a browser's clock can be minutes
@@ -128,8 +132,10 @@ export function escrowV2Status(
 ): EscrowV2Status {
   if (!entry) return { state: "missing" };
   if (entry.claimed) return { state: "claimed" };
-  if (entry.expiresAt !== BigInt(0) && nowSeconds >= entry.expiresAt) {
-    return { state: "expired", entry };
-  }
-  return { state: "claimable", entry };
+  return {
+    state: "claimable",
+    entry,
+    refundable:
+      entry.expiresAt !== BigInt(0) && nowSeconds >= entry.expiresAt,
+  };
 }
