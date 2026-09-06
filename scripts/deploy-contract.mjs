@@ -126,7 +126,7 @@ Dry run - nothing was submitted.${
   process.exit(0);
 }
 
-const result = await account.declareAndDeploy(payload);
+const result = await account.declareAndDeploy(payload, { tip: 0n });
 
 const classHash = result.declare.class_hash;
 const address = result.deploy.contract_address ?? result.deploy.address;

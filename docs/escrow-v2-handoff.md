@@ -16,7 +16,7 @@ The sender pays out of STRK20 privately and shares a bearer link. An ordinary EV
 - `createEscrowV2Keys` and `refundEscrowV2Privately` are in `lib/privacy/escrow-refund-client.ts`. The deposit builder also requires a relayed proof and refuses a proof explicitly naming the main sender address.
 - Failed token transfer/approval reverts contract state.
 
-Deployment and verification evidence: [escrow-v2-private-refund.md](escrow-v2-private-refund.md). The old Sepolia address `0x0156be9d273accc356b928a5ad56341f90fff7f7a671786f1cf4289b42e9d382` has the previous public-refund ABI; it is historical, not upgraded in place. Existing entries cannot retroactively hide published addresses. Mainnet V2 remains undeployed.
+Deployment and verification evidence: [escrow-v2-private-refund.md](escrow-v2-private-refund.md). Older Sepolia addresses (`0x0156be9d…` public refund, `0x3cdfdb8e…` claim blocked after expiry) are historical, not upgraded in place. Existing entries cannot retroactively change rules. Mainnet V2 remains undeployed.
 
 ## Remaining work
 

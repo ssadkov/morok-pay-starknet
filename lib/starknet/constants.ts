@@ -41,11 +41,12 @@ const SEPOLIA = {
     "0x04bDdE1E09a4B09a2F95d893D94a967b7717eB85A3f6dEcA8c080Ee01fBc3370",
   escrow:
     "0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5",
-  // MorokEscrowV2 private-refund revision, deployed 2026-09-06. Recovery is a
-  // fresh per-entry key; refund pays a private note. The 2026-09-05 address
-  // (0x0156be9d...) keeps the older public-refund ABI and is historical only.
+  // MorokEscrowV2 private-refund revision, redeployed 2026-09-06 after
+  // claim-after-expiry: expiry unlocks refund only; claim stays open.
+  // Prior addresses 0x0156be9d... (public refund) and 0x3cdfdb8e... (claim
+  // blocked after expiry) are historical only.
   escrowV2:
-    "0x3cdfdb8e26c8d05f54eee93e0c78617a018c36eb3f23ce71dce7d440dc507c",
+    "0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654",
   escrowV2SupportsPrivateRefund: true,
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_SEPOLIA_ADDRESS?.trim() ??

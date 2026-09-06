@@ -67,30 +67,32 @@ before V2 UI release.
 
 ## Sepolia deployment
 
+Redeployed 2026-09-06 with claim-after-expiry (expiry unlocks refund only).
+
 | Item | Value |
 | --- | --- |
-| Contract | `0x3cdfdb8e26c8d05f54eee93e0c78617a018c36eb3f23ce71dce7d440dc507c` |
-| Class | `0x233b12c28de0dfc956463e232e37caa889dd6f330080ec8d044384e26247f46` |
-| Declare tx | `0x7cb9d154e2124bb79fc8afbcbe3b6142e081533c39cd0d1d4acbf33ba928f1a` |
-| Deploy tx | `0x2d52994923d33d075de004bb99a3eb34bd67a8dd70e8786b5156dfafd540695` |
+| Contract | `0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654` |
+| Class | `0x44f071e9e51d5b9bbc0403fe4b69568b8d840fa1d837d17d8cf9720cbd5f4e1` |
+| Declare tx | `0x7cf7b8945ef04edfb9073e19f83b3ec08f6cf81f4e1b52be015c59af18862d4` |
+| Deploy tx | `0x1d33c99985a1013be57ec0999102a1d1fa4bf77f26900e70c94127f818c6a9e` |
 | Pool | `0x0254a6b2997ef52e9f830ce1f543f6b29768295e8d17e2267d672c552cfe0d91` |
 | Minimums | 1 USDC / 5 STRK |
 
-[Contract on Voyager](https://sepolia.voyager.online/contract/0x3cdfdb8e26c8d05f54eee93e0c78617a018c36eb3f23ce71dce7d440dc507c).
+[Contract on Voyager](https://sepolia.voyager.online/contract/0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654).
+
+Historical (do not use): `0x3cdfdb8e…` blocked claim after expiry; `0x0156be9d…` had public refund.
 
 ## Verification
 
 - Scarb 2.12.0 builds the contract; the existing three Cairo tests pass.
 - Foundry 0.49.0: 12 contract tests, including unauthorized/early/double refund,
-  wrong note/pool, exact expiry and rollback of failed token transfer/approval.
-- Vitest: 233 local tests; the opt-in live EVM/API test is skipped normally.
+  wrong note/pool, claim-after-expiry and rollback of failed token transfer/approval.
+- Vitest: local escrow relay tests pass; the opt-in live EVM/API test is skipped normally.
 - TypeScript, targeted ESLint and production build pass.
 
 App constants on `feat/escrow-v2` point at this deployment with
-`escrowV2SupportsPrivateRefund: true`. **Redeploy before relying on
-claim-after-expiry:** the rule change (expiry unlocks refund only; claim
-stays open) is in source and needs a new class/address. Live probe and
-EVM/API results are recorded below after their receipts and balance checks
-complete. `scripts/escrow-v2-probe.mjs` uses ordinary Starknet accounts to
-test contract rules. `scripts/escrow-v2-relay.live.test.ts` additionally tests
-fresh EVM recovery and the real refund handler in-process, without HTTP or UI.
+`escrowV2SupportsPrivateRefund: true`. Live probe and EVM/API results are
+recorded below after their receipts and balance checks complete.
+`scripts/escrow-v2-probe.mjs` uses ordinary Starknet accounts to test contract
+rules. `scripts/escrow-v2-relay.live.test.ts` additionally tests fresh EVM
+recovery and the real refund handler in-process, without HTTP or UI.
