@@ -163,6 +163,13 @@ export const DEFAULT_ESCROW_V2_EXPIRY_SECONDS = 7 * 24 * 60 * 60;
  * claims and nobody can reclaim is money out of reach for everyone, forever.
  */
 export const ESCROW_V2_EXPIRY_CHOICES: { label: string; seconds: number }[] = [
+  /* An hour is short enough that the sender can watch the whole lifecycle in
+     one sitting, which is what it was added for. It is a real option, not a
+     test hook: a link handed over in person is claimed in minutes, and a
+     shorter window is a smaller one for a lost link to sit in. It does race,
+     though - after the hour the sender may reclaim while the recipient is
+     still deciding, and whichever exit lands first wins. */
+  { label: "1 hour", seconds: 60 * 60 },
   { label: "1 day", seconds: 24 * 60 * 60 },
   { label: "7 days", seconds: DEFAULT_ESCROW_V2_EXPIRY_SECONDS },
   { label: "30 days", seconds: 30 * 24 * 60 * 60 },

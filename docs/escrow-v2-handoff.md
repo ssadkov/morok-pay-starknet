@@ -35,6 +35,10 @@ Deployment and verification evidence: [escrow-v2-private-refund.md](escrow-v2-pr
 
 Preserve V1 compatibility and historical addresses. A new deployment cannot migrate old state or undo old privacy leakage. No mainnet V2 deployment or Vercel release is included in this change.
 
+**The constructor is the only chance to set a token floor.** `minimum_amount` has no setter and the constructor refuses to overwrite an existing entry, so a token absent from the mainnet deploy can never be parked in that contract - not by a later release, only by a fresh deployment at a new address. The mainnet list is USDC, STRK and strkBTC (`0x0787150e…3135`, 8 decimals, floor 0.00001), the last of which `/stash` does not park today but `lib/starknet/tokens.ts` already shields. Sepolia has no strkBTC and must not list it. See `MINIMUMS` in [scripts/deploy-contract.mjs](../scripts/deploy-contract.mjs).
+
+Order of operations: exercise a live refund on Sepolia first (a "1 hour" expiry makes that a same-session test), then deploy, then fill `escrowV2`, `escrowV2SupportsPrivateRefund` and `escrowV2PrivateRefundHistory` for MAINNET in `lib/starknet/constants.ts`.
+
 ## Rules to preserve
 
 - **`session` means "the derived account is deployed on a class this app can
