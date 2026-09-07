@@ -234,36 +234,37 @@ Written to be read aloud, in four takes so any one of them can be redone
 without the others. Numbers measured 2026-09-07 unless marked; reprice before
 publishing if more than a week passes.
 
-## Intro — talking head, no screen (~40 s)
+## Intro — talking head, no screen (~30 s)
 
 > Hi, I'm Sergei. I built MorokPay.
 >
-> It started with a giveaway. We wanted to send people money on Starknet, and
-> the money turned out to be the easy part. The wallet was not. Every single
-> person had to install something new, write down another seed phrase, and buy
-> a gas token they'd never heard of. Most of them just didn't bother.
+> We ran a giveaway on Starknet. Sending the money privately was the easy part.
+> Receiving it was not. People had to install a Starknet wallet, write down
+> another seed phrase, and find a gas token. Out of everyone we tried to pay,
+> four people made it through.
 >
 > So we stopped asking them to change wallets, and built for the one they
-> already have.
+> already had.
 >
 > MorokPay is a privacy layer on top of STRK20, Starknet's privacy pool. Anyone
-> holding an Ethereum wallet can send private USDC, and take private donations,
-> without installing a Starknet wallet at all.
+> with an Ethereum wallet can send private USDC and take private donations —
+> no new wallet, no gas token.
 >
-> Receiving needs nothing — no account, no gas token, one signature. That part
-> works with any EVM wallet on any chain, because collecting doesn't touch a
-> chain at all.
->
-> The funding side comes over Circle's CCTP. Today we've wired Base.
+> Today it runs on Base. Any chain Circle's CCTP reaches works the same way:
+> the privacy layer never sees which chain the money came from.
 >
 > Everything you're about to see is on mainnet, with real money.
 
-**Why receiving and funding are split.** "Any EVM chain" cannot be said whole,
-but half of it is true and is the stronger half: a claim touches no chain at
-all — the recipient signs EIP-712 and MorokPay submits on Starknet — so it
-genuinely works from any EVM wallet anywhere. Funding is Base only, because
-that is the one CCTP route wired. Said this way it sounds like knowing the
-product; "we support every chain" gets found out in one question.
+**The four is the whole argument** - a real number from a real giveaway, and
+more persuasive than any adjective about friction. Be sure of it before saying
+it on camera; it is a public claim about your own campaign.
+
+**On CCTP.** "Runs on any chain CCTP reaches" is a claim about the design, not
+about what is deployed, and it is true for a specific reason worth knowing if
+asked: CCTP delivers native USDC to Starknet whatever chain it was burned on,
+so the privacy layer is downstream of the difference. Adding a chain is a
+config table, a chain picker, and a live run - not a redesign. Do not let it
+slide into "we support every chain" in the present tense.
 
 ## Part 1 — getting in (~2 min)
 
@@ -460,6 +461,7 @@ numbers land: naming your own weak zone is what buys trust in the strong one.
 It is also simply true — our costs are flat and theirs are proportional.
 
 **Do not say "USDC from any chain" in the present tense.** One route is wired.
+The architecture claim is fine and true; the deployment claim is not.
 
 **Do not call it "a MorokPay account".** It sounds custodial, and it is the
 opposite: derived from the user's Ethereum address, accepting only what their
