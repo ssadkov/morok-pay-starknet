@@ -2,6 +2,7 @@ import { hash, num, validateAndParseAddress } from "starknet";
 import { isAddress, type Hex } from "viem";
 
 import { approveUsdcCall, depositForBurnCall, evmAddressToBytes32 } from "@/lib/cctp/bytes";
+import { CCTP_DOMAIN_BASE, CCTP_DOMAIN_STARKNET } from "@/lib/cctp/constants";
 import type { AppNetwork } from "@/lib/network";
 import {
   eth712OutsideExecutionTypedData,
@@ -36,6 +37,34 @@ import { starknetOf } from "@/lib/starknet/constants";
 /** Circle charges its fee out of the bridged USDC, so a floor keeps the burn worth doing. */
 const MINIMUM_BURN = BigInt(100_000); // 0.1 USDC
 
+/** Confirmed rather than finalized. Starknet finality is measured in hours. */
+const FAST_FINALITY_THRESHOLD = 1000;
+
+/**
+ * What Circle will take for the fast lane, with room to spare.
+ *
+ * `maxFee` is a ceiling, not a price - the docs are explicit that the actual
+ * fee is "capped by maxFee" - so quoting high costs nothing and quoting low
+ * gets the burn refused. Circle publishes the real number in basis points; we
+ * ask, then double it and keep a floor so a rounding change cannot strand a
+ * transfer that is already burned and unrecoverable.
+ */
+async function fastMaxFee(amount: bigint, sourceDomain: number): Promise<bigint> {
+  const floor = BigInt(2_000); // 0.002 USDC
+  try {
+    const rows = (await fetch(
+      `https://iris-api.circle.com/v2/burn/USDC/fees/${sourceDomain}/${CCTP_DOMAIN_BASE}`,
+    ).then((r) => r.json())) as { finalityThreshold: number; minimumFee: number }[];
+    const fast = rows?.find((row) => row.finalityThreshold === FAST_FINALITY_THRESHOLD);
+    if (!fast) return floor;
+    const quoted = (amount * BigInt(Math.ceil(fast.minimumFee))) / BigInt(10_000);
+    const doubled = quoted * BigInt(2);
+    return doubled > floor ? doubled : floor;
+  } catch {
+    return floor;
+  }
+}
+
 export async function relayedBurnToBase(args: {
   network: AppNetwork;
   /** The Starknet account that holds the USDC and signs the intent. */
@@ -59,6 +88,8 @@ export async function relayedBurnToBase(args: {
 
   const chain = starknetOf(args.network);
   const sdk = privacySdkOf(args.network);
+
+  const maxFee = await fastMaxFee(args.amount, CCTP_DOMAIN_STARKNET);
 
   const info = await fetch(`/api/bridge/burn?network=${args.network}`).then((r) => r.json());
   if (!info?.relayer) {
@@ -89,6 +120,8 @@ export async function relayedBurnToBase(args: {
           mintRecipient: evmAddressToBytes32(args.recipient),
           usdc: chain.usdc,
           minter: chain.tokenMessengerMinter,
+          maxFee,
+          minFinalityThreshold: FAST_FINALITY_THRESHOLD,
         }).calldata as string[],
       },
     ],

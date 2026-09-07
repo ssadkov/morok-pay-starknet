@@ -99,11 +99,15 @@ export function BridgeOutButton() {
   async function run() {
     setError(null);
     try {
-      if (!isAddress(recipient.trim())) {
-        throw new Error("Enter a Base address to receive the USDC");
-      }
       if (!evmAddress || !chainId) {
         throw new Error("Connect the wallet that owns this account");
+      }
+      /* Empty means this wallet, which is what almost everybody wants: the
+         same address already signs the burn. Typing it again is a chance to
+         mistype an address that cannot be undone once the burn lands. */
+      const destination = recipient.trim() || evmAddress;
+      if (!isAddress(destination)) {
+        throw new Error("That is not an Ethereum address");
       }
       const parsed = amount.trim() ? parseUsdc(amount) : publicUsdc;
       if (parsed <= BigInt(0)) throw new Error("Enter a USDC amount");
@@ -114,7 +118,7 @@ export function BridgeOutButton() {
         starknetAddress: evm.address,
         evmAddress,
         evmChainId: chainId,
-        recipient: recipient.trim(),
+        recipient: destination,
         amount: parsed,
         signTypedData: (data) => signTypedDataAsync(data as never),
         signMessage: (message) => signMessageAsync({ message }),
@@ -129,7 +133,7 @@ export function BridgeOutButton() {
         note: "Gas paid by MorokPay",
       });
 
-      setStep("Waiting for Circle to attest - a few minutes");
+      setStep("Waiting for Circle to attest - usually about a minute");
       const attested = await waitForAttestation(irisTransactionHash(transactionHash), {
         sourceDomain: CCTP_DOMAIN_STARKNET,
         network,
@@ -161,8 +165,8 @@ export function BridgeOutButton() {
         <div className="flex flex-col gap-1">
           <DialogTitle>Send USDC to Base</DialogTitle>
           <DialogDescription>
-            Bridged over Circle&apos;s CCTP. MorokPay pays the Starknet side, so
-            this works with no STRK on your account.
+            Bridged over Circle&apos;s CCTP Fast Transfer. MorokPay pays the
+            Starknet side, so this works with no STRK on your account.
           </DialogDescription>
         </div>
 
@@ -171,13 +175,14 @@ export function BridgeOutButton() {
             <FieldLabel htmlFor="bridge-recipient">Base address</FieldLabel>
             <Input
               id="bridge-recipient"
-              placeholder="0x…"
+              placeholder={evmAddress ?? "0x…"}
               value={recipient}
               disabled={busy}
               onChange={(event) => setRecipient(event.target.value)}
             />
             <FieldDescription>
-              Where the USDC arrives on {baseChain.name}.
+              Where the USDC arrives on {baseChain.name}. Leave empty to send it
+              to this wallet.
             </FieldDescription>
           </Field>
 
