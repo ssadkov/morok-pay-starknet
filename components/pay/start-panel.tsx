@@ -242,6 +242,7 @@ export function StartPanel() {
           baseChainId: baseChain.id,
           currentChainId: evmChainId,
           baseBalance,
+          account: evmAddress as `0x${string}` | undefined,
           switchChain: (chainId) => switchChainAsync({ chainId }),
           writeContract: (config) => writeContractAsync(config as never),
           onProgress: setBusy,
