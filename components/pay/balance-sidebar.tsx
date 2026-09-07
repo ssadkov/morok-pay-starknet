@@ -68,6 +68,15 @@ export function BalanceSidebar() {
      not look". */
   const privateUnknown = balances ? !balances.privateKnown : false;
 
+  /* One number for "not private yet", wherever it sits. Held back until both
+     halves have answered: a total that climbs as each read lands looks like
+     money arriving. */
+  const baseKnown = !evmConnectedAddress || baseUsdc !== undefined;
+  const starknetKnown = !session || !loading;
+  const publicTotalKnown = baseKnown && starknetKnown;
+  const publicTotal =
+    (baseUsdc ?? BigInt(0)) + (session ? publicUsdc : BigInt(0));
+
   /* Nothing connected means nothing to balance. The card used to sit there
      restating the header's own invitation under a heading promising numbers
      it had none of, so it stands down to the two things still worth doing
@@ -89,9 +98,9 @@ export function BalanceSidebar() {
           <div className="flex items-start justify-between gap-2">
             <div>
               <CardTitle>Balances</CardTitle>
-              <CardDescription>
-                Public Starknet and private donation wallet.
-              </CardDescription>
+              {/* "Public Starknet and private donation wallet" described our
+                  plumbing, and named a product narrower than this one. */}
+              <CardDescription>What is public, and what is not.</CardDescription>
             </div>
             {session ? (
               <Button
@@ -136,29 +145,71 @@ export function BalanceSidebar() {
             </div>
           ) : null}
 
-          {evmConnectedAddress ? (
-            /* Shown whether or not there is a session: a wallet that has not
-               finished onboarding is exactly the one whose owner needs to
-               know there is USDC waiting on Base to onboard with. */
+          {/* Base and Starknet are one thing to the person holding them:
+              money that is not private yet. They are two things to us,
+              because moving each costs something different - the bridge is
+              on us, the shield is 6 STRK of pool fee out of their own
+              pocket. So: one heading and one total, two rows and two
+              buttons. The intermediate Starknet balance is an
+              implementation detail nobody arrived wanting to learn, and it
+              reads as one here without pretending the actions are alike. */}
+          {evmConnectedAddress || session ? (
             <div className="rounded-xl bg-muted/40 px-3 py-3 ring-1 ring-foreground/10">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <WalletIcon className="size-3.5" />
                 <p className="text-xs font-medium uppercase tracking-wide">
-                  On {baseChain.name}
+                  Public
                 </p>
               </div>
-              {baseUsdc === undefined ? (
-                <Skeleton className="mt-2 h-7 w-28" />
-              ) : (
+              {publicTotalKnown ? (
                 <p className="mt-2 font-mono text-xl font-semibold tracking-tight tabular-nums">
-                  {formatUsdc(baseUsdc)} USDC
+                  {formatUsdc(publicTotal)} USDC
                 </p>
+              ) : (
+                <Skeleton className="mt-2 h-7 w-28" />
               )}
               <p className="mt-1 text-xs text-muted-foreground">
-                {baseUsdc !== undefined && baseUsdc > BigInt(0)
-                  ? "Bridgeable to Starknet with the delivery fee paid for you."
-                  : "In your EVM wallet, before bridging."}
+                Not private yet. Anyone can see it.
               </p>
+
+              <div className="mt-3 flex flex-col gap-4 border-t border-foreground/10 pt-3">
+                {evmConnectedAddress ? (
+                  <PlaceRow
+                    label={`On ${baseChain.name}`}
+                    amount={baseUsdc}
+                    note="MorokPay pays to deliver it to Starknet."
+                    action={
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          nativeButton={false}
+                          render={<Link href="/treasury" />}
+                        >
+                          <ArrowDownToLineIcon />
+                          Bridge
+                        </Button>
+                      </div>
+                    }
+                  />
+                ) : null}
+                {session ? (
+                  <PlaceRow
+                    label="On Starknet"
+                    amount={loading ? undefined : publicUsdc}
+                    note={`${formatStrk(publicStrk)} STRK for gas`}
+                    action={
+                      <div className="flex flex-col gap-3">
+                        <ShieldButton />
+                        <div className="flex justify-end">
+                          <SendButton />
+                        </div>
+                      </div>
+                    }
+                  />
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -178,21 +229,6 @@ export function BalanceSidebar() {
             </p>
           ) : (
             <>
-              <BalanceRow
-                label="Wallet"
-                hint="Public Starknet account"
-                loading={loading}
-                amount={`${formatUsdc(publicUsdc)} USDC`}
-                extra={`${formatStrk(publicStrk)} public STRK for gas · ${formatStrk(balances?.privateStrk ?? BigInt(0))} shielded`}
-                action={
-                  <div className="flex flex-col gap-3">
-                    <ShieldButton />
-                    <div className="flex justify-end">
-                      <SendButton />
-                    </div>
-                  </div>
-                }
-              />
               <BalanceRow
                 label="Private"
                 hint="STRK20 pool"
@@ -287,6 +323,37 @@ function BalanceRow({
       <p className="mt-1 text-xs text-muted-foreground">{hint}</p>
       <p className="mt-0.5 text-xs text-muted-foreground">{extra}</p>
       {action ? <div className="mt-3">{action}</div> : null}
+    </div>
+  );
+}
+
+/** One place the public money can sit, and what can be done to it there. */
+function PlaceRow({
+  label,
+  amount,
+  note,
+  action,
+}: {
+  label: string;
+  /** Undefined while the read is in flight. */
+  amount: bigint | undefined;
+  note: string;
+  action: ReactNode;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-xs font-medium">{label}</p>
+        {amount === undefined ? (
+          <Skeleton className="h-4 w-20" />
+        ) : (
+          <p className="font-mono text-sm font-semibold tabular-nums">
+            {formatUsdc(amount)} USDC
+          </p>
+        )}
+      </div>
+      <p className="text-xs text-muted-foreground">{note}</p>
+      <div className="mt-1">{action}</div>
     </div>
   );
 }
