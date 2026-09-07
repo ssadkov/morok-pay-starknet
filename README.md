@@ -14,7 +14,7 @@ Send private USDC to any EVM address, or publish one reusable donation QR. The r
 | Live demo | [morok-pay-starknet.vercel.app](https://morok-pay-starknet.vercel.app) |
 | Mainnet transactions | five in [`strk20.json`](strk20.json), each through one of our own deployed contracts |
 | Real users on mainnet | four strangers finished the [contest](#private-donation-contest) entry unaided; one collected a sponsored claim with an empty MetaMask |
-| RFP | [RFP-09](https://strk20.starknet.io/rfp/cross-chain-privacy-hub) for the half that is built — see below |
+| RFP | [RFP-09](https://strk20.starknet.io/rfp/cross-chain-privacy-hub), answered end to end on mainnet: in from Base, held privately, back out — with no STRK in the user's hands |
 | Published for other teams | The `AccountFactory` is **permissionless** — `deploy_account` carries no role check, so any project can derive and deploy the same Starknet account for the same EVM wallet without asking us, and without a key from us. The scheme is specified in [docs/evm-account-portability.md](docs/evm-account-portability.md), down to the address derivation and the exact EIP-712 message |
 
 The five listed transactions are the ones that satisfy the scoring rule in
@@ -147,6 +147,42 @@ above was submitted by the derived account itself and paid for out of its own
 balance. On the Ready X rail the same operations arrive from a paymaster and
 cost the user only the 6 STRK fee.
 
+## Bridging back out, without holding STRK
+
+Leaving Starknet used to need STRK for gas, which fails exactly where it
+matters: somebody who just unshielded their last USDC has none left to move it
+with. The burn now goes out as an **outside execution** - the owner signs the
+intent with MetaMask, MorokPay's relayer submits it and pays.
+
+Outside execution rather than a plain relayer transaction because
+`deposit_for_burn` burns from the caller. A relayer sending its own transaction
+would bridge its own USDC; `execute_from_outside_v2` keeps
+`get_caller_address()` as the owner's account while somebody else pays. Done on
+mainnet, MetaMask signing, the account never touching its own STRK:
+
+| | |
+| --- | --- |
+| Burn on Starknet | [`0x37d04c3c…59455`](https://voyager.online/tx/0x37d04c3c500263fda23f21abb9680c03d5123fdb0e1efd20e6cedad31259455), `SUCCEEDED`, block 14523313 |
+| Submitted and paid by | MorokPay's relayer, `2.12 STRK` |
+| Owner's STRK before and after | `3.7541` — untouched |
+| Circle | attested `complete`, domain 25 → 6 |
+| Bridged | `2.007718 USDC`, Circle's fee `0.002409` |
+| Landed on Base | at the owner's own wallet |
+
+**Fast Transfer is worth its 12 basis points here.** An earlier burn at the
+finalized threshold ([`0x34e7a8b3…34bbf`](https://voyager.online/tx/0x34e7a8b3bf9d27c4e9eda3a8f23b05198d8d009bde9191f9710e905d1834bbf))
+was still `pending_confirmations` hours later, because finalized on this
+direction means Starknet's own finality. The same route at threshold 1000
+attested in minutes for a quarter of a cent. Both are on chain; the contrast is
+the argument.
+
+The mint on Base stays the user's own transaction and needs ETH there. Circle
+attests but does not deliver — their guide is explicit that a consumer "must
+query this attestation and submit it onchain" — and paying gas for somebody who
+already holds an EVM wallet would be doing the wallet's job. The dialog says
+so rather than letting the sponsored half imply both, and says the bridge
+itself is public: the amount and both addresses are visible on each chain.
+
 ## STRK20 integration surface
 
 Against the five things the depth criterion names:
@@ -170,6 +206,7 @@ Against the five things the depth criterion names:
 | Relayed first donation, so the donor is never named | both rails | both rails |
 | Anonymous receive account behind a QR | MetaMask | MetaMask |
 | Base → Starknet top-up over CCTP | Ready X · MetaMask | Ready X · MetaMask |
+| Starknet → Base exit, relayer pays the burn | MetaMask | MetaMask |
 | Send private USDC to an EVM address | Ready X · MetaMask | Ready X · MetaMask |
 
 `/privacy-sdk-lab` still runs every step one at a time with the proof, the fee
@@ -184,15 +221,12 @@ be funded first.
 the live STRK20 pool through one of our own deployed contracts.
 
 This project answers [RFP-09 — one-click privacy from any
-chain](https://strk20.starknet.io/rfp/cross-chain-privacy-hub) for the half it
-actually implements, and says plainly which half. Built and live on mainnet: a
-Starknet account generated deterministically from an EVM wallet, bridging in
-from Base over CCTP, holding privately, and a recipient who needs no Starknet
-wallet, no STRK and no gas - "the user never thinks about Starknet", which is
-that RFP's own test. **Not built: the cross-chain exit.** Value leaves through
-an unshield on Starknet, so withdrawing to a different chain with no on-chain
-link between the two sides is the next piece rather than a shipped one; see
-[Roadmap](#roadmap). The donation QR also answers
+chain](https://strk20.starknet.io/rfp/cross-chain-privacy-hub), and as of
+2026-09-07 it answers the whole of it on mainnet: a Starknet account generated
+deterministically from an EVM wallet, bridging in from Base over CCTP, holding
+privately, and **bridging back out to Base** - all without the user holding
+STRK or thinking about Starknet, which is that RFP's own test. The round trip
+is measured below. The donation QR also answers
 [RFP-12](https://strk20.starknet.io/rfp/private-subscriptions), though without
 the recurring charges and session keys that RFP is really about.
 

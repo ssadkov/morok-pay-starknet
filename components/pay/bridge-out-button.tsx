@@ -60,7 +60,6 @@ export function BridgeOutButton() {
   const { signTypedDataAsync } = useSignTypedData();
 
   const [open, setOpen] = useState(false);
-  const [recipient, setRecipient] = useState("");
   const [amount, setAmount] = useState("");
   const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -102,10 +101,12 @@ export function BridgeOutButton() {
       if (!evmAddress || !chainId) {
         throw new Error("Connect the wallet that owns this account");
       }
-      /* Empty means this wallet, which is what almost everybody wants: the
-         same address already signs the burn. Typing it again is a chance to
-         mistype an address that cannot be undone once the burn lands. */
-      const destination = recipient.trim() || evmAddress;
+      /* Always this wallet. A field here would only be a chance to mistype an
+         address that nothing can undo once the burn lands, to serve a case the
+         connected wallet already covers - it is the one signing, and it is
+         where somebody cashing out wants the money. Sending elsewhere is a
+         second transaction on Base, from a wallet that by then holds the USDC. */
+      const destination = evmAddress;
       if (!isAddress(destination)) {
         throw new Error("That is not an Ethereum address");
       }
@@ -144,7 +145,6 @@ export function BridgeOutButton() {
       setStep(null);
       setOpen(false);
       setAmount("");
-      setRecipient("");
     } catch (caught) {
       setError(describeError(caught));
       setStep(null);
@@ -171,20 +171,14 @@ export function BridgeOutButton() {
         </div>
 
         <div className="flex flex-col gap-4">
-          <Field>
-            <FieldLabel htmlFor="bridge-recipient">Base address</FieldLabel>
-            <Input
-              id="bridge-recipient"
-              placeholder={evmAddress ?? "0x…"}
-              value={recipient}
-              disabled={busy}
-              onChange={(event) => setRecipient(event.target.value)}
-            />
-            <FieldDescription>
-              Where the USDC arrives on {baseChain.name}. Leave empty to send it
-              to this wallet.
-            </FieldDescription>
-          </Field>
+          <div className="rounded-xl bg-muted/50 p-3 ring-1 ring-foreground/10">
+            <p className="text-xs text-muted-foreground">
+              Arrives on {baseChain.name} at this wallet
+            </p>
+            <p className="mt-1 break-all font-mono text-xs tabular-nums">
+              {evmAddress ?? "Connect a wallet"}
+            </p>
+          </div>
 
           <Field>
             <FieldLabel htmlFor="bridge-amount">Amount</FieldLabel>
