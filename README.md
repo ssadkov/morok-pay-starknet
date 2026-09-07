@@ -4,7 +4,7 @@ Private USDC on Starknet, for anyone holding an Ethereum wallet. Built for the [
 
 Send private USDC to any EVM address, or publish one reusable donation QR. The recipient collects with MetaMask alone — no Starknet wallet, no STRK, no gas — because MorokPay deploys their Starknet account and pays for the claim in a single transaction. Transfers stay inside the STRK20 pool, so the amount and the sender-to-recipient relationship are not published on-chain.
 
-[Open the live demo](https://morok-pay-starknet.vercel.app) · [Announcement thread](https://x.com/ssadkov/status/2093793308359409909)
+[Watch the 3-minute demo](https://youtu.be/z_5YCVg9ODU) · [Open the live demo](https://morok-pay-starknet.vercel.app) · [Announcement thread](https://x.com/ssadkov/status/2093793308359409909)
 
 ## Deployed contracts
 
