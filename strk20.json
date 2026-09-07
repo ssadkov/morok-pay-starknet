@@ -17,7 +17,9 @@
     "0x741b45d3f6076c9a9e8168b6406c199113dcc237f17535990205450f0a63e8a"
   ],
   "contracts": [
-    "0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f"
+    "0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f",
+    "0x06314101ff10835af0bfef051ddb9fe456cb9541d073a0ff45326a0c654253a",
+    "0x07ead3a89ae0a67ed6ba18caa1b9643437ff9432bab66ab0b2a27e46e0c627aa"
   ],
   "demo_url": "https://morok-pay-starknet.vercel.app"
 }

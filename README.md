@@ -1,17 +1,62 @@
 # MorokPay
 
-Private USDC donations on Starknet, built for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
+Private USDC on Starknet, for anyone holding an Ethereum wallet. Built for the [STRK20 Private Sprint](https://strk20.starknet.io/hackathon).
 
-A creator publishes one reusable QR. A supporter chooses the amount and confirms the transfer in Ready, or in MetaMask with no Starknet wallet at all. The payment stays inside the STRK20 pool, so its amount and sender-to-recipient relationship are not published on-chain.
+Send private USDC to any EVM address, or publish one reusable donation QR. The recipient collects with MetaMask alone — no Starknet wallet, no STRK, no gas — because MorokPay deploys their Starknet account and pays for the claim in a single transaction. Transfers stay inside the STRK20 pool, so the amount and the sender-to-recipient relationship are not published on-chain.
 
 [Open the live demo](https://morok-pay-starknet.vercel.app) · [Announcement thread](https://x.com/ssadkov/status/2093793308359409909)
 
+## Deployed contracts
+
+All six are live and were read back on chain on 2026-09-07.
+
+| | Starknet Mainnet | Sepolia |
+| --- | --- | --- |
+| `MorokEscrowV2` — send to an EVM address | [`0x06314101…4253a`](https://voyager.online/contract/0x6314101ff10835af0bfef051ddb9fe456cb9541d073a0ff45326a0c654253a) | [`0x0424e3e9…17654`](https://sepolia.voyager.online/contract/0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654) |
+| `AccountFactory` — derives and deploys an EVM-owned Starknet account | [`0x07ead3a8…627aa`](https://voyager.online/contract/0x7ead3a89ae0a67ed6ba18caa1b9643437ff9432bab66ab0b2a27e46e0c627aa) | [`0x078ce3c3…de35f`](https://sepolia.voyager.online/contract/0x078ce3c3e3080a579d268feae011761b32146efd40f4faa14dc8b9a30b4de35f) |
+| `MorokEscrow` — the earlier claim-link contract, still redeemable | [`0x06199365…b698f`](https://voyager.online/contract/0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f) | [`0x0407827c…896a5`](https://sepolia.voyager.online/contract/0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5) |
+
+The account class the mainnet factory hands out is `0x0697437b…5586e`, and the
+factory is **permissionless** — any application can resolve the same account
+for the same EVM address without asking us. Source in
+[contracts/src](contracts/src); addresses in
+[lib/starknet/constants.ts](lib/starknet/constants.ts).
+
+**The two escrow classes are not the same.** Sepolia's predates the
+`EscrowState` enum and the constructor and deposit assertions added with the
+private-refund revision, so mainnet is the first network running that source.
+Both are listed rather than quietly reconciled; see
+[docs/escrow-v2-private-refund.md](docs/escrow-v2-private-refund.md).
+
+## Send private USDC to an Ethereum wallet
+
+`MorokEscrowV2` gets two products out of one rule, `get_caller_address() == entry.owner`:
+
+- **a bearer link**, whose seed *is* an EVM private key, so holding the link is holding the account that can claim;
+- **an invoice** addressed to a named EVM wallet, found through an opt-in on-chain index — there is no link to send at all.
+
+The recipient needs an EVM wallet that can sign EIP-712, and nothing else: no
+Starknet wallet, no STRK, no gas, no deployed account — the deploy and the
+claim ride in one relayer-paid transaction — and no pool registration, because
+the payout is an ordinary ERC20 transfer to a destination the owner names.
+
+What this protects is the **sender**. The deposit is relayed, and the refund
+path uses an independent per-entry recovery key, so the sender's own address is
+never the entry's refund owner. The amount, the recipient and the expiry are
+public on chain by design, and the README says so rather than letting "private"
+cover more than it does.
+
+Verified: 12 Foundry contract tests, a 12-of-12 on-chain probe and a live claim
+on Sepolia, with the mainnet contract deployed and read back. Design, measured
+costs and the Privacy Cash comparison are in
+[docs/evm-escrow-invoices.md](docs/evm-escrow-invoices.md).
+
 ## How it works
 
-1. Connect Ready X on Starknet Mainnet or Sepolia, or connect MetaMask and let the app derive and deploy a Starknet account for you.
-2. Activate STRK20 by shielding once.
-3. Create one open-amount donation QR, or open a creator's link.
-4. Confirm the private USDC transfer in the connected wallet.
+1. Connect MetaMask - or Ready X, if you have one. `/start` derives your Starknet account, deploys it, buys the STRK for activation out of your USDC, and registers you with the pool, naming who pays at every step.
+2. Shield USDC once to move it into the pool.
+3. Then either **send**: park private USDC behind a one-time link or address it to somebody's EVM wallet on `/stash`. Or **receive**: publish one open-amount donation QR on `/sell`.
+4. The recipient opens `/claim`, connects the wallet you addressed it to, and collects. They need no Starknet wallet, no STRK and no gas.
 
 Ready holds the viewing key and implements the STRK20 Wallet API. On the EVM path, MetaMask retains the Ethereum signing key while MorokPay derives the viewing key in browser memory from a repeatable EIP-712 signature and uses the Privacy SDK directly. MorokPay never asks for either secret, and never sees a viewing key server-side.
 
@@ -93,7 +138,8 @@ cost the user only the 6 STRK fee.
 | Send a public balance out to an exchange | Ready X · MetaMask | Ready X · MetaMask |
 | Relayed first donation, so the donor is never named | both rails | both rails |
 | Anonymous receive account behind a QR | MetaMask | MetaMask |
-| Base → Starknet top-up over CCTP | - | Ready X |
+| Base → Starknet top-up over CCTP | Ready X · MetaMask | Ready X · MetaMask |
+| Send private USDC to an EVM address | Ready X · MetaMask | Ready X · MetaMask |
 
 `/privacy-sdk-lab` still runs every step one at a time with the proof, the fee
 and the resource bounds shown explicitly. It is a diagnostic surface now, not
@@ -171,26 +217,39 @@ rank from the published seed and entry-list hash.
   amount parsing is decimals-aware. The donation request format is USDC-only, so
   private BTC donations remain a follow-up rather than a shipped feature.
 - DonationPot is a design-only follow-up; see [docs/donation-pot.md](docs/donation-pot.md).
-- Funded onboarding - bridge, auto-swap to STRK, then shield - is researched but
-  unbuilt; see [docs/funded-onboarding.md](docs/funded-onboarding.md).
+- Funded onboarding is **built and done on mainnet**. `/start` is one screen
+  with four steps that each name who pays: bridge from Base (ours), deploy the
+  account (ours), buy STRK with a swap that pays its own gas out of the USDC it
+  sells, and register with the pool (the user's - it carries a proof that
+  cannot be relayed). The research behind it is in
+  [docs/funded-onboarding.md](docs/funded-onboarding.md).
+- Escrow V2 is deployed on both networks and wired into `/stash` and `/claim`.
+  A live claim has run on Sepolia; the mainnet contract is deployed and read
+  back but its first claim is more recent than this list.
 
 ## Roadmap
 
-The nearest piece removes the last thing that still asks a supporter to go buy
-an unrelated token: arriving with USDC on Base and reaching a private balance
-without ever acquiring STRK by hand. CCTP is already wired, and the shape is
-settled by a constraint rather than a preference - a shield cannot be relayed,
-because STRK20 passes its proof as a transaction-level extension and SNIP-9
-outside execution has no field for one. So the flow splits at that boundary:
-the relayer bridges, swaps a slice to STRK through AVNU and pays for all of it,
-and the user's own account then pays for the shield with STRK it never had to
-buy.
+Arriving with USDC on Base and reaching a private balance without ever buying
+STRK by hand used to be the nearest piece. It shipped: `/start` does it, and
+the split it settled on is forced by a constraint rather than a preference - a
+shield cannot be relayed, because STRK20 passes its proof as a
+transaction-level extension and SNIP-9 outside execution has no field for one.
+So the relayer bridges and deploys, the swap pays its own gas out of the USDC
+it sells, and the user's own account pays for the registration.
+
+The nearest piece now is collapsing bridge and shield into one **Make private**
+button, which is held back by the same economics: the bridge is ours at about
+1 STRK, the shield is theirs at 11.31, so somebody arriving from Base with no
+STRK cannot finish the chain and belongs in onboarding instead.
 
 That, and what else is open - the anonymous receive account on Ready X, batched
 payouts, where MorokPay's own fee belongs - is in
 [docs/roadmap.md](docs/roadmap.md).
 
-Legacy claim links remain redeemable at `/claim` on networks where `MorokEscrow` is deployed. New claim-link creation is no longer part of the donation UI.
+Links made by the earlier `MorokEscrow` remain redeemable at `/claim`. New
+links come from `MorokEscrowV2` and are created on `/stash`; the two are
+separate contracts with separate rules, and a link from one is never read as a
+link to the other.
 
 ## Run locally
 
@@ -224,6 +283,9 @@ Open [http://localhost:3000](http://localhost:3000).
 - [Why invoice events are not payment proof](docs/private-invoices.md)
 - [Legacy claim-link boundary](docs/claim-links.md)
 - [Funded onboarding: bridge, swap, shield](docs/funded-onboarding.md)
+- [Send private USDC to an EVM address: design and costs](docs/evm-escrow-invoices.md)
+- [Escrow V2 private refund](docs/escrow-v2-private-refund.md)
+- [Who pays, and how much](docs/who-pays.md)
 
 ## License
 
