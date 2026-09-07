@@ -103,13 +103,7 @@ export async function POST(request: Request) {
     const message =
       error instanceof Error ? error.message : "The burn could not be submitted";
     const status = /ownership|invalid onboarding/i.test(message) ? 400 : 502;
-    return Response.json(
-      {
-        error:
-          status === 400 ? message : `MorokPay could not submit the ${network} burn`,
-      },
-      { status },
-    );
+    return Response.json({ error: status === 400 ? message : relayFailure(message, network) }, { status });
   }
 }
 
@@ -127,4 +121,22 @@ export async function GET(request: Request) {
     );
   }
   return Response.json({ relayer: validateAndParseAddress(credentials.address) });
+}
+
+/**
+ * Say what actually went wrong.
+ *
+ * This used to answer every failure with "could not submit the burn", which
+ * cost an evening: a reverted validation, a broken RPC and a flat refusal all
+ * looked identical from the outside. A revert reason is not a secret - it is
+ * on chain the moment the transaction is - so the only thing worth hiding is
+ * the proof-sized hex that makes the message unreadable.
+ */
+function relayFailure(message: string, network: AppNetwork) {
+  const cleaned = message
+    .replace(/0x[0-9a-f]{200,}/gi, "[large hex omitted]")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 400);
+  return `MorokPay could not submit the ${network} burn: ${cleaned}`;
 }
