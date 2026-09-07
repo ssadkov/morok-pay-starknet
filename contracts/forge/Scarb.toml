@@ -1,0 +1,20 @@
+[package]
+name = "morok_escrow_tests"
+version = "0.1.0"
+edition = "2024_07"
+
+[dependencies]
+starknet = "2.12.0"
+morok_pay = { path = ".." }
+
+[dev-dependencies]
+snforge_std = "0.49.0"
+
+[[target.starknet-contract]]
+build-external-contracts = ["morok_pay::escrow_v2::MorokEscrowV2"]
+
+[scripts]
+test = "snforge test"
+
+[tool.scarb]
+allow-prebuilt-plugins = ["snforge_std"]

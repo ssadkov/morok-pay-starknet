@@ -520,15 +520,15 @@ export function PayPanel() {
         <h1 className="text-2xl font-semibold tracking-tight">Donate</h1>
         <p className="max-w-prose text-sm text-muted-foreground">
           {network === "sepolia"
-            ? "Sepolia: shield test USDC, wait for the note to mature, then pay. The QR never shows the amount."
+            ? "Sepolia: shield test USDC, wait a couple of minutes for it to settle, then pay. The QR never shows the amount."
             : "Shield USDC, wait a couple of minutes, then pay. The shared QR never shows how much you chose."}
         </p>
       </div>
 
       <OnboardingSteps
         title="Get ready to donate"
-        description="Use Ready X or an onboarded EVM wallet. New notes take about ten blocks before they can move."
-        doneLabel={`${walletName} · ${formatUsdc(privateRaw)} private USDC · notes mature`}
+        description="MetaMask or any EVM wallet works - Ready X too. Freshly shielded USDC takes about ten blocks before it can be spent."
+        doneLabel={`${walletName} · ${formatUsdc(privateRaw)} private USDC · ready to send`}
         steps={[
           {
             id: "link",
@@ -596,8 +596,8 @@ export function PayPanel() {
           },
           {
             id: "ready",
-            title: "Connect Ready X or EVM wallet",
-            body: "Use a supported private wallet on the same network as the header.",
+            title: "Connect an EVM wallet",
+            body: "MetaMask or any injected EVM wallet - no Starknet wallet needed. Ready X works too. Use the same network as the header toggle.",
             status: readyStatus,
             children: readyStatus === "current" ? <ConnectWalletChoices /> : null,
           },
@@ -651,10 +651,12 @@ export function PayPanel() {
           },
           {
             id: "wait",
-            title: "Wait for the note",
+            // "note" is what the pool calls a deposit. A donor has no reason
+            // to know the word, and the step it names is just waiting.
+            title: "Wait for it to settle",
             body: notes.ready
               ? "This USDC can move."
-              : `New notes mature in about ten blocks. Donate when this hits 0:00 — the pool rejects a spend before that.`,
+              : `Freshly shielded USDC settles in about ten blocks. Donate when this hits 0:00 — the pool rejects a spend before that.`,
             status: waitStatus,
             children:
               waitStatus === "current" ? (
@@ -792,10 +794,10 @@ export function PayPanel() {
             ) : null}
             {privateRaw > BigInt(0) && !notes.ready ? (
               <Alert>
-                <AlertTitle>Waiting for the note to mature</AlertTitle>
+                <AlertTitle>Waiting for this USDC to settle</AlertTitle>
                 <AlertDescription>
-                  Ready X in {notes.remainingLabel}. New notes need about ten
-                  blocks before the pool will let them move.
+                  Ready in {notes.remainingLabel}. Freshly shielded USDC needs
+                  about ten blocks before the pool will let it move.
                 </AlertDescription>
               </Alert>
             ) : null}

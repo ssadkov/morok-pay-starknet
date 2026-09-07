@@ -46,6 +46,8 @@ yarn-error.log*
 
 # cairo build
 /contracts/target
+/contracts/forge/target
+/contracts/forge/.snfoundry_cache
 
 # vercel
 .vercel

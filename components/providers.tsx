@@ -6,13 +6,20 @@ import { useState, type ReactNode } from "react";
 import { WagmiProvider } from "wagmi";
 
 import { NetworkProvider } from "@/components/network-provider";
+import type { AppNetwork } from "@/lib/network";
 import { TreasuryProvider } from "@/components/treasury/treasury-context";
 import { EvmOnboardingGate } from "@/components/treasury/evm-onboarding-gate";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
 import { wagmiConfig } from "@/lib/wagmi";
 
-export function Providers({ children }: { children: ReactNode }) {
+export function Providers({
+  children,
+  initialNetwork,
+}: {
+  children: ReactNode;
+  initialNetwork?: AppNetwork;
+}) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -30,7 +37,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <WagmiProvider config={wagmiConfig}>
         <QueryClientProvider client={queryClient}>
           <TooltipProvider>
-            <NetworkProvider>
+            <NetworkProvider initialNetwork={initialNetwork}>
               <TreasuryProvider>
                 {children}
                 <EvmOnboardingGate />

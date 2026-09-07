@@ -160,3 +160,30 @@ amount parsing is decimals-aware, but the donation request format is USDC-only.
 A public-total rail - a visible campaign thermometer - alongside the private
 one, for creators who want the total known and the donors not. Design-only; see
 [donation-pot.md](donation-pot.md).
+
+## 8. One button from Base to private
+
+The balances card groups Base and Starknet under a single **Public** heading
+with one total, because that is what they are to the person holding them:
+money that is not private yet. The rows underneath still carry separate
+buttons - Bridge on one, Shield on the other - and that split is the honest
+part of the current design rather than an oversight.
+
+The improvement is to collapse it: one **Make private** on the Base row that
+bridges and shields without the reader ever meeting the intermediate Starknet
+balance.
+
+What stops it being two chained calls is who pays for the second one. The
+bridge is on us, about 1 STRK. The shield is on them - measured 11.31 STRK for
+1 USDC, six of which is the pool fee. Somebody arriving from Base with no STRK
+therefore cannot complete the chain at all; for them the real sequence is
+bridge, buy STRK, shield, which is `/start`. So the button belongs only where
+the account already holds enough STRK to pay for the shield, and everyone else
+still goes through onboarding.
+
+That makes it a two-transaction flow with a funding precondition and two
+failure points, one of which spends the user's money halfway through. It needs
+its own live run before it is offered - the cost of a half-completed
+"make private" is somebody's STRK gone with the USDC still public.
+
+**Size: a day**, most of it the partial-failure states rather than the calls.

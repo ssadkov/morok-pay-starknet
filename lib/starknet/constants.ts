@@ -16,6 +16,17 @@ const MAINNET = {
   // (0x53fe2c18...), so it is the contract the Sepolia probes exercised.
   escrow:
     "0x06199365a45fa8fe4874bb82727fdf5d849631cde9ca557f497abe7c4ccb698f",
+  // MorokEscrowV2, declared and deployed 2026-09-07. Class
+  // 0x7a5c3a64..., which is NOT the class Sepolia runs at 0x424e3e...:
+  // that one predates the EscrowState enum and the constructor/deposit
+  // assertions, so mainnet is the first network to run this source.
+  // Floors read back as 1 USDC, 5 STRK, 0.00001 strkBTC, zero elsewhere.
+  escrowV2:
+    "0x6314101ff10835af0bfef051ddb9fe456cb9541d073a0ff45326a0c654253a",
+  escrowV2SupportsPrivateRefund: true,
+  escrowV2PrivateRefundHistory: [
+    "0x6314101ff10835af0bfef051ddb9fe456cb9541d073a0ff45326a0c654253a",
+  ] as readonly string[],
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_MAINNET_ADDRESS?.trim() ?? "",
   // Declared 2026-08-26 by scripts/deploy-eth712-factory.mjs, configured for
@@ -38,6 +49,19 @@ const SEPOLIA = {
     "0x04bDdE1E09a4B09a2F95d893D94a967b7717eB85A3f6dEcA8c080Ee01fBc3370",
   escrow:
     "0x0407827c97ea537970b306f6ccbeb08c5f57224732280eb7b7a23184cad896a5",
+  // MorokEscrowV2 private-refund revision, redeployed 2026-09-06 after
+  // claim-after-expiry: expiry unlocks refund only; claim stays open.
+  // Prior addresses 0x0156be9d... (public refund) and 0x3cdfdb8e... (claim
+  // blocked after expiry) are historical only.
+  escrowV2:
+    "0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654",
+  escrowV2SupportsPrivateRefund: true,
+  // Every private-refund revision remains allowlisted so an exported recovery
+  // file keeps working after the active Sepolia deployment changes.
+  escrowV2PrivateRefundHistory: [
+    "0x3cdfdb8e26c8d05f54eee93e0c78617a018c36eb3f23ce71dce7d440dc507c",
+    "0x424e3e9145946afa96102d188398c13cf71a8d1efb0bfc7f3312777a3b17654",
+  ] as readonly string[],
   treasury:
     process.env.NEXT_PUBLIC_MOROK_TREASURY_SEPOLIA_ADDRESS?.trim() ??
     "0x00E5887fC74A11d10Ad5dd2f69D3911Fb352d9b811528a9281Ca8aBAc8498423",
@@ -52,6 +76,19 @@ const STARKNET = {
 
 export function starknetOf(network: AppNetwork) {
   return STARKNET[network];
+}
+
+export function isSupportedPrivateRefundEscrow(
+  network: AppNetwork,
+  address: string,
+): boolean {
+  try {
+    return starknetOf(network).escrowV2PrivateRefundHistory.some(
+      (candidate) => BigInt(candidate) === BigInt(address),
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** Default network from env. The UI switcher overrides this at runtime. */

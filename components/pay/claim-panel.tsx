@@ -3,10 +3,8 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { useSignMessage } from "wagmi";
+import { useAccount, useSignMessage, useSignTypedData } from "wagmi";
 
-import { ConnectWalletChoices } from "@/components/pay/connect-wallet-choices";
-import { TestnetHint } from "@/components/pay/testnet-hint";
 import { txToast } from "@/components/pay/tx-toast";
 import { useNetwork } from "@/components/network-provider";
 import { useTreasury } from "@/components/treasury/treasury-context";
@@ -21,20 +19,570 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Spinner } from "@/components/ui/spinner";
+import { CopyIcon } from "lucide-react";
 import { recordActivity } from "@/lib/pay/activity";
-import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import {
   computeEscrowCommitment,
   parseClaimRequest,
 } from "@/lib/pay/escrow";
+import {
+  commitmentFromSeed,
+  parseClaimV2Request,
+  type ClaimV2Request,
+} from "@/lib/pay/escrow-v2";
+import { claimEscrowV2, claimEscrowV2AsOwner } from "@/lib/privacy/escrow-claim-client";
+import { OWNERSHIP_MESSAGE } from "@/lib/privacy/eth712-account";
 import { claimFromEscrow } from "@/lib/starknet/actions";
 import { extractTxHash, formatStrk20Error } from "@/lib/starknet/errors";
 import { readEscrowEntry } from "@/lib/starknet/escrow";
-import { formatUsdc } from "@/lib/starknet/status";
+import {
+  escrowV2Status,
+  confirmEscrowV2Transaction,
+  readEscrowV2Entries,
+  readEscrowV2Entry,
+  type EscrowV2Entry,
+  type EscrowV2Status,
+} from "@/lib/starknet/escrow-v2";
+import { createProvider, formatUsdc } from "@/lib/starknet/status";
 import { getShieldToken } from "@/lib/starknet/tokens";
 
 export function ClaimPanel() {
   const searchParams = useSearchParams();
+  const { network } = useNetwork();
+  const [fragment, setFragment] = useState<string | null>(null);
+
+  useEffect(() => {
+    const readFragment = () => setFragment(window.location.hash);
+    const legacySeed = searchParams.get("k");
+    if (legacySeed && !window.location.hash) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("k");
+      url.hash = new URLSearchParams({ k: legacySeed }).toString();
+      window.history.replaceState(null, "", url);
+    }
+    readFragment();
+    window.addEventListener("hashchange", readFragment);
+    return () => window.removeEventListener("hashchange", readFragment);
+  }, [searchParams]);
+
+  const v2 = parseClaimV2Request(searchParams, network, fragment ?? "");
+  const v1 = v2 ? null : parseClaimRequest(searchParams, network);
+  if (fragment === null && !v1 && !searchParams.has("k")) {
+    return <p className="text-sm text-muted-foreground">Opening claim…</p>;
+  }
+  if (v2) return <ClaimV2Panel request={v2} />;
+  if (v1) return <ClaimV1Panel request={v1} />;
+  return <ClaimInvoiceInbox />;
+}
+
+function ClaimV2Panel({ request }: { request: ClaimV2Request }) {
+  const { network, setNetwork, starknet } = useNetwork();
+  /* A link's recipient may have no deployed account either. Ready X still
+     brings a session; MetaMask needs only its derived address, which exists
+     before the account does. */
+  const { session, evmConnectedAddress, evmStarknetAddress } = useTreasury();
+  const [claiming, setClaiming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<EscrowV2Status | null>(null);
+  const [claimTx, setClaimTx] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (request.network !== network) setNetwork(request.network);
+  }, [request.network, network, setNetwork]);
+
+  useEffect(() => {
+    if (!starknet.escrowV2) return;
+    let cancelled = false;
+    const commitment = commitmentFromSeed(request.seed);
+    void (async () => {
+      try {
+        const entry = await readEscrowV2Entry({
+          network: request.network,
+          commitment,
+        });
+        const now = BigInt(
+          (await createProvider(request.network).getBlock("latest")).timestamp,
+        );
+        if (!cancelled) setStatus(escrowV2Status(entry, now));
+      } catch {
+        // Leave status null until RPC answers.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [request, starknet.escrowV2]);
+
+  const payoutAddress = session?.address ?? evmStarknetAddress;
+
+  async function handleClaim() {
+    if (!payoutAddress) return;
+    setError(null);
+    setClaiming(true);
+    try {
+      const result = await claimEscrowV2({
+        network: request.network,
+        seed: request.seed,
+        destination: payoutAddress,
+      });
+      setClaimTx(result.transactionHash);
+      setConfirming(true);
+      const confirmation = await confirmEscrowV2Transaction({
+        network: request.network,
+        transactionHash: result.transactionHash,
+        commitment: commitmentFromSeed(request.seed),
+        expected: "claimed",
+      });
+      const amount =
+        request.amount ??
+        (status?.state === "claimable" ? formatUsdc(status.entry.amount) : "0");
+      recordActivity({
+        network: request.network,
+        kind: "receive",
+        source: "morok",
+        status: confirmation === "confirmed" ? "confirmed" : "pending",
+        amount,
+        amountRaw:
+          status?.state === "claimable" ? status.entry.amount.toString() : undefined,
+        label: "Claim V2",
+        address: payoutAddress,
+        txHash: result.transactionHash,
+      });
+      if (confirmation === "failed" || confirmation === "mismatch") {
+        throw new Error("The claim transaction did not close this escrow entry");
+      }
+      if (confirmation === "confirmed") setStatus({ state: "claimed" });
+      txToast({
+        title:
+          confirmation === "confirmed"
+            ? "USDC received"
+            : "Claim submitted — confirmation is still pending",
+        txHash: result.transactionHash,
+        explorerUrl: `${starknet.explorer}/tx/${result.transactionHash}`,
+        explorerLabel: "Voyager",
+      });
+    } catch (caught) {
+      setError(formatStrk20Error(caught, "pay"));
+    } finally {
+      setConfirming(false);
+      setClaiming(false);
+    }
+  }
+
+  const displayAmount =
+    status?.state === "claimable"
+      ? formatUsdc(status.entry.amount)
+      : request.amount
+        ? request.amount
+        : "…";
+
+  const blocked =
+    status?.state === "missing" ||
+    status?.state === "claimed" ||
+    status?.state === "refunded";
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium uppercase tracking-wider text-primary">
+          Sepolia test payment
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">Receive USDC</h1>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Connect MetaMask or Ready X. MorokPay pays the claim fee, so you need
+          no STRK. The payout arrives as public USDC on your Starknet account.
+        </p>
+      </div>
+      {!payoutAddress ? (
+        <Alert>
+          <AlertTitle>Connect a wallet to continue</AlertTitle>
+          <AlertDescription>
+            Use Connect EVM wallet at the top of the page. MorokPay pays the
+            claim fee, so the wallet needs no STRK and no Starknet setup.
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {!starknet.escrowV2 ? (
+        <Alert variant="destructive">
+          <AlertTitle>No escrow V2 on this network</AlertTitle>
+          <AlertDescription>Switch to Sepolia to claim this link.</AlertDescription>
+        </Alert>
+      ) : status?.state === "missing" ? (
+        <Alert variant="destructive">
+          <AlertTitle>Nothing parked under this link</AlertTitle>
+          <AlertDescription>
+            The sender may not have funded it yet, or this is the wrong network.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>{displayAmount} USDC</CardTitle>
+            <CardDescription>
+              {status?.state === "claimed"
+                ? "Received by the recipient."
+                : status?.state === "refunded"
+                  ? "Returned to the sender."
+                : status?.state === "claimable" && status.refundable
+                  ? "Still claimable. The sender can also reclaim now — first exit wins."
+                  : "Waiting in escrow. One MetaMask connection is enough."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not claim</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+          </CardContent>
+          <CardFooter className="border-t">
+            {session ? (
+              <Button
+                type="button"
+                size="lg"
+                className="min-h-10"
+                disabled={claiming || confirming || blocked || status === null}
+                aria-busy={claiming || confirming}
+                onClick={() => {
+                  void handleClaim();
+                }}
+              >
+                {claiming ? <Spinner data-icon="inline-start" /> : null}
+                {status?.state === "claimed"
+                  ? "Received"
+                  : status?.state === "refunded"
+                    ? "Returned to sender"
+                  : claiming
+                    ? confirming
+                      ? "Confirming"
+                      : "Submitting"
+                    : `Receive ${displayAmount} USDC`}
+              </Button>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Connect a wallet above to claim.
+              </p>
+            )}
+          </CardFooter>
+          {claimTx ? (
+            <CardFooter className="border-t">
+              <p className="text-sm text-muted-foreground">
+                Receipt:{" "}
+                <a
+                  className="underline underline-offset-4"
+                  href={`${starknet.explorer}/tx/${claimTx}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {`${claimTx.slice(0, 10)}…${claimTx.slice(-6)}`}
+                </a>
+              </p>
+            </CardFooter>
+          ) : null}
+        </Card>
+      )}
+    </div>
+  );
+}
+
+
+/**
+ * Where the money is going, and where it came from, both copyable.
+ *
+ * A recipient is being asked to trust a payout to an address they have never
+ * seen, derived from their own wallet by rules they did not pick. Showing both
+ * ends - the MetaMask they recognise and the Starknet account it produces -
+ * is what makes that checkable rather than a leap, and it is the same block
+ * /start already shows.
+ */
+function ClaimAddresses(props: { evmAddress: string; starknetAddress: string | null }) {
+  function copy(value: string, what: string) {
+    void navigator.clipboard
+      .writeText(value)
+      .then(() => toast.success(`${what} copied`))
+      .catch(() => toast.error("Could not copy the address"));
+  }
+
+  return (
+    <div className="rounded-xl bg-muted/40 px-3 py-3 ring-1 ring-foreground/10">
+      <p className="text-xs text-muted-foreground">Paying out to your Starknet account</p>
+      <div className="mt-1 flex items-start gap-2">
+        <p className="min-w-0 flex-1 break-all font-mono text-xs">
+          {props.starknetAddress ?? "deriving…"}
+        </p>
+        {props.starknetAddress ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="shrink-0"
+            aria-label="Copy your Starknet address"
+            title="Copy address"
+            onClick={() => copy(props.starknetAddress!, "Starknet address")}
+          >
+            <CopyIcon />
+          </Button>
+        ) : null}
+      </div>
+      <div className="mt-2 flex items-start gap-2">
+        <p className="min-w-0 flex-1 break-all font-mono text-xs text-muted-foreground">
+          from {props.evmAddress}
+        </p>
+        <Button
+          type="button"
+          size="icon"
+          variant="ghost"
+          className="shrink-0"
+          aria-label="Copy your EVM address"
+          title="Copy EVM address"
+          onClick={() => copy(props.evmAddress, "EVM address")}
+        >
+          <CopyIcon />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function ClaimInvoiceInbox() {
+  const { network, starknet } = useNetwork();
+  /* Not `session`: that only exists once the derived account is deployed, and
+     a recipient who has never used Starknet has no deployed account - which is
+     the entire population this page serves. The address is computable from the
+     EVM address alone, the invoice is indexed under it, and the claim route
+     deploys the account itself. Gating on a session hid every invoice from
+     exactly the wallet it was addressed to. */
+  const { evmConnectedAddress, evmStarknetAddress } = useTreasury();
+  const { signMessageAsync } = useSignMessage();
+  const { signTypedDataAsync } = useSignTypedData();
+  const { chainId: walletChainId } = useAccount();
+  const [items, setItems] = useState<
+    { commitment: string; entry: EscrowV2Entry; refundable: boolean }[]
+  >([]);
+  const [loading, setLoading] = useState(false);
+  const [claiming, setClaiming] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const canList =
+    Boolean(starknet.escrowV2) &&
+    Boolean(evmConnectedAddress) &&
+    Boolean(evmStarknetAddress);
+
+  useEffect(() => {
+    if (!canList || !evmStarknetAddress) {
+      setItems([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      try {
+        const commitments = await readEscrowV2Entries({
+          network,
+          owner: evmStarknetAddress,
+          limit: 20,
+        });
+        const now = BigInt((await createProvider(network).getBlock("latest")).timestamp);
+        const next: { commitment: string; entry: EscrowV2Entry; refundable: boolean }[] = [];
+        const entries = await Promise.all(
+          commitments.map((commitment) => readEscrowV2Entry({ network, commitment })),
+        );
+        for (let index = 0; index < commitments.length; index += 1) {
+          const commitment = commitments[index];
+          const entry = entries[index] ?? null;
+          const status = escrowV2Status(entry, now);
+          if (status.state === "claimable") {
+            next.push({
+              commitment,
+              entry: status.entry,
+              refundable: status.refundable,
+            });
+          }
+        }
+        if (!cancelled) setItems(next);
+      } catch (caught) {
+        if (!cancelled) setError(formatStrk20Error(caught, "pay"));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [canList, network, evmStarknetAddress]);
+
+  async function handleClaim(commitment: string) {
+    if (!evmConnectedAddress || !evmStarknetAddress) return;
+    setError(null);
+    setClaiming(commitment);
+    try {
+      const result = await claimEscrowV2AsOwner({
+        network,
+        commitment,
+        /* The payout is an ERC-20 transfer, and an address needs no code to
+           hold one, so this works whether or not the account exists yet. */
+        destination: evmStarknetAddress,
+        evmAddress: evmConnectedAddress,
+        starknetAddress: evmStarknetAddress,
+        evmChainId: walletChainId ?? 1,
+        signTypedData: (data) =>
+          signTypedDataAsync(data as Parameters<typeof signTypedDataAsync>[0]),
+        signMessage: (message) => signMessageAsync({ message }),
+      });
+      const confirmation = await confirmEscrowV2Transaction({
+        network,
+        transactionHash: result.transactionHash,
+        commitment,
+        expected: "claimed",
+      });
+      if (confirmation === "failed" || confirmation === "mismatch") {
+        throw new Error("The claim transaction did not close this escrow entry");
+      }
+      if (confirmation === "confirmed") {
+        setItems((prev) => prev.filter((item) => item.commitment !== commitment));
+      }
+      recordActivity({
+        network,
+        kind: "receive",
+        source: "morok",
+        status: confirmation === "confirmed" ? "confirmed" : "pending",
+        amount: "invoice",
+        label: "Claim invoice V2",
+        address: evmStarknetAddress,
+        txHash: result.transactionHash,
+      });
+      txToast({
+        title:
+          confirmation === "confirmed"
+            ? "USDC received"
+            : "Claim submitted — confirmation is still pending",
+        txHash: result.transactionHash,
+        explorerUrl: `${starknet.explorer}/tx/${result.transactionHash}`,
+        explorerLabel: "Voyager",
+      });
+    } catch (caught) {
+      setError(formatStrk20Error(caught, "pay"));
+    } finally {
+      setClaiming(null);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-2">
+        <p className="text-xs font-medium uppercase tracking-wider text-primary">
+          Sepolia test payments
+        </p>
+        <h1 className="text-3xl font-semibold tracking-tight">Receive USDC</h1>
+        <p className="max-w-prose text-sm text-muted-foreground">
+          Connect the MetaMask address the sender paid. MorokPay finds its
+          invoices and pays the claim fee. USDC arrives on Starknet.
+        </p>
+      </div>
+      {!evmConnectedAddress ? (
+        <Alert>
+          <AlertTitle>Connect a wallet to continue</AlertTitle>
+          <AlertDescription>
+            Use Connect EVM wallet at the top of the page. MorokPay pays the
+            claim fee, so the wallet needs no STRK and no Starknet setup.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <ClaimAddresses
+          evmAddress={evmConnectedAddress}
+          starknetAddress={evmStarknetAddress}
+        />
+      )}
+
+      {!starknet.escrowV2 ? (
+        <Alert variant="destructive">
+          <AlertTitle>No escrow V2 on this network</AlertTitle>
+          <AlertDescription>Switch to Sepolia to claim.</AlertDescription>
+        </Alert>
+      ) : !evmConnectedAddress ? (
+        <Alert>
+          <AlertTitle>Connect MetaMask for invoices</AlertTitle>
+          <AlertDescription>
+            Indexed invoices are claimed with the recipient MetaMask. Ready X
+            can still redeem bearer links that include a seed.
+          </AlertDescription>
+        </Alert>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Waiting for you</CardTitle>
+            <CardDescription>
+              Indexed parks for this MetaMask. Connect the wallet the sender
+              paid.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            {error ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not claim</AlertTitle>
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            ) : null}
+            {!evmConnectedAddress ? (
+              <p className="text-sm text-muted-foreground">Connect above to see invoices.</p>
+            ) : loading ? (
+              <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Spinner /> Looking up indexed entries…
+              </p>
+            ) : items.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nothing waiting for this wallet. If you have a claim link, open
+                it instead.
+              </p>
+            ) : (
+              <ul className="flex flex-col gap-3">
+                {items.map((item) => (
+                  <li
+                    key={item.commitment}
+                    className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">
+                        {formatUsdc(item.entry.amount)} USDC
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.refundable
+                          ? "Still claimable · sender can also reclaim"
+                          : "Claimable"}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      disabled={claiming !== null}
+                      aria-busy={claiming === item.commitment}
+                      onClick={() => {
+                        void handleClaim(item.commitment);
+                      }}
+                    >
+                      {claiming === item.commitment ? (
+                        <Spinner data-icon="inline-start" />
+                      ) : null}
+                      {claiming === item.commitment ? "Claiming" : "Claim"}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function ClaimV1Panel({
+  request,
+}: {
+  request: NonNullable<ReturnType<typeof parseClaimRequest>>;
+}) {
   const { network, setNetwork, starknet } = useNetwork();
   const {
     session,
@@ -45,7 +593,6 @@ export function ClaimPanel() {
     signatureProgress,
   } = useTreasury();
   const { signMessageAsync } = useSignMessage();
-  const request = parseClaimRequest(searchParams, network);
   const [claiming, setClaiming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [onChainAmount, setOnChainAmount] = useState<bigint | null>(null);
@@ -82,15 +629,6 @@ export function ClaimPanel() {
     };
   }, [request, network, starknet.escrow]);
 
-  /**
-   * Create the claimer's Starknet account, on MorokPay.
-   *
-   * This used to send them to /start, which is the wrong door: that flow
-   * exists for somebody funding themselves and opens by asking for two
-   * dollars of USDC to bridge. A claimer is not funding anything - the money
-   * is already parked - so the only step they need is the deploy, and the
-   * commitment is what tells the server to pay for it.
-   */
   async function handleCreateAccount() {
     if (!request || !evmConnectedAddress) return;
     setError(null);
@@ -126,10 +664,6 @@ export function ClaimPanel() {
     setClaiming(true);
     try {
       const usdc = getShieldToken("usdc", network);
-      /* On the EVM rail a claimer who has never touched Starknet can be
-         registered inside this same action set, and MorokPay submits and pays
-         for it - so collecting needs no STRK and no Starknet wallet. Ready X
-         registers itself and pays its own way, so neither applies there. */
       const sponsored = session.kind === "evm";
       const response = await claimFromEscrow(
         session.account,
@@ -155,8 +689,6 @@ export function ClaimPanel() {
         txHash,
       });
       setClaimed(true);
-      /* The toast goes away and the receipt is the one thing a claimer may
-         want an hour later, so it stays on the card too. */
       if (txHash) setClaimTx(txHash);
       if (txHash) {
         txToast({
@@ -168,10 +700,6 @@ export function ClaimPanel() {
       } else {
         toast.success("Claimed into your private wallet");
       }
-      /* Claiming registers the account, so the session's own idea of whether
-         privacy is on is now stale - reconnecting re-reads it from the chain.
-         Without this the sidebar keeps offering "Activate privacy" for an
-         account the pool has already registered. */
       await connectEvm();
       await refreshBalances({ private: true });
     } catch (caught) {
@@ -181,9 +709,6 @@ export function ClaimPanel() {
     }
   }
 
-  /* The gate is the context's own read of the chain, so this button appears
-     for exactly the wallet that cannot claim yet and disappears once the
-     deploy lands. */
   const needsAccount =
     Boolean(evmConnectedAddress) && evmGate?.reason === "undeployed";
 
@@ -205,8 +730,15 @@ export function ClaimPanel() {
           pays its own way.
         </p>
       </div>
-      <TestnetHint />
-      {!session ? <ConnectWalletChoices sponsored /> : null}
+      {!session ? (
+        <Alert>
+          <AlertTitle>Connect a wallet to continue</AlertTitle>
+          <AlertDescription>
+            Use Connect EVM wallet at the top of the page. MorokPay pays the
+            claim fee, so the wallet needs no STRK and no Starknet setup.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       {!request ? (
         <Alert>
@@ -264,9 +796,6 @@ export function ClaimPanel() {
                         : "Claiming"
                       : "Claim into private USDC"}
                 </Button>
-                {/* One STRK20 action costs several wallet prompts and a proof
-                    that takes its own time, and unexplained silence between
-                    them reads as a hang. Name the step. */}
                 {claiming ? (
                   <p className="text-xs text-muted-foreground">
                     {signatureProgress

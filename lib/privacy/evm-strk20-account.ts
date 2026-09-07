@@ -38,6 +38,7 @@ import {
   namesRecipient,
   normalizeCall,
   relaySubmission,
+  type RelayableCall,
 } from "@/lib/privacy/relay-client";
 import {
   eth712OutsideExecutionTypedData,
@@ -82,6 +83,10 @@ export type Strk20SubmitOptions = {
    * this: the whole point is that the claimer holds no STRK.
    */
   relay?: boolean;
+  /** Prepare in the browser, then atomically submit with escrow authorization. */
+  submitPrepared?: (request: {
+    call: RelayableCall; proof: string; proofFacts: string[];
+  }) => Promise<{ transaction_hash: string }>;
 };
 
 /** Which wallet prompt is on screen, so the UI can explain the sequence. */
@@ -595,6 +600,13 @@ export function createEvmStrk20Account(options: {
       const relayable = normalizeCall(
         callAndProof.call as Parameters<typeof normalizeCall>[0],
       );
+      if (submit?.submitPrepared) {
+        reviseRunTotal(0);
+        return submit.submitPrepared({
+          call: relayable, proof: callAndProof.proof.data,
+          proofFacts: callAndProof.proof.proofFacts.map(String),
+        });
+      }
       /* Decided from the proven call rather than from the SDK's view of
          whether a channel is missing: the address either is in this calldata
          or it is not, and that is the leak itself rather than a prediction of

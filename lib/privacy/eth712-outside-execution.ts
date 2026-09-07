@@ -119,3 +119,26 @@ export function outsideExecutionCalldata(intent: OutsideExecutionIntent) {
     })),
   };
 }
+
+/** Full `execute_from_outside_v2` calldata: OutsideExecution struct + signature felts. */
+export function packOutsideExecutionCalldata(
+  intent: OutsideExecutionIntent,
+  signatureFelts: string[],
+): string[] {
+  const struct = outsideExecutionCalldata(intent);
+  return [
+    struct.caller,
+    struct.nonce,
+    struct.execute_after,
+    struct.execute_before,
+    num.toHex(struct.calls.length),
+    ...struct.calls.flatMap((call) => [
+      call.to,
+      call.selector,
+      num.toHex(call.calldata.length),
+      ...call.calldata,
+    ]),
+    num.toHex(signatureFelts.length),
+    ...signatureFelts,
+  ];
+}

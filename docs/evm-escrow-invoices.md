@@ -1,5 +1,10 @@
 # Escrow invoices for an EVM address
 
+> Historical design below. Read [escrow-v2-handoff.md](escrow-v2-handoff.md)
+> for the current implementation. The 2026-09-06 revision replaces public
+> refunds with independent recovery keys and private notes. The older
+> sender-address refund instructions below must not be implemented.
+
 Status: designed 2026-09-03, **not built** - but every mechanism it depends on
 has now been run end to end on Sepolia, by
 [escrow-rail-probe.mjs](../scripts/escrow-rail-probe.mjs) and

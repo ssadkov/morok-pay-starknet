@@ -18,7 +18,7 @@ const STEPS = [
   {
     id: 3,
     title: "Shield into STRK20",
-    body: "Deposit public USDC or strkBTC into the shared pool. The amount is public; the remaining notes stay private.",
+    body: "Deposit public USDC or strkBTC into the shared pool. The deposit itself is public; everything you do with it afterwards is not.",
   },
   {
     id: 4,

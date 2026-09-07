@@ -9,6 +9,31 @@ Figures are mainnet measurements unless marked otherwise, priced at
 **$0.0263/STRK** (AVNU, both directions, 2026-08-31). Repricing is the first
 thing to do before quoting any dollar figure here.
 
+> **Stale price.** AVNU quoted 1 USDC -> 32.08 STRK on 2026-09-07, which is
+> **$0.0312/STRK**. Every dollar figure below is therefore about 19% low. The
+> STRK amounts are the measurements and still hold.
+
+## Onboarding, end to end
+
+What one new user costs MorokPay, from an EVM wallet with nothing on Starknet:
+
+| | |
+| --- | --- |
+| Deliver the bridged USDC on Starknet | ~1 STRK |
+| Deploy their Starknet account | ~1 STRK |
+| **Total to us** | **~2 STRK, about 6 cents** |
+
+Everything else on the way in is theirs: Circle's 10 bps, up to 0.35 USDC of
+paymaster gas taken out of the swap, and 8.68-10.72 STRK to register with the
+pool. They arrive holding roughly 32 STRK bought with 1 USDC, against a 15
+STRK floor, so the margin on that step is wide - it would take STRK reaching
+about $0.066 for a dollar to stop covering the floor.
+
+Cheap per head, but the relayer still has to hold real money: the escrow and
+donation paths refuse to submit unless the balance clears **18 STRK** (the
+6 STRK pool fee plus the 12 STRK gas cap) before each transaction, so the
+binding number is that floor, not the ~2 STRK an onboarding actually spends.
+
 Two costs get confused constantly, so they are separate columns throughout:
 
 - **pool fee** — a flat **6 STRK**, published by the pool itself

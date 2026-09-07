@@ -23,6 +23,10 @@ const NETWORKS = {
     defaultRpc: "https://rpc.starknet.lava.build",
     pool: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
     usdc: "0x033068F6539f8e6e6b131e6B2B814e6c34A5224bC66947c47DaB9dFeE93b35fb",
+    /* Second shield token, mainnet only - mirrors STRKBTC_ADDRESS in
+       lib/starknet/tokens.ts. Sepolia has no deployment, so a Sepolia
+       constructor must not list it. */
+    strkbtc: "0x0787150e306e6EaE6E3f79dEA881770E8bbFF2c1b8EB490F969669EE945b3135",
     explorer: "https://voyager.online",
   },
 };

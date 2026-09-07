@@ -85,14 +85,16 @@ const STEPS: { id: StepId; title: string; detail: string }[] = [
   },
   {
     id: "strk",
-    title: "Buy the STRK activation costs",
+    title: "Buy STRK for activation",
     detail: "About 1 USDC. The swap pays its own gas, so you need no STRK to do it.",
   },
   {
     id: "activate",
-    title: "Activate privacy",
+    /* Ending the way in on the name of a chore left the reader with no idea
+       what they had just spent four steps and two dollars on. */
+    title: "Activate privacy, and start receiving",
     detail:
-      "A one-time pool registration, 9 to 11 STRK depending on gas, paid by your account.",
+      "A one-time pool registration, 9 to 11 STRK depending on gas, paid by your account. After it you can hold private USDC, send it to any EVM wallet, and take donations by QR.",
   },
 ];
 
@@ -359,19 +361,37 @@ export function StartPanel() {
     }
   }
 
+  /* The bridge step used to offer a full-width primary button to a wallet
+     holding nothing on Base. Pressing it asked for a network switch and then
+     failed on the balance check, which is a bad first thing to happen to
+     somebody who has just arrived. `undefined` means the balance has not
+     loaded, and is not a reason to block anything. */
+  let parsedAmount: bigint | null = null;
+  try {
+    parsedAmount = amount.trim() ? parseUsdc(amount.trim()) : null;
+  } catch {
+    parsedAmount = null;
+  }
+  const shortOnBase =
+    current === "bridge" &&
+    baseBalance !== undefined &&
+    (parsedAmount === null || baseBalance < parsedAmount);
+
   const action =
     current === "done" ? null : (
       <Button
         type="button"
         size="lg"
         className="min-h-12 w-full"
-        disabled={Boolean(busy)}
+        disabled={Boolean(busy) || shortOnBase}
         aria-busy={Boolean(busy)}
         onClick={() => void run(current)}
       >
         {busy ? <Spinner data-icon="inline-start" /> : null}
         {current === "bridge"
-          ? "Send USDC from Base"
+          ? shortOnBase
+            ? "Not enough USDC on Base"
+            : "Send USDC from Base"
           : current === "deploy"
             ? "Create my account"
             : current === "strk"
@@ -496,10 +516,9 @@ export function StartPanel() {
                                   {baseBalance !== undefined
                                     ? `${formatUsdc(baseBalance)} USDC on Base in this wallet. `
                                     : ""}
-                                  Two dollars covers activation and a
-                                  withdrawal later. Already hold USDC on
-                                  Starknet? Send it to the address above
-                                  instead - this screen will notice.
+                                  {shortOnBase
+                                    ? "Send USDC to the Starknet address above from an exchange instead - this screen will notice - or fund this wallet on Base first."
+                                    : "Two dollars covers activation and a withdrawal later. Already hold USDC on Starknet? Send it to the address above instead - this screen will notice."}
                                 </FieldDescription>
                               </Field>
                             ) : null}
@@ -521,13 +540,23 @@ export function StartPanel() {
                 <AlertTitle>Ready</AlertTitle>
                 <AlertDescription className="flex flex-col gap-3">
                   <span>
-                    This account can receive private USDC. Publish a donation
-                    QR of your own, or open someone else&apos;s link to pay it.
+                    This account holds private USDC now. Send some to any EVM
+                    wallet, publish a donation QR of your own, or open someone
+                    else&apos;s link to pay it.
                   </span>
                   <span className="flex flex-wrap gap-2">
                     <Button
                       type="button"
                       size="sm"
+                      nativeButton={false}
+                      render={<Link href="/stash" />}
+                    >
+                      Send privately
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
                       nativeButton={false}
                       render={<Link href="/sell" />}
                     >

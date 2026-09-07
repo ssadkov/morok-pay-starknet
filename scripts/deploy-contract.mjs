@@ -23,12 +23,25 @@ const network = resolveNetwork(process.argv.find((item, index) => index > 2 && !
 const SUBMIT = process.argv.includes("--submit");
 
 /* Minimums are per token because one number cannot serve both: USDC has six
-   decimals and STRK eighteen. A token left out has no floor, which defeats the
-   floor's purpose - the sponsored account deploy is granted on any funded
-   unclaimed entry, whatever the token - so list every token the app accepts. */
+   decimals, strkBTC eight and STRK eighteen. A token left out has no floor,
+   which defeats the floor's purpose - the sponsored account deploy is granted
+   on any funded unclaimed entry, whatever the token - so list every token the
+   app accepts.
+
+   There is no setter: the constructor is the only place a floor is ever
+   written, and it refuses to overwrite one. A token missing here can never be
+   parked in this contract, on any future version of the UI, without a fresh
+   deployment at a new address. So list tokens the app could plausibly grow
+   into, not only the ones /stash parks today - an unused floor costs one
+   storage write, a missing one costs a redeployment.
+
+   Roughly a dollar each, which is the point: the floor only has to outweigh
+   the gas the relayer sponsors for an unclaimed entry. */
 const MINIMUMS = [
   [network.usdc, 1_000_000n],                    // 1 USDC
   [STRK, 5n * 10n ** 18n],                       // 5 STRK
+  // strkBTC is mainnet-only; Sepolia would be given a zero address here.
+  ...(network.strkbtc ? [[network.strkbtc, 1_000n]] : []), // 0.00001 strkBTC
 ];
 
 const CONTRACTS = {
@@ -126,7 +139,7 @@ Dry run - nothing was submitted.${
   process.exit(0);
 }
 
-const result = await account.declareAndDeploy(payload);
+const result = await account.declareAndDeploy(payload, { tip: 0n });
 
 const classHash = result.declare.class_hash;
 const address = result.deploy.contract_address ?? result.deploy.address;

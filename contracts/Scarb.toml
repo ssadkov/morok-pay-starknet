@@ -15,6 +15,8 @@ cairo_test = "2.12.0"
 [scripts]
 test = "scarb cairo-test"
 
+[lib]
+
 [[target.starknet-contract]]
 sierra = true
 casm = true
