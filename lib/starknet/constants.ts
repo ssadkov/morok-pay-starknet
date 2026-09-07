@@ -1,9 +1,18 @@
 import { defaultAppNetwork, type AppNetwork } from "@/lib/network";
 
 const MAINNET = {
+  /* Was rpc.starknet.lava.build until it started answering 410 "This endpoint
+     has been discontinued" on 2026-09-07, which reached the browser as a bare
+     "Failed to fetch" and left /start deriving forever.
+
+     Anything put here has to work *from the browser*, which rules out more
+     endpoints than it looks: mainnet.nodes.starknet.org serves the same spec
+     0.10.2 but answers 405 to the CORS preflight, so it is fine for scripts
+     and the relayer and useless to the app. Cartridge sends
+     Access-Control-Allow-Origin: * and is already the Sepolia provider here. */
   rpc:
     process.env.NEXT_PUBLIC_STARKNET_RPC_URL ??
-    "https://rpc.starknet.lava.build",
+    "https://api.cartridge.gg/x/starknet/mainnet",
   explorer: "https://voyager.online",
   usdc: "0x033068F6539f8e6e6b131e6B2B814e6c34A5224bC66947c47DaB9dFeE93b35fb",
   pool: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",

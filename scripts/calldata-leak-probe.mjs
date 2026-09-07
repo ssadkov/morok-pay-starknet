@@ -25,7 +25,7 @@
 import { readFile } from "node:fs/promises";
 import { hash } from "starknet";
 
-const RPC = process.env.PROBE_RPC_URL ?? "https://rpc.starknet.lava.build";
+const RPC = process.env.PROBE_RPC_URL ?? "https://api.cartridge.gg/x/starknet/mainnet";
 const POOL =
   process.env.PROBE_POOL_ADDRESS ??
   "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a";
