@@ -46,7 +46,7 @@ never the entry's refund owner. The amount, the recipient and the expiry are
 public on chain by design, and the README says so rather than letting "private"
 cover more than it does.
 
-Verified: 12 Foundry contract tests, a 12-of-12 on-chain probe and a live claim
+Verified: 12 Starknet Foundry contract tests, a 12-of-12 on-chain probe and a live claim
 on Sepolia, with the mainnet contract deployed and read back. Design, measured
 costs and the Privacy Cash comparison are in
 [docs/evm-escrow-invoices.md](docs/evm-escrow-invoices.md).
@@ -224,8 +224,9 @@ rank from the published seed and entry-list hash.
   cannot be relayed). The research behind it is in
   [docs/funded-onboarding.md](docs/funded-onboarding.md).
 - Escrow V2 is deployed on both networks and wired into `/stash` and `/claim`.
-  A live claim has run on Sepolia; the mainnet contract is deployed and read
-  back but its first claim is more recent than this list.
+  A live claim has run on Sepolia, and three mainnet transactions ran through
+  the contract the same afternoon it was deployed; their hashes are in
+  `strk20.json`.
 
 ## Roadmap
 
@@ -263,8 +264,9 @@ npm run dev
 ```
 
 The app has working RPC defaults. Copy `.env.example` to `.env.local` when you
-need to override RPC endpoints or configure the server-only Sepolia deployment
-relayer. Never expose its private key through a `NEXT_PUBLIC_` variable.
+need to override RPC endpoints or configure the server-only deployment
+relayers - Sepolia's sponsors new accounts, mainnet's only pays its own gas.
+Never expose a relayer private key through a `NEXT_PUBLIC_` variable.
 
 ```bash
 npm test
