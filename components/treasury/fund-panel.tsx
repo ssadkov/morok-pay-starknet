@@ -137,6 +137,7 @@ export function FundPanel() {
         currentChainId: chainId,
         allowance: allowance as bigint | undefined,
         baseBalance: baseUsdc as bigint | undefined,
+        account: address,
         switchChain: (id) => switchChainAsync({ chainId: id }),
         writeContract: (config) => writeContractAsync(config as never),
         onProgress: setBusy,

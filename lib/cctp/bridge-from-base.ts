@@ -1,5 +1,5 @@
-import { zeroHash, type Address, type Hex } from "viem";
-import { waitForTransactionReceipt } from "wagmi/actions";
+import { encodeFunctionData, zeroHash, type Address, type Hex } from "viem";
+import { estimateGas, waitForTransactionReceipt } from "wagmi/actions";
 
 import { waitForAttestation } from "@/lib/cctp/attestation";
 import { starkAddressToBytes32 } from "@/lib/cctp/bytes";
@@ -40,7 +40,49 @@ type WriteContract = (config: {
   functionName: string;
   args: readonly unknown[];
   chainId: number;
+  gas?: bigint;
 }) => Promise<Hex>;
+
+/**
+ * Estimate through this app's own transport, so the wallet never has to guess.
+ *
+ * MetaMask fills the gas limit itself when a dapp does not send one, and when
+ * its own estimate fails it fills a number instead of an error: a real burn
+ * that costs 119,564 gas went out asking for 140,000,000, and Base's RPC
+ * rejected it for exceeding a 25,000,000 per-transaction cap. Nothing was
+ * wrong with the call - estimating the identical calldata against two public
+ * Base nodes returned 0x1d30c both times.
+ *
+ * Returns undefined rather than throwing: an estimate that fails here should
+ * fall back to the wallet's own behaviour, not stop the bridge.
+ */
+async function estimateStep(args: {
+  chainId: BaseChainId;
+  account: Address | undefined;
+  to: Address;
+  abi: readonly unknown[];
+  functionName: string;
+  callArgs: readonly unknown[];
+}): Promise<bigint | undefined> {
+  if (!args.account) return undefined;
+  try {
+    const estimated = await estimateGas(wagmiConfig, {
+      chainId: args.chainId,
+      account: args.account,
+      to: args.to,
+      data: encodeFunctionData({
+        abi: args.abi,
+        functionName: args.functionName,
+        args: args.callArgs,
+      } as Parameters<typeof encodeFunctionData>[0]),
+    });
+    // Half again, because the estimate is taken a block or two before the
+    // transaction lands and an approval in between changes the cost.
+    return (estimated * BigInt(3)) / BigInt(2);
+  } catch {
+    return undefined;
+  }
+}
 
 export type BridgeResult = {
   /** The burn on Base. */
@@ -67,6 +109,8 @@ export async function bridgeUsdcFromBase(args: {
   /** Checked before anything is signed, when the caller knows it. */
   baseBalance?: bigint;
   switchChain: (chainId: number) => Promise<unknown>;
+  /** The sender, used only to estimate gas before the wallet is asked. */
+  account?: Address;
   writeContract: WriteContract;
   onProgress?: (step: string) => void;
   onBurn?: (hash: Hex) => void;
@@ -107,6 +151,14 @@ export async function bridgeUsdcFromBase(args: {
       functionName: "approve",
       args: [args.messenger, args.amount],
       chainId: args.baseChainId,
+      gas: await estimateStep({
+        chainId: args.baseChainId,
+        account: args.account,
+        to: args.usdc,
+        abi: erc20Abi,
+        functionName: "approve",
+        callArgs: [args.messenger, args.amount],
+      }),
     });
     await waitForTransactionReceipt(wagmiConfig, {
       hash: approveHash,
@@ -115,11 +167,7 @@ export async function bridgeUsdcFromBase(args: {
   }
 
   progress("Send USDC from Base");
-  const burnHash = await args.writeContract({
-    address: args.messenger,
-    abi: tokenMessengerV2Abi,
-    functionName: "depositForBurn",
-    args: [
+  const burnArgs = [
       args.amount,
       CCTP_DOMAIN_STARKNET,
       starkAddressToBytes32(args.destination),
@@ -127,8 +175,23 @@ export async function bridgeUsdcFromBase(args: {
       zeroHash,
       maxFee,
       CCTP_FINALITY_FAST,
-    ],
+  ] as const;
+  const burnHash = await args.writeContract({
+    address: args.messenger,
+    abi: tokenMessengerV2Abi,
+    functionName: "depositForBurn",
+    args: burnArgs,
     chainId: args.baseChainId,
+    /* Estimated after the approval has a receipt, so the allowance the burn
+       needs is already on chain and the estimate is of the real call. */
+    gas: await estimateStep({
+      chainId: args.baseChainId,
+      account: args.account,
+      to: args.messenger,
+      abi: tokenMessengerV2Abi,
+      functionName: "depositForBurn",
+      callArgs: burnArgs,
+    }),
   });
   args.onBurn?.(burnHash);
   await waitForTransactionReceipt(wagmiConfig, {
