@@ -292,8 +292,8 @@ export function SellPanel() {
         steps={[
           {
             id: "ready",
-            title: "Connect Ready X or EVM wallet",
-            body: "The connected wallet must control the signing key and its private viewing key.",
+            title: "Connect an EVM wallet",
+            body: "MetaMask or any injected EVM wallet - Ready X works too. Whichever you connect must control the signing key and its private viewing key.",
             status: session ? "done" : "current",
             children: session ? null : <ConnectWalletChoices />,
           },
