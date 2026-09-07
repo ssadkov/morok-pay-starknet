@@ -213,6 +213,9 @@ My QR, донатная ссылка с пустой суммой, скачат�
 
 ## Английская версия
 
+Готовый текст ниже, в разделе **English cut**. Заметки ниже относятся к расширению донатной
+версии и в снятый вариант не вошли.
+
 Снимать после русской, тем же порядком. Что стоит добавить, если решишь
 расширять: пункт 5 усилить вторым окном с транзакцией *нерелеенного* первого
 перевода — видно, как выглядит та же операция, когда связку никто не разрывает.
@@ -222,3 +225,259 @@ My QR, донатная ссылка с пустой суммой, скачат�
 Starknet, который валидирует эфирную подпись. Для англоязычной аудитории это
 самостоятельно интересная вещь, и она попадает в разговор про нативный account
 abstraction, который сейчас идёт в экосистеме.
+
+---
+
+# English cut — spoken text
+
+Written to be read aloud, in four takes so any one of them can be redone
+without the others. Numbers measured 2026-09-07 unless marked; reprice before
+publishing if more than a week passes.
+
+## Intro — talking head, no screen (~30 s)
+
+> Hi, I'm Sergei. I built MorokPay.
+>
+> We ran a giveaway on Starknet. Sending the money privately was the easy part.
+> Receiving it was not. People had to install a Starknet wallet, write down
+> another seed phrase, and find a gas token. Out of everyone we tried to pay,
+> four people made it through.
+>
+> So we stopped asking them to change wallets, and built for the one they
+> already had.
+>
+> MorokPay is a privacy layer on top of STRK20, Starknet's privacy pool. Anyone
+> with an Ethereum wallet can send private USDC and take private donations —
+> no new wallet, no gas token.
+>
+> Today it runs on Base. Any chain Circle's CCTP reaches works the same way:
+> the privacy layer never sees which chain the money came from.
+>
+> Everything you're about to see is on mainnet, with real money.
+
+**The four is the whole argument** - a real number from a real giveaway, and
+more persuasive than any adjective about friction. Be sure of it before saying
+it on camera; it is a public claim about your own campaign.
+
+**On CCTP.** "Runs on any chain CCTP reaches" is a claim about the design, not
+about what is deployed, and it is true for a specific reason worth knowing if
+asked: CCTP delivers native USDC to Starknet whatever chain it was burned on,
+so the privacy layer is downstream of the difference. Adding a chain is a
+config table, a chain picker, and a live run - not a redesign. Do not let it
+slide into "we support every chain" in the present tense.
+
+## Part 1 — getting in (~2 min)
+
+**[Landing page, nothing connected]**
+
+> This is MorokPay. It sends private USDC on Starknet — to anyone who has an
+> Ethereum wallet.
+>
+> I'm going to send some. First I have to get set up. Watch how much Starknet
+> knowledge this takes: none.
+
+**[Connect EVM wallet, MetaMask popup]**
+
+> This is MetaMask. Not a Starknet wallet. MetaMask.
+>
+> I have three dollars of USDC on Base, and a little ETH for gas. That's
+> everything I own here.
+
+**[/start, point at the derived address]**
+
+> And this is my Starknet account.
+>
+> I didn't create it. No new seed phrase, no second wallet to install, no Snap.
+> It's derived from my Ethereum address, and it only accepts what my MetaMask
+> signs. MorokPay holds no key to it.
+
+**[Step 1, bridge]**
+
+> Four steps. Each one tells you who pays for it.
+>
+> First, get the USDC onto Starknet. This is Circle's CCTP — burned on Base,
+> minted on Starknet. MorokPay pays to deliver it.
+
+**[Step 2, create account]**
+
+> Second, create the account. I sign a message. That's free, and nothing is
+> sent to Ethereum. MorokPay deploys it and pays the gas — about one STRK,
+> three cents.
+
+**[Step 3, buy STRK]**
+
+> Third, I need STRK for the last step. I have zero STRK.
+>
+> So the swap pays for itself. AVNU takes its gas out of the USDC I'm selling.
+> One dollar buys about thirty-two STRK.
+>
+> That's the part people don't expect: your first Starknet transaction, holding
+> no Starknet gas at all.
+
+**[Step 4, activate]**
+
+> Fourth, activate privacy. This one I pay for — a one-time registration with
+> the STRK20 pool. Around ten STRK, about thirty cents.
+>
+> This one can't be sponsored. It carries a proof that my own account has to
+> submit.
+
+**[Done state]**
+
+> And that's it. From an Ethereum wallet and nothing else.
+>
+> One more thing before I can send. This USDC is still public — anyone can see
+> it. I need to move it into the pool. That's a shield, and it takes about ten
+> blocks to settle. I'll start that now, and pick it up in the next part.
+>
+> And keep this in mind for part three: everything you just watched is the
+> **sender's** setup. The person receiving the money does none of it.
+
+## Part 2 — sending (~2 min)
+
+**[Balances card]**
+
+> Picking up where I left off. My account is set up, and I have about a dollar
+> ninety of USDC on Starknet. But it's public — sitting in the open, anyone can
+> look it up.
+>
+> So first I shield it. That moves it into the STRK20 pool. From here on, what
+> I do with it doesn't show up on the ledger.
+>
+> This one costs me. About eleven STRK, thirty-five cents — six of that is the
+> pool's own fee, not ours.
+
+**[Shield USDC, MetaMask popup]**
+
+> And look at what signing this takes. It's MetaMask. It's a signature. There's
+> no Starknet wallet anywhere in this.
+
+**[cut over the wait]**
+
+> Fresh deposits need about ten blocks before the pool will let them move.
+> That's done.
+
+**[/stash]**
+
+> Now, sending. Two ways: a one-time link anyone can open, or straight to a
+> specific wallet. I'll do the second — it's the more interesting one.
+
+**[Pay a MetaMask tab, paste the recipient address]**
+
+> This is a different wallet. It's Phantom, not MetaMask — and it holds nothing
+> on Starknet. No account, no STRK, nothing. Just an Ethereum address.
+>
+> I paste it in, and MorokPay works out which Starknet account that address
+> controls. That account doesn't exist yet. It doesn't need to.
+
+**[Amount, expiry]**
+
+> One dollar. And a deadline — after it, if nobody has collected, I can take it
+> back. Collecting never stops working; the deadline only opens a door for me.
+
+**[Recovery file]**
+
+> This is my recovery file. It's the only way I could reclaim this, it's mine
+> alone, and it never goes anywhere near the recipient.
+
+**[Park, then the receipt]**
+
+> ...and it's parked.
+>
+> Here's the part I like. **I have nothing to send them.** No link, no code, no
+> message. The money is addressed to their wallet. They open the app, connect,
+> and it's there.
+>
+> That's part three.
+
+## Part 3 — collecting, and the close (~75 s)
+
+**[Phantom, the claim lands]**
+
+> That's it. That wallet had nothing on Starknet a minute ago — no account, no
+> STRK, no gas. It signed once, and the money is there.
+>
+> And nobody sent it a link. Nobody sent it anything at all.
+
+**[Why it is possible]**
+
+> The reason this works is account abstraction, and on Starknet it's native —
+> not a bolt-on.
+>
+> That Starknet account is a contract, and its rule is simple: accept whatever
+> this one Ethereum address has signed. So MetaMask, Phantom, any EVM wallet
+> becomes a Starknet account without knowing Starknet exists. No new seed
+> phrase. No snap. No bridge the user has to trust.
+>
+> We're using it for privacy. But that's the general shape of it — account
+> abstraction is what lets a privacy pool take users from a chain it isn't even
+> on.
+
+**[Where the money comes from]**
+
+> This USDC came from Base. It didn't have to. CCTP is Circle's own rail and it
+> reaches most of the major chains — same window, same flow.
+>
+> We've wired Base, because one chain done properly beats five half-tested.
+> Adding the next one is a config table and a live run, not a redesign.
+
+**[Money]**
+
+> So — does anyone actually pay for this?
+>
+> The closest comparison is Privacy Cash on Solana. Same idea, different chain,
+> and their numbers are public on DefiLlama: about eighty-three thousand
+> dollars in thirty days, over a million all time, on roughly a hundred and
+> twenty million of private transfers in their first hundred days. Deposits
+> free, and they take zero point three five percent on the way out plus a flat
+> relay charge.
+>
+> So the demand isn't theoretical. People pay for this.
+>
+> Our costs are shaped differently. Starknet charges a flat six STRK per pool
+> operation, so what a transfer costs us barely moves with its size. That makes
+> a percentage the wrong instrument for us — we charge a flat fee instead.
+>
+> And that cuts both ways, so I'll say both. Below about a hundred dollars we
+> are the expensive option: their percentage is small on a small transfer, and
+> our flat cost is not. Above it we're cheaper, and the gap only widens. A ten
+> thousand dollar transfer costs a dollar fifty-seven with us, against
+> thirty-five dollars with them. Twenty-three times.
+>
+> So the plan isn't to beat them everywhere. It's a flat fee at the deposit, a
+> minimum transfer size, and everything under it served on the cheap public
+> path.
+
+**[Close]**
+
+> Private USDC on Starknet, for anyone holding an Ethereum wallet. Live on
+> mainnet — and everything you just watched was real money.
+
+## Lines to keep, and lines not to say
+
+**Keep the admission that we are the expensive option below about a hundred
+dollars.** The temptation is to cut it. It is what makes the rest of the
+numbers land: naming your own weak zone is what buys trust in the strong one.
+It is also simply true — our costs are flat and theirs are proportional.
+
+**Do not say "USDC from any chain" in the present tense.** One route is wired.
+The architecture claim is fine and true; the deployment claim is not.
+
+**Do not call it "a MorokPay account".** It sounds custodial, and it is the
+opposite: derived from the user's Ethereum address, accepting only what their
+wallet signed, with no key held here.
+
+**Do not say onboarding will be invisible in production.** Steps two through
+four can collapse into one click, but the bridge is always the user's own
+transaction, and pool registration carries a proof that cannot be relayed — it
+stays their signature and their money. The stronger true line is that the
+*recipient* has no onboarding at all.
+
+**Do not say "MetaMask now works on Starknet".** MetaMask knows nothing about
+STRK20. An account class validates its EIP-712 signature.
+
+**Privacy Cash figures are from DefiLlama on 2026-09-03.** Re-check before
+publishing; they climb.
+
+Every number here is sourced from [who-pays.md](who-pays.md) and the cost
+section of [evm-escrow-invoices.md](evm-escrow-invoices.md).
