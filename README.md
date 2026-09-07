@@ -6,6 +6,24 @@ Send private USDC to any EVM address, or publish one reusable donation QR. The r
 
 [Watch the 3-minute demo](https://youtu.be/z_5YCVg9ODU) · [Open the live demo](https://morok-pay-starknet.vercel.app) · [Announcement thread](https://x.com/ssadkov/status/2093793308359409909)
 
+## For the panel
+
+| | |
+| --- | --- |
+| 3-minute demo video | [youtu.be/z_5YCVg9ODU](https://youtu.be/z_5YCVg9ODU) |
+| Live demo | [morok-pay-starknet.vercel.app](https://morok-pay-starknet.vercel.app) |
+| Mainnet transactions | five in [`strk20.json`](strk20.json), each through one of our own deployed contracts |
+| Real users on mainnet | four strangers finished the [contest](#private-donation-contest) entry unaided; one collected a sponsored claim with an empty MetaMask |
+| RFP | [RFP-09](https://strk20.starknet.io/rfp/cross-chain-privacy-hub) for the half that is built — see below |
+
+The five listed transactions are the ones that satisfy the scoring rule in
+both directions: each touched the STRK20 pool **and** ran through
+`MorokEscrow` or `MorokEscrowV2`. Two are the September 4 park and the
+September 5 sponsored claim; three ran through Escrow V2 on the afternoon of
+September 7. Dozens of other mainnet transactions appear throughout this README
+- registration, shield, unshield, the relayed donation, the contest payouts -
+and they are evidence for the reader rather than manifest entries.
+
 ## Deployed contracts
 
 All six are live and were read back on chain on 2026-09-07.
@@ -128,6 +146,18 @@ above was submitted by the derived account itself and paid for out of its own
 balance. On the Ready X rail the same operations arrive from a paymaster and
 cost the user only the 6 STRK fee.
 
+## STRK20 integration surface
+
+Against the five things the depth criterion names:
+
+| | in MorokPay | evidence |
+| --- | --- | --- |
+| Shielded balances | Discovered in-page from a viewing key on both rails; the balances sidebar reads them live | shield `0x506c1e0665…da2a`, unshield `0x114fb5ad4a…9929` |
+| Private transfers | Donation pay, contest payouts, and the escrow park all move value note-to-note inside the pool | four payout hashes under [the contest](#private-donation-contest) |
+| Anonymizer contracts | `MorokEscrow` and `MorokEscrowV2` implement `privacy_invoke` and return `OpenNoteDeposit`, so the pool itself calls them and hands the note over. Two products from one rule; source in [contracts/src](contracts/src) | the five hashes in [`strk20.json`](strk20.json) |
+| The Privacy SDK | Used directly in the browser on the MetaMask rail - proving, note discovery and the viewing key never leave the page, and never reach our server | [docs/evm-account-portability.md](docs/evm-account-portability.md) |
+| Accounts derived rather than installed | A Starknet account deterministic in an EVM address, plus a separate receive account behind a QR so the creator's main account is never the one published. Not stealth addresses in the per-payment sense, and the README does not claim they are | factory `0x07ead3a8…627aa`, deploy `0x6ab36fb2b6…3894` |
+
 ## What runs where
 
 | | Starknet Mainnet | Sepolia |
@@ -149,9 +179,21 @@ Mainnet differs from Sepolia by design: Sepolia sponsors a new account with 20
 test STRK, mainnet never sends STRK to a connecting address and requires it to
 be funded first.
 
-`strk20.json` lists the succeeded mainnet transactions against the live STRK20
-pool. This project answers [RFP-12 — private subscriptions and creator
-monetization](https://strk20.starknet.io/rfp/private-subscriptions).
+`strk20.json` lists five succeeded mainnet transactions, each of which touched
+the live STRK20 pool through one of our own deployed contracts.
+
+This project answers [RFP-09 — one-click privacy from any
+chain](https://strk20.starknet.io/rfp/cross-chain-privacy-hub) for the half it
+actually implements, and says plainly which half. Built and live on mainnet: a
+Starknet account generated deterministically from an EVM wallet, bridging in
+from Base over CCTP, holding privately, and a recipient who needs no Starknet
+wallet, no STRK and no gas - "the user never thinks about Starknet", which is
+that RFP's own test. **Not built: the cross-chain exit.** Value leaves through
+an unshield on Starknet, so withdrawing to a different chain with no on-chain
+link between the two sides is the next piece rather than a shipped one; see
+[Roadmap](#roadmap). The donation QR also answers
+[RFP-12](https://strk20.starknet.io/rfp/private-subscriptions), though without
+the recurring charges and session keys that RFP is really about.
 
 ## Two privacy gaps this closes, and how each was verified
 
