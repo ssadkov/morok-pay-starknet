@@ -20,7 +20,9 @@ const NETWORKS = {
   },
   mainnet: {
     rpcEnv: "STARKNET_RPC_URL",
-    defaultRpc: "https://rpc.starknet.lava.build",
+    // lava.build was discontinued 2026-09-07. Scripts are server-side, so
+    // mainnet.nodes.starknet.org would also do; kept in step with the app.
+    defaultRpc: "https://api.cartridge.gg/x/starknet/mainnet",
     pool: "0x040337b1af3c663e86e333bab5a4b28da8d4652a15a69beee2b677776ffe812a",
     usdc: "0x033068F6539f8e6e6b131e6B2B814e6c34A5224bC66947c47DaB9dFeE93b35fb",
     /* Second shield token, mainnet only - mirrors STRKBTC_ADDRESS in
