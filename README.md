@@ -15,6 +15,7 @@ Send private USDC to any EVM address, or publish one reusable donation QR. The r
 | Mainnet transactions | five in [`strk20.json`](strk20.json), each through one of our own deployed contracts |
 | Real users on mainnet | four strangers finished the [contest](#private-donation-contest) entry unaided; one collected a sponsored claim with an empty MetaMask |
 | RFP | [RFP-09](https://strk20.starknet.io/rfp/cross-chain-privacy-hub) for the half that is built — see below |
+| Published for other teams | The `AccountFactory` is **permissionless** — `deploy_account` carries no role check, so any project can derive and deploy the same Starknet account for the same EVM wallet without asking us, and without a key from us. The scheme is specified in [docs/evm-account-portability.md](docs/evm-account-portability.md), down to the address derivation and the exact EIP-712 message |
 
 The five listed transactions are the ones that satisfy the scoring rule in
 both directions: each touched the STRK20 pool **and** ran through
